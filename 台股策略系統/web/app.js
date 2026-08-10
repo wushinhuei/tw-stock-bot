@@ -456,4 +456,30 @@ function renderCurve(days) {
   }).join('');
 }
 
+function initRulesModal() {
+  const modal = document.querySelector('#rulesModal');
+  const openButton = document.querySelector('#openRulesButton');
+  if (!modal || !openButton) return;
+
+  const closeButtons = modal.querySelectorAll('[data-close-rules]');
+  const close = () => {
+    modal.hidden = true;
+    document.body.classList.remove('modal-open');
+    openButton.focus();
+  };
+  const open = () => {
+    modal.hidden = false;
+    document.body.classList.add('modal-open');
+    const closeButton = modal.querySelector('.icon-close');
+    if (closeButton) closeButton.focus();
+  };
+
+  openButton.addEventListener('click', open);
+  closeButtons.forEach(button => button.addEventListener('click', close));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+}
+
+initRulesModal();
 render(window.PRECOMPUTED_SIMULATION || runSimulation(scenario));

@@ -13,6 +13,9 @@
       <h1>台股每日自動買賣模擬</h1>
       <p class="hero-copy">從 2026-08-10 起以初始資金 10 萬每日強制模擬買賣，以零股操作為主，統計扣除手續費與交易稅後的投報率；目前只模擬，不下單。</p>
     </div>
+    <div class="top-actions">
+      <button type="button" id="openRulesButton" class="primary-action">查閱操作規則</button>
+    </div>
   </header>
 
   <main class="layout">
@@ -126,6 +129,102 @@
       </div>
     </section>
   </main>
+
+  <div id="rulesModal" class="rules-modal" hidden>
+    <div class="rules-backdrop" data-close-rules></div>
+    <section class="rules-dialog" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+      <div class="rules-header">
+        <div>
+          <p class="eyebrow">Trading Rulebook</p>
+          <h2 id="rulesTitle">台股自動模擬操作規則</h2>
+        </div>
+        <button type="button" class="icon-close" data-close-rules aria-label="關閉操作規則">×</button>
+      </div>
+
+      <div class="rules-content">
+        <section>
+          <h3>核心原則</h3>
+          <ul>
+            <li>大盤優先於個股，風控優先於獲利。</li>
+            <li>系統只做模擬提醒，不真實下單。</li>
+            <li>初始資金 100,000 元，從 2026-08-10 開始，以零股操作為主。</li>
+            <li>所有損益都扣除手續費與交易稅後才列入績效。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>每日流程</h3>
+          <ol>
+            <li>先看加權指數是否站上 20MA 與 50MA。</li>
+            <li>再看同族群是否至少 2 到 3 檔同步轉強。</li>
+            <li>檢查個股產業、基本面、籌碼是否合格。</li>
+            <li>確認布林擠壓、W 底、VCP、均線多頭與帶量突破。</li>
+            <li>確認 MACD 零軸上、RSI 站上 50，KD 不逆勢解讀。</li>
+            <li>依 A/B/C 等級決定是否交易與部位。</li>
+            <li>下單前寫好停損價；達到日損或週損限制即停止交易。</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>大盤濾網</h3>
+          <div class="rules-table">
+            <div><strong>站上 20MA 與 50MA</strong><span>允許積極做多，A 級訊號可用標準部位。</span></div>
+            <div><strong>跌破 20MA</strong><span>只能輕倉、等回測，或只做 A 級訊號。</span></div>
+            <div><strong>跌破 50MA</strong><span>不做突破追價，只保留觀察或防守操作。</span></div>
+          </div>
+        </section>
+
+        <section>
+          <h3>A/B/C 進場分級</h3>
+          <div class="rules-table">
+            <div><strong>A 級</strong><span>全部條件共振，可用標準部位。</span></div>
+            <div><strong>B 級</strong><span>缺一項，但大盤與趨勢仍強，只能半部位。</span></div>
+            <div><strong>C 級</strong><span>只有技術訊號，缺產業或籌碼背書，只觀察不買。</span></div>
+          </div>
+        </section>
+
+        <section>
+          <h3>技術與動能</h3>
+          <ul>
+            <li>有效突破需站上魔王線、景線或前高，且成交量放大到平均量 2 倍以上。</li>
+            <li>MACD 快慢線在零軸上、柱狀圖翻紅，代表多頭動能較強。</li>
+            <li>RSI 站上 50 偏多；強勢股 RSI 大於 70 不一定立刻賣出。</li>
+            <li>布林帶擠壓只代表將有大波動，方向需用量價、均線、MACD、RSI 與籌碼確認。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>當沖規則</h3>
+          <ul>
+            <li>開盤前 5 分鐘不搶單，先觀察大盤方向與個股是否站穩。</li>
+            <li>優先選成交量大、流動性佳、振幅足夠的股票。</li>
+            <li>突破魔王線需 1 分 K 實體紅棒完整越過，且成交量明顯放大。</li>
+            <li>跌破買進 K 棒低點或跌回關鍵價下方，立刻出場，不凹單。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>風控鐵律</h3>
+          <ul>
+            <li>單筆最大損失控制在總資金 1% 到 2%。</li>
+            <li>單日累計虧損達 2%，當天停止交易。</li>
+            <li>單週累計虧損達 5%，下一週只允許半倉或模擬觀察。</li>
+            <li>假突破後冷卻 1 到 3 天，不再追同一條關鍵價。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>費用與稅務</h3>
+          <ul>
+            <li>買進與賣出都扣券商手續費。</li>
+            <li>現股賣出交易稅用 0.3%。</li>
+            <li>當沖賣出交易稅用 0.15%。</li>
+            <li>手續費未滿最低收費時，依最低收費計算。</li>
+          </ul>
+        </section>
+      </div>
+    </section>
+  </div>
 
   <script src="actual_data.js?v=20260810-actual"></script>
   <script src="simulation_result.js?v=20260810-actions"></script>
