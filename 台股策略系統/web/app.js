@@ -77,7 +77,7 @@ const defaultScenario = [
   },
 ];
 
-const scenario = Array.isArray(window.ACTUAL_SCENARIO) && window.ACTUAL_SCENARIO.length
+let scenario = Array.isArray(window.ACTUAL_SCENARIO) && window.ACTUAL_SCENARIO.length
   ? window.ACTUAL_SCENARIO
   : defaultScenario;
 
@@ -481,5 +481,67 @@ function initRulesModal() {
   });
 }
 
+function currentSimulation() {
+  scenario = Array.isArray(window.ACTUAL_SCENARIO) && window.ACTUAL_SCENARIO.length
+    ? window.ACTUAL_SCENARIO
+    : defaultScenario;
+  return window.PRECOMPUTED_SIMULATION || runSimulation(scenario);
+}
+
+async function loadWindowAssignment(src, key) {
+  const cleanSrc = src.split('?')[0];
+  const text = await requestText(`${cleanSrc}?v=${Date.now()}`);
+  const match = text.match(new RegExp(`window\\.${key}\\s*=\\s*([\\s\\S]*?);\\s*$`));
+  if (!match) throw new Error(`Unable to parse ${key} from ${cleanSrc}`);
+  return JSON.parse(match[1]);
+}
+
+function requestText(url) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('GET', url, true);
+    request.setRequestHeader('Cache-Control', 'no-cache');
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        resolve(request.responseText);
+      } else {
+        reject(new Error(`Unable to load ${url}`));
+      }
+    };
+    request.onerror = () => reject(new Error(`Unable to load ${url}`));
+    request.send();
+  });
+}
+
+async function refreshData() {
+  const button = document.querySelector('#refreshDataButton');
+  if (button) {
+    button.disabled = true;
+    button.classList.add('is-loading');
+    button.textContent = '更新中...';
+  }
+
+  try {
+    window.ACTUAL_SCENARIO = await loadWindowAssignment('actual_data.js', 'ACTUAL_SCENARIO');
+    window.PRECOMPUTED_SIMULATION = await loadWindowAssignment('simulation_result.js', 'PRECOMPUTED_SIMULATION');
+    render(currentSimulation());
+  } catch (error) {
+    console.error(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.classList.remove('is-loading');
+      button.textContent = '更新資料';
+    }
+  }
+}
+
+function initDataRefresh() {
+  const refreshButton = document.querySelector('#refreshDataButton');
+  if (refreshButton) refreshButton.addEventListener('click', refreshData);
+  window.setInterval(refreshData, 5 * 60 * 1000);
+}
+
 initRulesModal();
-render(window.PRECOMPUTED_SIMULATION || runSimulation(scenario));
+initDataRefresh();
+render(currentSimulation());

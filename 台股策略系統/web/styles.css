@@ -74,6 +74,7 @@ h2 {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 button,
@@ -92,6 +93,16 @@ button,
   background: #ffffff;
   color: #102033;
   font-weight: 700;
+}
+
+.secondary-action {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.primary-action.is-loading {
+  opacity: 0.72;
+  cursor: wait;
 }
 
 .file-button {
