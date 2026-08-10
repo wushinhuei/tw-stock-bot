@@ -447,6 +447,31 @@ td input {
   padding: 4px 22px 22px;
 }
 
+.return-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 18px 0 6px;
+}
+
+.return-summary div {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.return-summary span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.return-summary strong {
+  font-size: 20px;
+}
+
 .rules-content section {
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
@@ -501,6 +526,7 @@ td input {
   .simulation-totals,
   .decision-strip,
   .check-grid,
+  .return-summary,
   .rules-table {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -518,6 +544,7 @@ td input {
   .simulation-totals,
   .decision-strip,
   .check-grid,
+  .return-summary,
   .rules-table {
     grid-template-columns: 1fr;
   }

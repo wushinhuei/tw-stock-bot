@@ -80,6 +80,7 @@ const defaultScenario = [
 let scenario = Array.isArray(window.ACTUAL_SCENARIO) && window.ACTUAL_SCENARIO.length
   ? window.ACTUAL_SCENARIO
   : defaultScenario;
+let activeResult = null;
 
 function stock(symbol, name, group, price, stopPrice, targetPrice, grade, dayTradeOk, intradayReturnPct) {
   const allA = grade === 'A';
@@ -356,6 +357,7 @@ function sellReason(candidate, marketState, position) {
 }
 
 function render(result) {
+  activeResult = result;
   const latestDay = scenario.filter(day => day.date >= CONFIG.simulationStartDate).at(-1);
   document.querySelector('#finalEquity').textContent = currency(result.finalEquity);
   document.querySelector('#finalDate').textContent = `自 ${CONFIG.simulationStartDate} 起，截至 ${latestDay.date}`;
@@ -372,6 +374,39 @@ function render(result) {
   renderDailyRows(result.daily);
   renderTrades(result.trades);
   renderCurve(result.daily);
+}
+
+function renderHistoryReturns(result) {
+  const daily = Array.isArray(result.daily) ? result.daily : [];
+  const initialCapital = result.initialCapital || CONFIG.initialCapital;
+  let peakEquity = initialCapital;
+
+  document.querySelector('#historyFinalEquity').textContent = currency(result.finalEquity || initialCapital);
+  document.querySelector('#historyTotalReturn').textContent = pct((result.finalEquity || initialCapital) / initialCapital - 1);
+  document.querySelector('#historyTotalReturn').className = (result.finalEquity || initialCapital) >= initialCapital ? 'gain' : 'loss';
+  document.querySelector('#historyMaxDrawdown').textContent = pct(result.maxDrawdown || 0);
+  document.querySelector('#historyMaxDrawdown').className = (result.maxDrawdown || 0) < 0 ? 'loss' : 'flat';
+
+  document.querySelector('#historyReturnRows').innerHTML = daily.map((day, index) => {
+    const previousEquity = index > 0 ? daily[index - 1].equity : initialCapital;
+    const dayPnl = day.equity - previousEquity;
+    const dayReturn = previousEquity ? dayPnl / previousEquity : 0;
+    const totalReturn = day.equity / initialCapital - 1;
+    peakEquity = Math.max(peakEquity, day.equity);
+    const drawdown = day.equity / peakEquity - 1;
+
+    return `
+      <tr>
+        <td>${day.date}</td>
+        <td>${currency(day.equity)}</td>
+        <td class="${dayPnl >= 0 ? 'gain' : 'loss'}">${currency(dayPnl)}</td>
+        <td class="${dayReturn >= 0 ? 'gain' : 'loss'}">${pct(dayReturn)}</td>
+        <td class="${totalReturn >= 0 ? 'gain' : 'loss'}">${pct(totalReturn)}</td>
+        <td class="${drawdown < 0 ? 'loss' : 'flat'}">${pct(drawdown)}</td>
+        <td>${day.marketLabel || '-'}</td>
+      </tr>
+    `;
+  }).join('') || '<tr><td colspan="7">尚無歷史交易資料</td></tr>';
 }
 
 function renderTodayDecision(result, day) {
@@ -481,6 +516,32 @@ function initRulesModal() {
   });
 }
 
+function initReturnsModal() {
+  const modal = document.querySelector('#returnsModal');
+  const openButton = document.querySelector('#openReturnsButton');
+  if (!modal || !openButton) return;
+
+  const closeButtons = modal.querySelectorAll('[data-close-returns]');
+  const close = () => {
+    modal.hidden = true;
+    document.body.classList.remove('modal-open');
+    openButton.focus();
+  };
+  const open = () => {
+    renderHistoryReturns(activeResult || currentSimulation());
+    modal.hidden = false;
+    document.body.classList.add('modal-open');
+    const closeButton = modal.querySelector('.icon-close');
+    if (closeButton) closeButton.focus();
+  };
+
+  openButton.addEventListener('click', open);
+  closeButtons.forEach(button => button.addEventListener('click', close));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+}
+
 function currentSimulation() {
   scenario = Array.isArray(window.ACTUAL_SCENARIO) && window.ACTUAL_SCENARIO.length
     ? window.ACTUAL_SCENARIO
@@ -577,5 +638,6 @@ function initDataRefresh() {
 }
 
 initRulesModal();
+initReturnsModal();
 initDataRefresh();
 render(currentSimulation());
