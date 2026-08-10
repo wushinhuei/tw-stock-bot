@@ -378,6 +378,7 @@ function render(result) {
 
 function renderHistoryReturns(result) {
   const daily = Array.isArray(result.daily) ? result.daily : [];
+  const trades = Array.isArray(result.trades) ? result.trades : [];
   const initialCapital = result.initialCapital || CONFIG.initialCapital;
   let peakEquity = initialCapital;
 
@@ -407,6 +408,21 @@ function renderHistoryReturns(result) {
       </tr>
     `;
   }).join('') || '<tr><td colspan="7">尚無歷史交易資料</td></tr>';
+
+  document.querySelector('#historyTradeRows').innerHTML = trades.slice().reverse().map(trade => `
+    <tr>
+      <td>${trade.date}</td>
+      <td><span class="badge ${trade.action === '買進' ? 'buy' : trade.action === '賣出' ? 'blocked' : 'watch'}">${trade.action}</span></td>
+      <td><strong>${trade.symbol}</strong><br><span>${trade.name}</span></td>
+      <td>${Number(trade.shares || 0).toLocaleString('zh-TW')}</td>
+      <td>${price(trade.price)}</td>
+      <td>${currency(trade.grossAmount || 0)}</td>
+      <td>${currency(trade.fee || 0)}</td>
+      <td>${currency(trade.tax || 0)}</td>
+      <td class="${(trade.pnl || 0) >= 0 ? 'gain' : 'loss'}">${currency(trade.pnl || 0)}</td>
+      <td class="reason">${trade.reason || '-'}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="10">尚無交易明細</td></tr>';
 }
 
 function renderTodayDecision(result, day) {

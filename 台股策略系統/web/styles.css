@@ -472,6 +472,15 @@ td input {
   font-size: 20px;
 }
 
+.history-section {
+  margin-top: 18px;
+}
+
+.history-section h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+}
+
 .rules-content section {
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
