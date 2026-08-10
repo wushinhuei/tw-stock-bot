@@ -1,0 +1,33 @@
+name: Daily Taiwan Stock Simulation
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Taiwan market closes at 13:30 Asia/Taipei. This runs at 15:20 Taipei time.
+    - cron: "20 7 * * 1-5"
+
+permissions:
+  contents: write
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Update market data
+        run: node scripts/update_tw_data.js
+
+      - name: Run daily simulation
+        run: node scripts/run_tw_simulation.js
+
+      - name: Commit updated simulation files
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update daily Taiwan stock simulation"

@@ -1,0 +1,231 @@
+window.ACTUAL_SCENARIO = [
+  {
+    "date": "2026-08-10",
+    "market": {
+      "close": 45090.15,
+      "ma20": 43604.05,
+      "ma50": 44782.08
+    },
+    "groups": {
+      "AI設備": 1,
+      "機器人": 1,
+      "電力": 0,
+      "半導體": 0
+    },
+    "candidates": [
+      {
+        "symbol": "2382",
+        "name": "廣達",
+        "group": "AI設備",
+        "price": 310.5,
+        "stopPrice": 291.9,
+        "targetPrice": 335.3,
+        "grade": "BLOCKED",
+        "dayTradeOk": false,
+        "intradayReturnPct": 0.03,
+        "industryOk": true,
+        "fundamentalOk": true,
+        "chipOk": true,
+        "trendOk": false,
+        "volumePriceOk": false,
+        "momentumOk": false,
+        "metrics": {
+          "date": "2026-08-10",
+          "ma20": 319.925,
+          "ma50": 353.97,
+          "rsi14": 43.99999999999999,
+          "macdHist": 0.05069594207853534,
+          "volumeRatio": 0.533555592716916,
+          "sourceSymbol": "2382.TW"
+        }
+      },
+      {
+        "symbol": "2049",
+        "name": "上銀",
+        "group": "機器人",
+        "price": 380,
+        "stopPrice": 324.7,
+        "targetPrice": 410.4,
+        "grade": "B",
+        "dayTradeOk": true,
+        "intradayReturnPct": -0.002624671916010457,
+        "industryOk": true,
+        "fundamentalOk": false,
+        "chipOk": false,
+        "trendOk": true,
+        "volumePriceOk": true,
+        "momentumOk": true,
+        "metrics": {
+          "date": "2026-08-10",
+          "ma20": 324.675,
+          "ma50": 333.32,
+          "rsi14": 69.73684210526315,
+          "macdHist": 9.545535758694028,
+          "volumeRatio": 1.4828026512689736,
+          "sourceSymbol": "2049.TW"
+        }
+      },
+      {
+        "symbol": "1513",
+        "name": "中興電",
+        "group": "電力",
+        "price": 159.5,
+        "stopPrice": 149.9,
+        "targetPrice": 172.3,
+        "grade": "BLOCKED",
+        "dayTradeOk": false,
+        "intradayReturnPct": 0,
+        "industryOk": true,
+        "fundamentalOk": true,
+        "chipOk": false,
+        "trendOk": false,
+        "volumePriceOk": false,
+        "momentumOk": false,
+        "metrics": {
+          "date": "2026-08-10",
+          "ma20": 158.75,
+          "ma50": 167.92,
+          "rsi14": 45.833333333333336,
+          "macdHist": 0.7725477694245804,
+          "volumeRatio": 0.25470267176723765,
+          "sourceSymbol": "1513.TW"
+        }
+      },
+      {
+        "symbol": "2330",
+        "name": "台積電",
+        "group": "半導體",
+        "price": 2395,
+        "stopPrice": 2251.3,
+        "targetPrice": 2586.6,
+        "grade": "C",
+        "dayTradeOk": false,
+        "intradayReturnPct": 0.0020920502092049986,
+        "industryOk": true,
+        "fundamentalOk": true,
+        "chipOk": true,
+        "trendOk": true,
+        "volumePriceOk": false,
+        "momentumOk": false,
+        "metrics": {
+          "date": "2026-08-10",
+          "ma20": 2359.5,
+          "ma50": 2380.7,
+          "rsi14": 48.93617021276596,
+          "macdHist": 5.756414939689639,
+          "volumeRatio": 0.27382704247622447,
+          "sourceSymbol": "2330.TW"
+        }
+      },
+      {
+        "symbol": "2454",
+        "name": "聯發科",
+        "group": "半導體",
+        "price": 3965,
+        "stopPrice": 3672.5,
+        "targetPrice": 4282.2,
+        "grade": "C",
+        "dayTradeOk": false,
+        "intradayReturnPct": 0.011479591836734748,
+        "industryOk": true,
+        "fundamentalOk": true,
+        "chipOk": false,
+        "trendOk": false,
+        "volumePriceOk": true,
+        "momentumOk": true,
+        "metrics": {
+          "date": "2026-08-10",
+          "ma20": 3672.5,
+          "ma50": 4019.6,
+          "rsi14": 57.24815724815724,
+          "macdHist": 62.94093540621135,
+          "volumeRatio": 0.3542923784978951,
+          "sourceSymbol": "2454.TW"
+        }
+      },
+      {
+        "symbol": "2317",
+        "name": "鴻海",
+        "group": "AI設備",
+        "price": 263.5,
+        "stopPrice": 247.5,
+        "targetPrice": 284.6,
+        "grade": "B",
+        "dayTradeOk": false,
+        "intradayReturnPct": 0.003809523809523707,
+        "industryOk": true,
+        "fundamentalOk": true,
+        "chipOk": false,
+        "trendOk": true,
+        "volumePriceOk": true,
+        "momentumOk": true,
+        "metrics": {
+          "date": "2026-08-10",
+          "ma20": 247.525,
+          "ma50": 255.62,
+          "rsi14": 59.77653631284916,
+          "macdHist": 2.736647211955265,
+          "volumeRatio": 0.45133740058885824,
+          "sourceSymbol": "2317.TW"
+        }
+      },
+      {
+        "symbol": "2308",
+        "name": "台達電",
+        "group": "電力",
+        "price": 1815,
+        "stopPrice": 1706.1,
+        "targetPrice": 1960.2,
+        "grade": "BLOCKED",
+        "dayTradeOk": false,
+        "intradayReturnPct": 0.03,
+        "industryOk": true,
+        "fundamentalOk": true,
+        "chipOk": true,
+        "trendOk": false,
+        "volumePriceOk": false,
+        "momentumOk": false,
+        "metrics": {
+          "date": "2026-08-10",
+          "ma20": 1723.5,
+          "ma50": 1955,
+          "rsi14": 48.924731182795696,
+          "macdHist": 20.63076125658847,
+          "volumeRatio": 0.7731800916235694,
+          "sourceSymbol": "2308.TW"
+        }
+      },
+      {
+        "symbol": "2357",
+        "name": "華碩",
+        "group": "AI設備",
+        "price": 812,
+        "stopPrice": 762.2,
+        "targetPrice": 877,
+        "grade": "C",
+        "dayTradeOk": false,
+        "intradayReturnPct": -0.009756097560975618,
+        "industryOk": true,
+        "fundamentalOk": true,
+        "chipOk": false,
+        "trendOk": true,
+        "volumePriceOk": false,
+        "momentumOk": true,
+        "metrics": {
+          "date": "2026-08-10",
+          "ma20": 762.2,
+          "ma50": 765.1,
+          "rsi14": 64.07407407407408,
+          "macdHist": 7.3053931039493385,
+          "volumeRatio": 0.27453480332833186,
+          "sourceSymbol": "2357.TW"
+        }
+      }
+    ],
+    "source": {
+      "provider": "Yahoo Finance chart API",
+      "generatedAt": "2026-08-10T03:29:32.406Z",
+      "startDate": "2026-08-10"
+    }
+  }
+];

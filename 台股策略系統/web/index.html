@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>台股自動模擬交易系統</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Forced Rules Simulation</p>
+      <h1>台股每日自動買賣模擬</h1>
+      <p class="hero-copy">從 2026-08-10 起以初始資金 10 萬每日強制模擬買賣，以零股操作為主，統計扣除手續費與交易稅後的投報率；目前只模擬，不下單。</p>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="summary-grid" aria-label="模擬摘要">
+      <article class="panel metric">
+        <span>總資產</span>
+        <strong id="finalEquity">-</strong>
+        <small id="finalDate">-</small>
+      </article>
+      <article class="panel metric">
+        <span>總投報率</span>
+        <strong id="totalReturn">-</strong>
+        <small>以 10 萬初始資金計算</small>
+      </article>
+      <article class="panel metric">
+        <span>已實現損益</span>
+        <strong id="realizedPnl">-</strong>
+        <small id="tradeCount">-</small>
+      </article>
+      <article class="panel metric">
+        <span>最大回撤</span>
+        <strong id="maxDrawdown">-</strong>
+        <small>用每日總資產峰值計算</small>
+      </article>
+    </section>
+
+    <section class="panel workspace">
+      <div class="section-title">
+        <div>
+          <h2>今日強制結論</h2>
+          <p>不提供人工選項；系統只顯示依規則得到的結果。</p>
+        </div>
+      </div>
+      <div id="todayDecision" class="decision-strip"></div>
+    </section>
+
+    <section class="panel holdings-panel">
+      <div class="section-title">
+        <div>
+          <h2>目前模擬持倉</h2>
+          <p>買賣依大盤濾網、A/B 分級、停損、目標價、假突破與當沖規則自動執行。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>股票</th>
+              <th>股數</th>
+              <th>成本</th>
+              <th>現價</th>
+              <th>稅費後持股估值</th>
+              <th>未實現損益</th>
+              <th>狀態</th>
+            </tr>
+          </thead>
+          <tbody id="positionRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel simulation-panel">
+      <div class="section-title">
+        <div>
+          <h2>每日資產曲線</h2>
+          <p>自 2026-08-10 起，每個交易日自動檢查賣出、買進與當沖機會。</p>
+        </div>
+      </div>
+      <div id="equityCurve" class="equity-curve" aria-label="每日資產曲線"></div>
+      <div class="table-wrap trade-log-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>總資產</th>
+              <th>現金</th>
+              <th>稅費後持股估值</th>
+              <th>日損益</th>
+              <th>大盤模式</th>
+            </tr>
+          </thead>
+          <tbody id="dailyRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel simulation-panel">
+      <div class="section-title">
+        <div>
+          <h2>自動交易紀錄</h2>
+          <p>包含波段買賣與當沖模擬交易。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>動作</th>
+              <th>股票</th>
+              <th>股數</th>
+              <th>價格</th>
+              <th>手續費</th>
+              <th>交易稅</th>
+              <th>損益</th>
+              <th>原因</th>
+            </tr>
+          </thead>
+          <tbody id="tradeRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="actual_data.js?v=20260810-actual"></script>
+  <script src="simulation_result.js?v=20260810-actions"></script>
+  <script src="app.js?v=20260810-actual"></script>
+</body>
+</html>

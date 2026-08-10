@@ -1,0 +1,81 @@
+{
+  "date": "2026-08-10",
+  "portfolio": {
+    "equity": 300000,
+    "dailyRealizedPnlPct": -0.004,
+    "weeklyRealizedPnlPct": -0.018
+  },
+  "market": {
+    "symbol": "^TWII",
+    "close": 24320,
+    "ma20": 23900,
+    "ma50": 23100
+  },
+  "groups": {
+    "AI設備": {
+      "strongPeers": 3
+    },
+    "電力": {
+      "strongPeers": 1
+    },
+    "機器人": {
+      "strongPeers": 2
+    }
+  },
+  "breakoutHistory": {
+    "1513": [
+      {
+        "lineKey": "前高",
+        "fakeBreakoutDate": "2026-08-09"
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "symbol": "2382",
+      "name": "廣達",
+      "group": "AI設備",
+      "lineKey": "景線",
+      "keyPrice": 296,
+      "stopPrice": 284,
+      "industryOk": true,
+      "fundamentalOk": true,
+      "chipOk": true,
+      "trendOk": true,
+      "volumePriceOk": true,
+      "momentumOk": true,
+      "notes": "產業、籌碼、趨勢與放量突破共振。"
+    },
+    {
+      "symbol": "1513",
+      "name": "中興電",
+      "group": "電力",
+      "lineKey": "前高",
+      "keyPrice": 188,
+      "stopPrice": 179,
+      "industryOk": true,
+      "fundamentalOk": true,
+      "chipOk": false,
+      "trendOk": true,
+      "volumePriceOk": true,
+      "momentumOk": true,
+      "notes": "近期有假突破紀錄，需冷卻。"
+    },
+    {
+      "symbol": "2049",
+      "name": "上銀",
+      "group": "機器人",
+      "lineKey": "魔王線",
+      "keyPrice": 238,
+      "stopPrice": 228,
+      "industryOk": true,
+      "fundamentalOk": false,
+      "chipOk": false,
+      "trendOk": true,
+      "volumePriceOk": true,
+      "momentumOk": true,
+      "notes": "只有題材與技術，缺基本與籌碼背書。"
+    }
+  ]
+}
+
