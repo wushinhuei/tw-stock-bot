@@ -485,7 +485,41 @@ function currentSimulation() {
   scenario = Array.isArray(window.ACTUAL_SCENARIO) && window.ACTUAL_SCENARIO.length
     ? window.ACTUAL_SCENARIO
     : defaultScenario;
-  return window.PRECOMPUTED_SIMULATION || runSimulation(scenario);
+  const latestDay = scenario.filter(day => day.date >= CONFIG.simulationStartDate).at(-1);
+  if (window.PRECOMPUTED_SIMULATION && latestDay) {
+    return markToMarketResult(window.PRECOMPUTED_SIMULATION, latestDay);
+  }
+  return runSimulation(scenario);
+}
+
+function markToMarketResult(result, day) {
+  const marked = {
+    ...result,
+    positions: Array.isArray(result.positions) ? result.positions : [],
+    daily: Array.isArray(result.daily) ? [...result.daily] : [],
+  };
+  const positionValue = marketValue(marked.positions, day);
+  const finalEquity = Number(marked.cash || 0) + positionValue;
+  const previousDaily = marked.daily.length > 1 ? marked.daily[marked.daily.length - 2] : null;
+  const previousEquity = previousDaily ? previousDaily.equity : marked.initialCapital || CONFIG.initialCapital;
+  const lastDaily = marked.daily.at(-1);
+
+  if (lastDaily) {
+    marked.daily[marked.daily.length - 1] = {
+      ...lastDaily,
+      date: day.date,
+      equity: finalEquity,
+      cash: Number(marked.cash || 0),
+      positionValue,
+      dayPnl: finalEquity - previousEquity,
+      marketLabel: evaluateMarket(day).label,
+    };
+  }
+
+  marked.finalEquity = finalEquity;
+  marked.totalReturn = finalEquity / (marked.initialCapital || CONFIG.initialCapital) - 1;
+  marked.markedToMarketAt = day.source?.generatedAt || new Date().toISOString();
+  return marked;
 }
 
 async function loadWindowAssignment(src, key) {

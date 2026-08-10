@@ -29,6 +29,81 @@ async function fetchChart(symbol, range = '1y', interval = '1d') {
   return json.chart.result[0];
 }
 
+async function fetchLatestQuote(symbol) {
+  const result = await fetchChart(symbol, '1d', '1m');
+  const quote = result.indicators.quote[0];
+  const timestamps = result.timestamp || [];
+  for (let index = timestamps.length - 1; index >= 0; index -= 1) {
+    const close = quote.close[index];
+    if (close != null) {
+      return {
+        price: close,
+        open: quote.open[index] ?? result.meta.regularMarketOpen ?? close,
+        high: quote.high[index] ?? close,
+        low: quote.low[index] ?? close,
+        volume: quote.volume[index] || 0,
+        time: new Date(timestamps[index] * 1000).toISOString(),
+      };
+    }
+  }
+  if (result.meta && result.meta.regularMarketPrice != null) {
+    return {
+      price: result.meta.regularMarketPrice,
+      open: result.meta.regularMarketOpen ?? result.meta.chartPreviousClose ?? result.meta.regularMarketPrice,
+      high: result.meta.regularMarketDayHigh ?? result.meta.regularMarketPrice,
+      low: result.meta.regularMarketDayLow ?? result.meta.regularMarketPrice,
+      volume: result.meta.regularMarketVolume || 0,
+      time: new Date((result.meta.regularMarketTime || Date.now() / 1000) * 1000).toISOString(),
+    };
+  }
+  return null;
+}
+
+function parseTwseNumber(value) {
+  const number = Number(String(value || '').replace(/,/g, ''));
+  return Number.isFinite(number) ? number : null;
+}
+
+function bestTwsePrice(item) {
+  const last = parseTwseNumber(item.z);
+  if (last != null) return last;
+  const previousLast = parseTwseNumber(item.pz);
+  if (previousLast != null) return previousLast;
+  const bestBid = parseTwseNumber(String(item.b || '').split('_')[0]);
+  const bestAsk = parseTwseNumber(String(item.a || '').split('_')[0]);
+  if (bestBid != null && bestAsk != null) return (bestBid + bestAsk) / 2;
+  return parseTwseNumber(item.y);
+}
+
+async function fetchTwseQuotes(items) {
+  const channels = items.map(item => `tse_${item.code}.tw`).join('|');
+  const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${encodeURIComponent(channels)}&json=1&delay=0`;
+  const response = await fetch(url, {
+    headers: {
+      Referer: 'https://mis.twse.com.tw/stock/index.jsp',
+      'User-Agent': 'Mozilla/5.0',
+    },
+  });
+  if (!response.ok) throw new Error(`TWSE MIS HTTP ${response.status}`);
+  const json = await response.json();
+  const quotes = {};
+  (json.msgArray || []).forEach(item => {
+    const price = bestTwsePrice(item);
+    if (item.c && price != null) {
+      quotes[item.c] = {
+        price,
+        open: parseTwseNumber(item.o) ?? price,
+        high: parseTwseNumber(item.h) ?? price,
+        low: parseTwseNumber(item.l) ?? price,
+        volume: (parseTwseNumber(item.v) || 0) * 1000,
+        time: item.tlong ? new Date(Number(item.tlong)).toISOString() : new Date().toISOString(),
+        provider: 'TWSE MIS',
+      };
+    }
+  });
+  return quotes;
+}
+
 function rowsFromChart(result) {
   const quote = result.indicators.quote[0];
   return result.timestamp.map((ts, index) => ({
@@ -88,11 +163,26 @@ function macd(values) {
   };
 }
 
-function gradeCandidate(base, rows) {
+function mergeLatestRow(rows, latestQuote) {
+  if (!latestQuote || latestQuote.price == null) return rows;
+  const merged = [...rows];
+  const last = { ...merged.at(-1) };
+  last.close = latestQuote.price;
+  last.open = latestQuote.open ?? last.open;
+  last.high = Math.max(last.high || latestQuote.price, latestQuote.high || latestQuote.price, latestQuote.price);
+  last.low = Math.min(last.low || latestQuote.price, latestQuote.low || latestQuote.price, latestQuote.price);
+  last.volume = Math.max(last.volume || 0, latestQuote.volume || 0);
+  merged[merged.length - 1] = last;
+  return merged;
+}
+
+function gradeCandidate(base, rows, latestQuote) {
+  const mergedRows = mergeLatestRow(rows, latestQuote);
   const closes = rows.map(row => row.close);
-  const volumes = rows.map(row => row.volume);
-  const latest = rows.at(-1);
-  const prev = rows.at(-2) || latest;
+  const markedCloses = mergedRows.map(row => row.close);
+  const volumes = mergedRows.map(row => row.volume);
+  const latest = mergedRows.at(-1);
+  const prev = mergedRows.at(-2) || latest;
   const ma20 = sma(closes, 20);
   const ma50 = sma(closes, 50);
   const volume20 = sma(volumes, 20) || latest.volume;
@@ -134,13 +224,21 @@ function gradeCandidate(base, rows) {
       macdHist: m.hist,
       volumeRatio,
       sourceSymbol: base.symbol,
+      latestQuoteTime: latestQuote?.time || null,
+      latestQuoteProvider: latestQuote?.provider || null,
+      dailyClose: rows.at(-1).close,
+      markedClose: markedCloses.at(-1),
     },
   };
 }
 
 async function main() {
   const marketResult = await fetchChart('^TWII');
-  const marketRows = rowsFromChart(marketResult);
+  const marketQuote = await fetchLatestQuote('^TWII').catch(error => {
+    console.warn(`Latest market quote fallback ^TWII: ${error.message}`);
+    return null;
+  });
+  const marketRows = mergeLatestRow(rowsFromChart(marketResult), marketQuote);
   const marketCloses = marketRows.map(row => row.close);
   const latestMarket = marketRows.at(-1);
   const market = {
@@ -150,10 +248,20 @@ async function main() {
   };
 
   const candidates = [];
+  const twseQuotes = await fetchTwseQuotes(UNIVERSE).catch(error => {
+    console.warn(`TWSE MIS fallback: ${error.message}`);
+    return {};
+  });
+
   for (const stockInfo of UNIVERSE) {
     try {
       const result = await fetchChart(stockInfo.symbol);
-      candidates.push(gradeCandidate(stockInfo, rowsFromChart(result)));
+      const yahooQuote = await fetchLatestQuote(stockInfo.symbol).catch(error => {
+        console.warn(`Latest quote fallback ${stockInfo.symbol}: ${error.message}`);
+        return null;
+      });
+      const latestQuote = twseQuotes[stockInfo.code] || yahooQuote;
+      candidates.push(gradeCandidate(stockInfo, rowsFromChart(result), latestQuote));
     } catch (error) {
       console.warn(`Skip ${stockInfo.symbol}: ${error.message}`);
     }
@@ -191,4 +299,3 @@ main().catch(error => {
   console.error(error);
   process.exit(1);
 });
-

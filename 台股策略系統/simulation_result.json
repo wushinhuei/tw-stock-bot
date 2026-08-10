@@ -77,28 +77,28 @@
         "fee": 22,
         "tax": 11,
         "pnl": -12.947506561679802,
-        "reason": "符合魔王線放量與三快減，日內模擬平倉；買 382 / 賣 383"
+        "reason": "符合魔王線放量與三快減，日內模擬平倉；買 379.5 / 賣 378.01"
       }
     ],
     "daily": [
       {
         "date": "2026-08-10",
-        "equity": 99872.05249343831,
+        "equity": 99797.80249343831,
         "cash": 80240.55249343831,
-        "positionValue": 19631.5,
-        "dayPnl": -127.94750656168617,
+        "positionValue": 19557.25,
+        "dayPnl": -202.19750656168617,
         "marketLabel": "積極做多"
       }
     ],
     "dailyStopped": false,
     "weeklyLimited": false,
-    "finalEquity": 99872.05249343831,
-    "totalReturn": -0.0012794750656168752,
-    "maxDrawdown": -0.0012794750656168752,
-    "generatedAt": "2026-08-10T03:29:31.601Z",
+    "finalEquity": 99797.80249343831,
+    "totalReturn": -0.0020219750656168545,
+    "maxDrawdown": -0.0020219750656168545,
+    "generatedAt": "2026-08-10T04:23:20.438Z",
     "source": {
       "provider": "Yahoo Finance chart API",
-      "generatedAt": "2026-08-10T03:13:39.242Z",
+      "generatedAt": "2026-08-10T04:20:46.082Z",
       "startDate": "2026-08-10"
     }
   }

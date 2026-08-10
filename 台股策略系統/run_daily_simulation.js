@@ -30,6 +30,14 @@ function readScenario() {
   return scenario;
 }
 
+function readPreviousSimulation() {
+  if (!fs.existsSync(OUT_FILE)) return null;
+  const text = fs.readFileSync(OUT_FILE, 'utf8');
+  const match = text.match(/window\.PRECOMPUTED_SIMULATION\s*=\s*([\s\S]*?);\s*$/);
+  if (!match) return null;
+  return JSON.parse(match[1]);
+}
+
 function evaluateMarket(day) {
   const { close, ma20, ma50 } = day.market;
   if (close > ma20 && close > ma50) return { mode: 'AGGRESSIVE', label: '積極做多', maxGrade: 'A' };
@@ -73,6 +81,50 @@ function marketValue(positions, day) {
     const grossValue = position.shares * (candidate ? candidate.price : position.avgCost);
     return sum + netSellProceeds(grossValue, false);
   }, 0);
+}
+
+function markToMarket(previous, day) {
+  const account = {
+    ...previous,
+    positions: Array.isArray(previous.positions) ? previous.positions : [],
+    trades: Array.isArray(previous.trades) ? previous.trades : [],
+    daily: Array.isArray(previous.daily) ? [...previous.daily] : [],
+  };
+  const positionValue = marketValue(account.positions, day);
+  const equity = Number(account.cash || 0) + positionValue;
+  const previousDaily = account.daily.length > 1 ? account.daily[account.daily.length - 2] : null;
+  const previousEquity = previousDaily ? previousDaily.equity : account.initialCapital || CONFIG.initialCapital;
+  const lastDaily = account.daily.at(-1);
+
+  if (lastDaily) {
+    account.daily[account.daily.length - 1] = {
+      ...lastDaily,
+      date: day.date,
+      equity,
+      cash: Number(account.cash || 0),
+      positionValue,
+      dayPnl: equity - previousEquity,
+      marketLabel: evaluateMarket(day).label,
+    };
+  } else {
+    account.daily.push({
+      date: day.date,
+      equity,
+      cash: Number(account.cash || 0),
+      positionValue,
+      dayPnl: equity - (account.initialCapital || CONFIG.initialCapital),
+      marketLabel: evaluateMarket(day).label,
+    });
+  }
+
+  return {
+    ...account,
+    finalEquity: equity,
+    totalReturn: equity / (account.initialCapital || CONFIG.initialCapital) - 1,
+    maxDrawdown: Math.min(account.maxDrawdown || 0, equity / (account.initialCapital || CONFIG.initialCapital) - 1),
+    generatedAt: new Date().toISOString(),
+    source: day.source || null,
+  };
 }
 
 function sellReason(candidate, marketState, position) {
@@ -282,7 +334,12 @@ function formatPrice(value) {
 
 function main() {
   const scenario = readScenario();
-  const result = runSimulation(scenario);
+  const latestDay = scenario.at(-1);
+  const previous = readPreviousSimulation();
+  const previousLatestDay = previous && Array.isArray(previous.daily) ? previous.daily.at(-1) : null;
+  const result = previousLatestDay && previousLatestDay.date === latestDay.date
+    ? markToMarket(previous, latestDay)
+    : runSimulation(scenario);
   const payload = {
     config: CONFIG,
     result,
@@ -294,4 +351,3 @@ function main() {
 }
 
 main();
-
