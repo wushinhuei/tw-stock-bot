@@ -95,10 +95,10 @@
     "finalEquity": 100002.05249343831,
     "totalReturn": 0.000020524934383203686,
     "maxDrawdown": -0.0020219750656168545,
-    "generatedAt": "2026-08-10T05:55:53.503Z",
+    "generatedAt": "2026-08-10T08:53:43.641Z",
     "source": {
       "provider": "Yahoo Finance chart API",
-      "generatedAt": "2026-08-10T05:55:53.461Z",
+      "generatedAt": "2026-08-10T08:53:43.601Z",
       "startDate": "2026-08-10"
     }
   }

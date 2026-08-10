@@ -37,7 +37,7 @@ window.ACTUAL_SCENARIO = [
           "macdHist": 0.24214893353151368,
           "volumeRatio": 0.8734074180096352,
           "sourceSymbol": "2382.TW",
-          "latestQuoteTime": "2026-08-10T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-10T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 313.5,
           "markedClose": 313.5
@@ -67,7 +67,7 @@ window.ACTUAL_SCENARIO = [
           "macdHist": 9.992259405417677,
           "volumeRatio": 2.0981084016689158,
           "sourceSymbol": "2049.TW",
-          "latestQuoteTime": "2026-08-10T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-10T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 387,
           "markedClose": 387
@@ -97,7 +97,7 @@ window.ACTUAL_SCENARIO = [
           "macdHist": 0.7725477694245804,
           "volumeRatio": 0.46706981526912017,
           "sourceSymbol": "1513.TW",
-          "latestQuoteTime": "2026-08-10T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-10T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 159.5,
           "markedClose": 159.5
@@ -127,7 +127,7 @@ window.ACTUAL_SCENARIO = [
           "macdHist": 4.7991499824247885,
           "volumeRatio": 0.5741603775641025,
           "sourceSymbol": "2330.TW",
-          "latestQuoteTime": "2026-08-10T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-10T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 2380,
           "markedClose": 2380
@@ -157,7 +157,7 @@ window.ACTUAL_SCENARIO = [
           "macdHist": 62.621847087123314,
           "volumeRatio": 0.6507347813917614,
           "sourceSymbol": "2454.TW",
-          "latestQuoteTime": "2026-08-10T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-10T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 3960,
           "markedClose": 3960
@@ -187,7 +187,7 @@ window.ACTUAL_SCENARIO = [
           "macdHist": 2.8004648757729322,
           "volumeRatio": 0.6323082575667639,
           "sourceSymbol": "2317.TW",
-          "latestQuoteTime": "2026-08-10T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-10T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 264.5,
           "markedClose": 264.5
@@ -217,7 +217,7 @@ window.ACTUAL_SCENARIO = [
           "macdHist": 20.63076125658847,
           "volumeRatio": 0.8053698226677205,
           "sourceSymbol": "2308.TW",
-          "latestQuoteTime": "2026-08-10T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-10T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 1815,
           "markedClose": 1815
@@ -247,7 +247,7 @@ window.ACTUAL_SCENARIO = [
           "macdHist": 7.688299086855295,
           "volumeRatio": 0.6221439310949365,
           "sourceSymbol": "2357.TW",
-          "latestQuoteTime": "2026-08-10T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-10T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 818,
           "markedClose": 818
@@ -256,7 +256,7 @@ window.ACTUAL_SCENARIO = [
     ],
     "source": {
       "provider": "Yahoo Finance chart API",
-      "generatedAt": "2026-08-10T05:55:53.461Z",
+      "generatedAt": "2026-08-10T08:53:43.601Z",
       "startDate": "2026-08-10"
     }
   }
