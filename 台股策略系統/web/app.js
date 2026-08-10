@@ -585,10 +585,19 @@ function markToMarketResult(result, day) {
 
 async function loadWindowAssignment(src, key) {
   const cleanSrc = src.split('?')[0];
-  const text = await requestText(`${cleanSrc}?v=${Date.now()}`);
+  const text = await requestText(dataFileUrl(cleanSrc));
   const match = text.match(new RegExp(`window\\.${key}\\s*=\\s*([\\s\\S]*?);\\s*$`));
   if (!match) throw new Error(`Unable to parse ${key} from ${cleanSrc}`);
   return JSON.parse(match[1]);
+}
+
+function dataFileUrl(fileName) {
+  const cacheBuster = `v=${Date.now()}`;
+  if (location.hostname.endsWith('github.io')) {
+    const encodedFile = encodeURIComponent(fileName);
+    return `https://raw.githubusercontent.com/wushinhuei/tw-stock-bot/main/%E5%8F%B0%E8%82%A1%E7%AD%96%E7%95%A5%E7%B3%BB%E7%B5%B1/web/${encodedFile}?${cacheBuster}`;
+  }
+  return `${fileName}?${cacheBuster}`;
 }
 
 function requestText(url) {
@@ -619,6 +628,7 @@ async function refreshData() {
   try {
     window.ACTUAL_SCENARIO = await loadWindowAssignment('actual_data.js', 'ACTUAL_SCENARIO');
     window.PRECOMPUTED_SIMULATION = await loadWindowAssignment('simulation_result.js', 'PRECOMPUTED_SIMULATION');
+    scenario = window.ACTUAL_SCENARIO;
     render(currentSimulation());
   } catch (error) {
     console.error(error);
@@ -634,6 +644,7 @@ async function refreshData() {
 function initDataRefresh() {
   const refreshButton = document.querySelector('#refreshDataButton');
   if (refreshButton) refreshButton.addEventListener('click', refreshData);
+  refreshData();
   window.setInterval(refreshData, 5 * 60 * 1000);
 }
 
