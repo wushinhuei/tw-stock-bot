@@ -1,89 +1,54 @@
 window.PRECOMPUTED_SIMULATION = {
   "initialCapital": 100000,
-  "cash": 80240.55249343831,
+  "cash": 90020.5,
   "positions": [
     {
-      "symbol": "2049",
-      "name": "上銀",
-      "shares": 26,
-      "avgCost": 382,
-      "totalCost": 9946,
-      "stopPrice": 324.8,
-      "targetPrice": 412.6
-    },
-    {
       "symbol": "2317",
       "name": "鴻海",
-      "shares": 37,
-      "avgCost": 264.5,
-      "totalCost": 9800.5,
-      "stopPrice": 247.6,
-      "targetPrice": 285.7
+      "shares": 38,
+      "avgCost": 262.25,
+      "totalCost": 9979.5,
+      "stopPrice": 246.5,
+      "targetPrice": 283.2
     }
   ],
-  "realizedPnl": -12.947506561679802,
-  "totalFees": 50,
-  "totalTaxes": 11,
+  "realizedPnl": 0,
+  "totalFees": 14,
+  "totalTaxes": 0,
   "trades": [
     {
-      "date": "2026-08-10",
-      "action": "買進",
-      "symbol": "2049",
-      "name": "上銀",
-      "shares": 26,
-      "price": 382,
-      "grossAmount": 9932,
-      "fee": 14,
-      "tax": 0,
-      "pnl": 0,
-      "reason": "B 級共振，強制依規則買進；手續費 $14"
-    },
-    {
-      "date": "2026-08-10",
+      "date": "2026-08-11",
       "action": "買進",
       "symbol": "2317",
       "name": "鴻海",
-      "shares": 37,
-      "price": 264.5,
-      "grossAmount": 9786.5,
+      "shares": 38,
+      "price": 262.25,
+      "grossAmount": 9965.5,
       "fee": 14,
       "tax": 0,
       "pnl": 0,
       "reason": "B 級共振，強制依規則買進；手續費 $14"
-    },
-    {
-      "date": "2026-08-10",
-      "action": "當沖",
-      "symbol": "2049",
-      "name": "上銀",
-      "shares": 20,
-      "price": 382,
-      "grossAmount": 15300.052493438321,
-      "fee": 22,
-      "tax": 11,
-      "pnl": -12.947506561679802,
-      "reason": "符合魔王線放量與三快減，日內模擬平倉；買 379.5 / 賣 378.01"
     }
   ],
   "daily": [
     {
-      "date": "2026-08-10",
-      "equity": 100002.05249343831,
-      "cash": 80240.55249343831,
-      "positionValue": 19761.5,
-      "dayPnl": 2.0524934383138316,
+      "date": "2026-08-11",
+      "equity": 99942,
+      "cash": 90020.5,
+      "positionValue": 9921.5,
+      "dayPnl": -58,
       "marketLabel": "積極做多"
     }
   ],
   "dailyStopped": false,
   "weeklyLimited": false,
-  "finalEquity": 100002.05249343831,
-  "totalReturn": 0.000020524934383203686,
-  "maxDrawdown": -0.0020219750656168545,
-  "generatedAt": "2026-08-10T08:53:43.641Z",
+  "finalEquity": 99942,
+  "totalReturn": -0.0005800000000000249,
+  "maxDrawdown": -0.0005800000000000249,
+  "generatedAt": "2026-08-11T03:04:43.915Z",
   "source": {
     "provider": "Yahoo Finance chart API",
-    "generatedAt": "2026-08-10T08:53:43.601Z",
+    "generatedAt": "2026-08-11T03:04:43.868Z",
     "startDate": "2026-08-10"
   }
 };
