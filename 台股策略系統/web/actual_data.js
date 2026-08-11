@@ -2,9 +2,9 @@ window.ACTUAL_SCENARIO = [
   {
     "date": "2026-08-11",
     "market": {
-      "close": 45140.79,
-      "ma20": 43616.12,
-      "ma50": 44787.01
+      "close": 45120.72,
+      "ma20": 43615.12,
+      "ma50": 44786.61
     },
     "groups": {
       "AI設備": 2,
@@ -35,9 +35,9 @@ window.ACTUAL_SCENARIO = [
           "ma50": 352.89,
           "rsi14": 43.99999999999999,
           "macdHist": 1.4926898066706293,
-          "volumeRatio": 0.60427404987006,
+          "volumeRatio": 0.6140217385919298,
           "sourceSymbol": "2382.TW",
-          "latestQuoteTime": "2026-08-11T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-11T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 315.5,
           "markedClose": 315.5
@@ -65,9 +65,9 @@ window.ACTUAL_SCENARIO = [
           "ma50": 333.07,
           "rsi14": 62.734584450402146,
           "macdHist": 8.853541495593634,
-          "volumeRatio": 1.5682262784367766,
+          "volumeRatio": 1.6163639165617416,
           "sourceSymbol": "2049.TW",
-          "latestQuoteTime": "2026-08-11T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-11T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 368,
           "markedClose": 368
@@ -91,15 +91,15 @@ window.ACTUAL_SCENARIO = [
         "momentumOk": false,
         "metrics": {
           "date": "2026-08-11",
-          "ma20": 158.525,
-          "ma50": 167.74,
-          "rsi14": 45.833333333333336,
-          "macdHist": 0.8593211536847463,
-          "volumeRatio": 0.5438243113792817,
+          "ma20": 158.575,
+          "ma50": 167.76,
+          "rsi14": 47.2972972972973,
+          "macdHist": 0.9231388175023909,
+          "volumeRatio": 0.5570440373231905,
           "sourceSymbol": "1513.TW",
-          "latestQuoteTime": "2026-08-11T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-11T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
-          "dailyClose": 159.5,
+          "dailyClose": 160.5,
           "markedClose": 160.5
         }
       },
@@ -118,18 +118,18 @@ window.ACTUAL_SCENARIO = [
         "chipOk": true,
         "trendOk": true,
         "volumePriceOk": false,
-        "momentumOk": true,
+        "momentumOk": false,
         "metrics": {
           "date": "2026-08-11",
-          "ma20": 2357.75,
-          "ma50": 2381.3,
-          "rsi14": 50,
-          "macdHist": 6.768076893107748,
-          "volumeRatio": 0.4686644285616712,
+          "ma20": 2357.5,
+          "ma50": 2381.2,
+          "rsi14": 49.64028776978417,
+          "macdHist": 6.448988574019344,
+          "volumeRatio": 0.4961738762158087,
           "sourceSymbol": "2330.TW",
-          "latestQuoteTime": "2026-08-11T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-11T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
-          "dailyClose": 2400,
+          "dailyClose": 2395,
           "markedClose": 2395
         }
       },
@@ -138,7 +138,7 @@ window.ACTUAL_SCENARIO = [
         "name": "聯發科",
         "group": "半導體",
         "price": 4020,
-        "stopPrice": 3690.5,
+        "stopPrice": 3690.3,
         "targetPrice": 4341.6,
         "grade": "B",
         "dayTradeOk": false,
@@ -151,15 +151,15 @@ window.ACTUAL_SCENARIO = [
         "momentumOk": true,
         "metrics": {
           "date": "2026-08-11",
-          "ma20": 3690.5,
-          "ma50": 4008.9,
-          "rsi14": 54.5691906005222,
-          "macdHist": 65.41788336305925,
-          "volumeRatio": 0.8010529748711261,
+          "ma20": 3690.25,
+          "ma50": 4008.8,
+          "rsi14": 54.45026178010472,
+          "macdHist": 65.0987950439712,
+          "volumeRatio": 0.8655146219881048,
           "sourceSymbol": "2454.TW",
-          "latestQuoteTime": "2026-08-11T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-11T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
-          "dailyClose": 4025,
+          "dailyClose": 4020,
           "markedClose": 4020
         }
       },
@@ -181,15 +181,15 @@ window.ACTUAL_SCENARIO = [
         "momentumOk": true,
         "metrics": {
           "date": "2026-08-11",
-          "ma20": 248.975,
-          "ma50": 255.04,
-          "rsi14": 56.97674418604652,
-          "macdHist": 2.68161501716312,
-          "volumeRatio": 0.4440630506551655,
+          "ma20": 248.95,
+          "ma50": 255.03,
+          "rsi14": 56.64739884393064,
+          "macdHist": 2.649706185254275,
+          "volumeRatio": 0.45439150755222824,
           "sourceSymbol": "2317.TW",
-          "latestQuoteTime": "2026-08-11T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-11T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
-          "dailyClose": 263.5,
+          "dailyClose": 263,
           "markedClose": 263
         }
       },
@@ -215,9 +215,9 @@ window.ACTUAL_SCENARIO = [
           "ma50": 1942.7,
           "rsi14": 45.81005586592178,
           "macdHist": 28.083296278820214,
-          "volumeRatio": 1.3593292041255005,
+          "volumeRatio": 1.4078737034215503,
           "sourceSymbol": "2308.TW",
-          "latestQuoteTime": "2026-08-11T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-11T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
           "dailyClose": 1805,
           "markedClose": 1805
@@ -228,7 +228,7 @@ window.ACTUAL_SCENARIO = [
         "name": "華碩",
         "group": "AI設備",
         "price": 839,
-        "stopPrice": 768.9,
+        "stopPrice": 769.3,
         "targetPrice": 906.1,
         "grade": "B",
         "dayTradeOk": false,
@@ -241,22 +241,22 @@ window.ACTUAL_SCENARIO = [
         "momentumOk": true,
         "metrics": {
           "date": "2026-08-11",
-          "ma20": 768.9,
-          "ma50": 765.1,
-          "rsi14": 64.34108527131784,
-          "macdHist": 7.0835837635437215,
-          "volumeRatio": 0.6761889854331344,
+          "ma20": 769.3,
+          "ma50": 765.26,
+          "rsi14": 65.41353383458647,
+          "macdHist": 7.59412507408506,
+          "volumeRatio": 0.7058218290153921,
           "sourceSymbol": "2357.TW",
-          "latestQuoteTime": "2026-08-11T05:30:00.000Z",
+          "latestQuoteTime": "2026-08-11T06:30:00.000Z",
           "latestQuoteProvider": "TWSE MIS",
-          "dailyClose": 831,
+          "dailyClose": 839,
           "markedClose": 839
         }
       }
     ],
     "source": {
       "provider": "Yahoo Finance chart API",
-      "generatedAt": "2026-08-11T05:40:52.893Z",
+      "generatedAt": "2026-08-11T06:37:50.803Z",
       "startDate": "2026-08-10"
     }
   }
