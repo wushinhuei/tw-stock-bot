@@ -33,3 +33,6 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update daily Taiwan stock simulation"
+
+      - name: Publish updated dashboard data to GitHub Pages branch
+        run: git push origin HEAD:gh-pages
