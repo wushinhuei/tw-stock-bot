@@ -102,10 +102,10 @@ window.PRECOMPUTED_SIMULATION = {
   "finalEquity": 100093.8675,
   "totalReturn": 0.0009386749999999999,
   "maxDrawdown": 0,
-  "generatedAt": "2026-08-12T06:45:50.672Z",
+  "generatedAt": "2026-08-12T08:42:02.042Z",
   "source": {
     "provider": "Yahoo Finance chart API",
-    "generatedAt": "2026-08-12T06:45:50.628Z",
+    "generatedAt": "2026-08-12T08:42:02.002Z",
     "startDate": "2026-08-10"
   }
 };
