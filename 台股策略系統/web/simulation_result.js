@@ -90,22 +90,22 @@ window.PRECOMPUTED_SIMULATION = {
   "daily": [
     {
       "date": "2026-08-12",
-      "equity": 100050.3675,
+      "equity": 100093.8675,
       "cash": 72821.8675,
-      "positionValue": 27228.5,
-      "dayPnl": 50.367499999993015,
+      "positionValue": 27272,
+      "dayPnl": 93.86749999999302,
       "marketLabel": "積極做多"
     }
   ],
   "dailyStopped": false,
   "weeklyLimited": false,
-  "finalEquity": 100050.3675,
-  "totalReturn": 0.0005036750000000367,
+  "finalEquity": 100093.8675,
+  "totalReturn": 0.0009386749999999999,
   "maxDrawdown": 0,
-  "generatedAt": "2026-08-12T05:13:52.658Z",
+  "generatedAt": "2026-08-12T06:45:50.672Z",
   "source": {
     "provider": "Yahoo Finance chart API",
-    "generatedAt": "2026-08-12T05:13:52.617Z",
+    "generatedAt": "2026-08-12T06:45:50.628Z",
     "startDate": "2026-08-10"
   }
 };
