@@ -105,22 +105,22 @@
     "daily": [
       {
         "date": "2026-08-12",
-        "equity": 100042.1175,
+        "equity": 100050.3675,
         "cash": 72821.8675,
-        "positionValue": 27220.25,
-        "dayPnl": 42.117499999993015,
+        "positionValue": 27228.5,
+        "dayPnl": 50.367499999993015,
         "marketLabel": "積極做多"
       }
     ],
     "dailyStopped": false,
     "weeklyLimited": false,
-    "finalEquity": 100042.1175,
-    "totalReturn": 0.0004211749999998293,
+    "finalEquity": 100050.3675,
+    "totalReturn": 0.0005036750000000367,
     "maxDrawdown": 0,
-    "generatedAt": "2026-08-12T03:23:54.080Z",
+    "generatedAt": "2026-08-12T05:13:52.658Z",
     "source": {
       "provider": "Yahoo Finance chart API",
-      "generatedAt": "2026-08-12T03:23:53.903Z",
+      "generatedAt": "2026-08-12T05:13:52.617Z",
       "startDate": "2026-08-10"
     }
   }
