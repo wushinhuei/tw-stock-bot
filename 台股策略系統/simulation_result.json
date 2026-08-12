@@ -15,55 +15,112 @@
   },
   "result": {
     "initialCapital": 100000,
-    "cash": 90020.5,
+    "cash": 72821.8675,
     "positions": [
+      {
+        "symbol": "2454",
+        "name": "聯發科",
+        "shares": 2,
+        "avgCost": 4007.5,
+        "totalCost": 8026,
+        "stopPrice": 3703.8,
+        "targetPrice": 4328.1
+      },
       {
         "symbol": "2317",
         "name": "鴻海",
-        "shares": 38,
-        "avgCost": 262.25,
-        "totalCost": 9979.5,
-        "stopPrice": 246.5,
-        "targetPrice": 283.2
+        "shares": 37,
+        "avgCost": 269.75,
+        "totalCost": 9994.75,
+        "stopPrice": 250.5,
+        "targetPrice": 291.3
+      },
+      {
+        "symbol": "2357",
+        "name": "華碩",
+        "shares": 11,
+        "avgCost": 849.5,
+        "totalCost": 9357.5,
+        "stopPrice": 776.4,
+        "targetPrice": 917.5
       }
     ],
-    "realizedPnl": 0,
-    "totalFees": 14,
-    "totalTaxes": 0,
+    "realizedPnl": 200.1175000000003,
+    "totalFees": 61,
+    "totalTaxes": 12,
     "trades": [
       {
-        "date": "2026-08-11",
+        "date": "2026-08-12",
+        "action": "買進",
+        "symbol": "2454",
+        "name": "聯發科",
+        "shares": 2,
+        "price": 4007.5,
+        "grossAmount": 8015,
+        "fee": 11,
+        "tax": 0,
+        "pnl": 0,
+        "reason": "B 級共振，強制依規則買進；手續費 $11"
+      },
+      {
+        "date": "2026-08-12",
         "action": "買進",
         "symbol": "2317",
         "name": "鴻海",
-        "shares": 38,
-        "price": 262.25,
-        "grossAmount": 9965.5,
+        "shares": 37,
+        "price": 269.75,
+        "grossAmount": 9980.75,
         "fee": 14,
         "tax": 0,
         "pnl": 0,
         "reason": "B 級共振，強制依規則買進；手續費 $14"
+      },
+      {
+        "date": "2026-08-12",
+        "action": "買進",
+        "symbol": "2357",
+        "name": "華碩",
+        "shares": 11,
+        "price": 849.5,
+        "grossAmount": 9344.5,
+        "fee": 13,
+        "tax": 0,
+        "pnl": 0,
+        "reason": "B 級共振，強制依規則買進；手續費 $13"
+      },
+      {
+        "date": "2026-08-12",
+        "action": "當沖",
+        "symbol": "1513",
+        "name": "中興電",
+        "shares": 47,
+        "price": 166.75,
+        "grossAmount": 15909.6175,
+        "fee": 23,
+        "tax": 12,
+        "pnl": 200.1175000000003,
+        "reason": "符合魔王線放量與三快減，日內模擬平倉；買 166.75 / 賣 171.75"
       }
     ],
     "daily": [
       {
-        "date": "2026-08-11",
-        "equity": 99970.5,
-        "cash": 90020.5,
-        "positionValue": 9950,
-        "dayPnl": -29.5,
+        "date": "2026-08-12",
+        "equity": 100042.1175,
+        "cash": 72821.8675,
+        "positionValue": 27220.25,
+        "dayPnl": 42.117499999993015,
         "marketLabel": "積極做多"
       }
     ],
     "dailyStopped": false,
     "weeklyLimited": false,
-    "finalEquity": 99970.5,
-    "totalReturn": -0.0002950000000000452,
-    "maxDrawdown": -0.0005800000000000249,
-    "generatedAt": "2026-08-11T08:16:36.902Z",
+    "finalEquity": 100042.1175,
+    "totalReturn": 0.0004211749999998293,
+    "maxDrawdown": 0,
+    "generatedAt": "2026-08-12T03:23:54.080Z",
     "source": {
       "provider": "Yahoo Finance chart API",
-      "generatedAt": "2026-08-11T08:16:36.856Z",
+      "generatedAt": "2026-08-12T03:23:53.903Z",
       "startDate": "2026-08-10"
     }
   }
