@@ -276,6 +276,16 @@
         </section>
 
         <section>
+          <h3>盤後定價規則</h3>
+          <ul>
+            <li>收盤後納入證交所 BFT41U 盤後定價交易資料。</li>
+            <li>有盤後成交量與成交價時，才用盤後價估算買進、賣出與持倉價值。</li>
+            <li>同一交易日只執行一次盤後階段，避免重複買賣。</li>
+            <li>盤後不做當沖；盤後新倉最多約總資金 10%，且仍保留至少 30% 現金。</li>
+          </ul>
+        </section>
+
+        <section>
           <h3>風控鐵律</h3>
           <ul>
             <li>單筆最大損失控制在總資金 1% 到 2%。</li>
@@ -301,6 +311,6 @@
   <script src="apps_script_config.js?v=20260813-apps-script"></script>
   <script src="actual_data.js?v=20260810-actual"></script>
   <script src="simulation_result.js?v=20260810-actions"></script>
-  <script src="app.js?v=20260813-bid-ask-sync"></script>
+  <script src="app.js?v=20260813-after-market"></script>
 </body>
 </html>

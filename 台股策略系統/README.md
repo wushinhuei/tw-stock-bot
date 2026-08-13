@@ -11,10 +11,11 @@ apps_script/
 Google Apps Script 後端：
 - 每 1 分鐘自動更新。
 - 抓 TWSE MIS 即時報價。
+- 抓 TWSE BFT41U 盤後定價交易。
 - 抓 TWSE T86 法人買賣超。
 - 抓 TWSE MI_MARGN 融資融券。
 - 抓 Yahoo Finance 歷史線圖。
-- 自動模擬買賣與當沖。
+- 自動模擬買賣、當沖與盤後定價交易。
 - 記錄扣除手續費與交易稅後的損益。
 
 ```text

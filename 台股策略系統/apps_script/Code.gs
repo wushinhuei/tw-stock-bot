@@ -12,6 +12,7 @@ const CONFIG = {
   dailyStopLossPct: -0.02,
   weeklyStopLossPct: -0.05,
   dayTradeCapitalPct: 0.1,
+  afterMarketPositionPct: 0.1,
   brokerFeeRate: 0.001425,
   minBrokerFee: 1,
   stockSellTaxRate: 0.003,
@@ -145,12 +146,13 @@ function buildScenario() {
 
   const candidates = [];
   const twseQuotes = safeFetchTwseQuotes(UNIVERSE);
+  const afterMarketTrades = safeFetchAfterMarketTrades(latestMarket.date, UNIVERSE);
   const chipData = safeFetchOfficialChipData(latestMarket.date, UNIVERSE);
   UNIVERSE.forEach(function(stockInfo) {
     try {
       const result = fetchChart(stockInfo.symbol, '1y', '1d');
       const yahooQuote = safeFetchLatestQuote(stockInfo.symbol);
-      const latestQuote = twseQuotes[stockInfo.code] || yahooQuote;
+      const latestQuote = applyAfterMarketTrade(twseQuotes[stockInfo.code] || yahooQuote, afterMarketTrades[stockInfo.code]);
       candidates.push(gradeCandidate(stockInfo, rowsFromChart(result), latestQuote, chipData[stockInfo.code]));
     } catch (error) {
       console.warn('Skip ' + stockInfo.symbol + ': ' + error.message);
@@ -165,13 +167,15 @@ function buildScenario() {
 
   return [{
     date: latestMarket.date >= START_DATE ? latestMarket.date : START_DATE,
+    session: hasAfterMarketTrades(afterMarketTrades) ? 'AFTER_MARKET' : 'REGULAR',
     market: market,
     groups: groupCounts,
     candidates: candidates,
     source: {
-      provider: 'Apps Script + TWSE MIS + TWSE T86/MI_MARGN + Yahoo Finance chart API',
+      provider: 'Apps Script + TWSE MIS + TWSE BFT41U after-hours + TWSE T86/MI_MARGN + Yahoo Finance chart API',
       generatedAt: new Date().toISOString(),
       startDate: START_DATE,
+      afterMarketDate: afterMarketTrades._meta ? afterMarketTrades._meta.date : null,
       chipDates: chipData._meta || null
     }
   }];
@@ -255,6 +259,83 @@ function fetchTwseQuotes(items) {
     }
   });
   return quotes;
+}
+
+function safeFetchAfterMarketTrades(targetDate, items) {
+  try {
+    return fetchAfterMarketTrades(targetDate, items);
+  } catch (error) {
+    console.warn('TWSE BFT41U fallback: ' + error.message);
+    const out = {};
+    out._meta = { error: error.message, provider: 'TWSE BFT41U' };
+    return out;
+  }
+}
+
+function fetchAfterMarketTrades(targetDate, items) {
+  const url = 'https://www.twse.com.tw/rwd/zh/afterTrading/BFT41U?date=' +
+    encodeURIComponent(ymdCompact(targetDate)) + '&response=json';
+  const json = fetchJson(url, {
+    Referer: 'https://www.twse.com.tw/',
+    'User-Agent': 'Mozilla/5.0'
+  });
+  if (!json || json.stat !== 'OK' || !Array.isArray(json.data)) {
+    throw new Error('No usable TWSE after-hours fixed-price data for ' + targetDate);
+  }
+
+  const wanted = {};
+  items.forEach(function(item) { wanted[item.code] = true; });
+  const out = {};
+  json.data.forEach(function(rowObject) {
+    const row = rowObject && rowObject.value ? rowObject.value : rowObject;
+    if (!Array.isArray(row)) return;
+    const code = String(row[0] || '').trim();
+    if (!wanted[code]) return;
+    const price = parseTwseNumber(row[5]);
+    const lots = parseTwseNumber(row[2]) || 0;
+    if (price == null) return;
+    out[code] = {
+      code: code,
+      name: row[1],
+      price: price,
+      volume: lots * 1000,
+      lots: lots,
+      transactions: parseTwseNumber(row[3]) || 0,
+      tradeValue: parseTwseNumber(row[4]) || 0,
+      bidVolume: parseTwseNumber(row[6]) || 0,
+      askVolume: parseTwseNumber(row[7]) || 0,
+      date: targetDate,
+      time: targetDate + 'T06:30:00.000Z',
+      provider: 'TWSE BFT41U after-hours fixed-price'
+    };
+  });
+  out._meta = {
+    provider: 'TWSE BFT41U',
+    date: json.date || ymdCompact(targetDate)
+  };
+  return out;
+}
+
+function applyAfterMarketTrade(baseQuote, afterMarketTrade) {
+  if (!afterMarketTrade || !afterMarketTrade.volume || afterMarketTrade.price == null) {
+    return baseQuote;
+  }
+  const quote = Object.assign({}, baseQuote || {});
+  quote.price = afterMarketTrade.price;
+  quote.bidPrice = afterMarketTrade.price;
+  quote.askPrice = afterMarketTrade.price;
+  quote.volume = Math.max(Number(quote.volume || 0), Number(afterMarketTrade.volume || 0));
+  quote.time = afterMarketTrade.time;
+  quote.provider = afterMarketTrade.provider;
+  quote.session = 'AFTER_MARKET';
+  quote.afterMarket = afterMarketTrade;
+  return quote;
+}
+
+function hasAfterMarketTrades(afterMarketTrades) {
+  return Object.keys(afterMarketTrades || {}).some(function(key) {
+    return key !== '_meta' && afterMarketTrades[key] && afterMarketTrades[key].volume > 0;
+  });
 }
 
 function safeFetchOfficialChipData(targetDate, items) {
@@ -502,6 +583,12 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
     price: round2(latest.close),
     bidPrice: latestQuote && latestQuote.bidPrice != null ? round2(latestQuote.bidPrice) : round2(latest.close),
     askPrice: latestQuote && latestQuote.askPrice != null ? round2(latestQuote.askPrice) : round2(latest.close),
+    session: latestQuote && latestQuote.session ? latestQuote.session : 'REGULAR',
+    afterMarketPrice: latestQuote && latestQuote.afterMarket ? round2(latestQuote.afterMarket.price) : null,
+    afterMarketVolume: latestQuote && latestQuote.afterMarket ? latestQuote.afterMarket.volume : 0,
+    afterMarketTransactions: latestQuote && latestQuote.afterMarket ? latestQuote.afterMarket.transactions : 0,
+    afterMarketBidVolume: latestQuote && latestQuote.afterMarket ? latestQuote.afterMarket.bidVolume : 0,
+    afterMarketAskVolume: latestQuote && latestQuote.afterMarket ? latestQuote.afterMarket.askVolume : 0,
     stopPrice: stopPrice,
     targetPrice: targetPrice,
     grade: grade,
@@ -523,8 +610,10 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
       sourceSymbol: base.symbol,
       latestQuoteTime: latestQuote && latestQuote.time ? latestQuote.time : null,
       latestQuoteProvider: latestQuote && latestQuote.provider ? latestQuote.provider : null,
+      session: latestQuote && latestQuote.session ? latestQuote.session : 'REGULAR',
       bidPrice: latestQuote && latestQuote.bidPrice != null ? round2(latestQuote.bidPrice) : null,
       askPrice: latestQuote && latestQuote.askPrice != null ? round2(latestQuote.askPrice) : null,
+      afterMarket: latestQuote && latestQuote.afterMarket ? latestQuote.afterMarket : null,
       spreadPct: quoteSpreadPct(latestQuote, latest.close),
       dailyClose: last(rows).close,
       markedClose: last(markedCloses),
@@ -543,6 +632,9 @@ function nextSimulation(previous, day) {
   }
   const previousLatestDay = last(previous.daily);
   if (previousLatestDay && previousLatestDay.date === day.date) {
+    if (day.session === 'AFTER_MARKET' && previousLatestDay.session !== 'AFTER_MARKET') {
+      return applyAfterMarketSession(previous, day);
+    }
     return markToMarket(previous, day);
   }
   return advanceOneDay(previous, day);
@@ -596,8 +688,40 @@ function simulateDay(account, day) {
     cash: account.cash,
     positionValue: positionValue,
     dayPnl: dayPnl,
-    marketLabel: marketState.label
+    marketLabel: marketState.label,
+    session: day.session || 'REGULAR'
   });
+}
+
+function applyAfterMarketSession(previous, day) {
+  const account = cloneAccount(previous);
+  const marketState = evaluateMarket(day);
+  account.dailyStopped = false;
+
+  sellByRules(account, day, marketState);
+  buyByRules(account, day, marketState);
+
+  const positionValue = marketValue(account.positions, day);
+  const equity = account.cash + positionValue;
+  const previousDaily = account.daily.length > 1 ? account.daily[account.daily.length - 2] : null;
+  const previousEquity = previousDaily ? previousDaily.equity : account.initialCapital;
+  const lastDaily = last(account.daily);
+  if (lastDaily) {
+    account.daily[account.daily.length - 1] = Object.assign({}, lastDaily, {
+      date: day.date,
+      equity: equity,
+      cash: account.cash,
+      positionValue: positionValue,
+      dayPnl: equity - previousEquity,
+      marketLabel: marketState.label,
+      session: 'AFTER_MARKET'
+    });
+  }
+
+  const peak = Math.max(account.initialCapital, maxDailyEquity(account.daily), equity);
+  account.maxDrawdown = Math.min(account.maxDrawdown || 0, equity / peak - 1);
+  account.weeklyLimited = equity / account.initialCapital - 1 <= CONFIG.weeklyStopLossPct;
+  return finalizeAccount(account, day);
 }
 
 function markToMarket(previous, day) {
@@ -615,7 +739,8 @@ function markToMarket(previous, day) {
       cash: account.cash,
       positionValue: positionValue,
       dayPnl: equity - previousEquity,
-      marketLabel: evaluateMarket(day).label
+      marketLabel: evaluateMarket(day).label,
+      session: day.session || lastDaily.session || 'REGULAR'
     });
   }
 
@@ -668,6 +793,7 @@ function canOpenPosition(candidate, marketState, account) {
 
 function positionPct(candidate, account) {
   if (account.weeklyLimited) return CONFIG.halfPositionPct;
+  if (candidate.session === 'AFTER_MARKET') return CONFIG.afterMarketPositionPct;
   return candidate.grade === 'A' ? CONFIG.standardPositionPct : CONFIG.halfPositionPct;
 }
 
@@ -710,7 +836,8 @@ function sellByRules(account, day, marketState) {
       fee: fee,
       tax: tax,
       pnl: pnl,
-      reason: sellReason(candidate, marketState, position)
+      session: candidate.session || day.session || 'REGULAR',
+      reason: sellReason(candidate, marketState, position) + sessionReason(candidate)
     });
   });
   account.positions = stillHolding;
@@ -756,12 +883,14 @@ function buyByRules(account, day, marketState) {
       fee: fee,
       tax: 0,
       pnl: 0,
-      reason: candidate.grade + ' rule entry; fee ' + fee
+      session: candidate.session || day.session || 'REGULAR',
+      reason: candidate.grade + ' rule entry; fee ' + fee + sessionReason(candidate)
     });
   });
 }
 
 function runDayTrades(account, day, marketState) {
+  if (day.session === 'AFTER_MARKET') return;
   if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
   day.candidates.filter(function(candidate) {
     return candidate.dayTradeOk && candidate.grade !== 'BLOCKED';
@@ -796,6 +925,7 @@ function runDayTrades(account, day, marketState) {
       fee: buyFee + sellFee,
       tax: tax,
       pnl: pnl,
+      session: 'REGULAR',
       reason: 'Intraday rule simulation using current ask/bid'
     });
   });
@@ -807,6 +937,13 @@ function sellReason(candidate, marketState, position) {
   if (candidate.grade === 'BLOCKED') return 'Signal blocked';
   if (marketState.mode === 'DEFENSIVE') return 'Market defensive';
   return 'Rule exit';
+}
+
+function sessionReason(candidate) {
+  if (candidate && candidate.session === 'AFTER_MARKET') {
+    return '; after-hours fixed-price simulation';
+  }
+  return '; regular-session simulation';
 }
 
 function marketValue(positions, day) {

@@ -8,6 +8,7 @@ const CONFIG = {
   weeklyStopLossPct: -0.05,
   minStrongPeers: 2,
   dayTradeCapitalPct: 0.08,
+  afterMarketPositionPct: 0.1,
   brokerFeeRate: 0.001425,
   minBrokerFee: 1,
   stockSellTaxRate: 0.003,
@@ -103,6 +104,9 @@ function stock(symbol, name, group, price, stopPrice, targetPrice, grade, dayTra
     trendOk: tradable,
     volumePriceOk: tradable,
     momentumOk: tradable,
+    session: 'REGULAR',
+    afterMarketPrice: null,
+    afterMarketVolume: 0,
   };
 }
 
@@ -116,6 +120,10 @@ function currency(value) {
 
 function price(value) {
   return Number(value || 0).toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+}
+
+function sessionLabel(session) {
+  return session === 'AFTER_MARKET' ? '盤後定價' : '盤中';
 }
 
 function pct(value) {
@@ -139,6 +147,7 @@ function canOpenPosition(candidate, marketState, account) {
 
 function positionPct(candidate, account) {
   if (account.weeklyLimited) return CONFIG.halfPositionPct;
+  if (candidate.session === 'AFTER_MARKET') return CONFIG.afterMarketPositionPct;
   return candidate.grade === 'A' ? CONFIG.standardPositionPct : CONFIG.halfPositionPct;
 }
 
@@ -188,6 +197,7 @@ function runSimulation(days) {
       dayPnl,
       marketLabel: marketState.label,
       startEquity,
+      session: day.session || 'REGULAR',
     });
     previousEquity = equity;
   });
@@ -236,7 +246,8 @@ function sellByRules(account, day, marketState) {
         fee,
         tax,
         pnl,
-        reason: sellReason(candidate, marketState, position),
+        session: candidate.session || day.session || 'REGULAR',
+        reason: `${sellReason(candidate, marketState, position)}；${sessionLabel(candidate.session || day.session)}`,
       });
     } else {
       stillHolding.push(position);
@@ -282,12 +293,14 @@ function buyByRules(account, day, marketState) {
         fee,
         tax: 0,
         pnl: 0,
-        reason: `${candidate.grade} 級共振，強制依規則買進；手續費 ${currency(fee)}`,
+        session: candidate.session || day.session || 'REGULAR',
+        reason: `${candidate.grade} 級共振，強制依規則買進；手續費 ${currency(fee)}；${sessionLabel(candidate.session || day.session)}`,
       });
     });
 }
 
 function runDayTrades(account, day, marketState) {
+  if (day.session === 'AFTER_MARKET') return;
   if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
   day.candidates
     .filter(candidate => candidate.dayTradeOk && candidate.grade !== 'BLOCKED')
@@ -320,6 +333,7 @@ function runDayTrades(account, day, marketState) {
         fee: buyFee + sellFee,
         tax,
         pnl: netPnl,
+        session: 'REGULAR',
         reason: `符合魔王線放量與三快減，日內模擬平倉；買 ${price(candidate.price)} / 賣 ${price(sellPrice)}`,
       });
     });
@@ -421,7 +435,7 @@ function renderHistoryReturns(result) {
 
   document.querySelector('#historyTradeRows').innerHTML = trades.slice().reverse().map(trade => `
     <tr>
-      <td>${trade.date}</td>
+      <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
       <td><span class="badge ${trade.action === '買進' ? 'buy' : trade.action === '賣出' ? 'blocked' : 'watch'}">${trade.action}</span></td>
       <td><strong>${trade.symbol}</strong><br><span>${trade.name}</span></td>
       <td>${Number(trade.shares || 0).toLocaleString('zh-TW')}</td>
@@ -451,6 +465,7 @@ function renderPositions(result, day) {
   const rows = result.positions.map(position => {
     const candidate = findCandidate(day, position.symbol);
     const current = candidate ? executionSellPrice(candidate) : position.avgCost;
+    const quoteSession = candidate ? sessionLabel(candidate.session || day.session) : sessionLabel(day.session);
     const value = position.shares * current;
     const netValue = netSellProceeds(value, false);
     const pnl = netValue - position.totalCost;
@@ -460,7 +475,7 @@ function renderPositions(result, day) {
         <td><strong>${position.symbol}</strong><br><span>${position.name}</span></td>
         <td>${position.shares.toLocaleString('zh-TW')}</td>
         <td>${price(position.avgCost)}</td>
-        <td>${price(current)}</td>
+        <td>${price(current)}<br><span>${quoteSession}</span></td>
         <td>${currency(netValue)}<br><span>稅費後估值</span></td>
         <td class="${pnl >= 0 ? 'gain' : 'loss'}">${currency(pnl)} (${pct(pnlPct)})</td>
         <td>${positionStatus(candidate, position)}</td>
@@ -493,7 +508,7 @@ function renderDailyRows(days) {
 function renderTrades(trades) {
   document.querySelector('#tradeRows').innerHTML = trades.slice().reverse().map(trade => `
     <tr>
-      <td>${trade.date}</td>
+      <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
       <td><span class="badge ${trade.action === '買進' ? 'buy' : trade.action === '賣出' ? 'blocked' : 'watch'}">${trade.action}</span></td>
       <td><strong>${trade.symbol}</strong><br><span>${trade.name}</span></td>
       <td>${trade.shares.toLocaleString('zh-TW')}</td>
@@ -600,6 +615,7 @@ function markToMarketResult(result, day) {
       positionValue,
       dayPnl: finalEquity - previousEquity,
       marketLabel: evaluateMarket(day).label,
+      session: day.session || lastDaily.session || 'REGULAR',
     };
   }
 
