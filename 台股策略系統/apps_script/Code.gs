@@ -238,9 +238,13 @@ function fetchTwseQuotes(items) {
   const quotes = {};
   (json.msgArray || []).forEach(function(item) {
     const price = bestTwsePrice(item);
+    const bidPrice = bestTwseSidePrice(item.b);
+    const askPrice = bestTwseSidePrice(item.a);
     if (item.c && price != null) {
       quotes[item.c] = {
         price: price,
+        bidPrice: bidPrice,
+        askPrice: askPrice,
         open: coalesce(parseTwseNumber(item.o), price),
         high: coalesce(parseTwseNumber(item.h), price),
         low: coalesce(parseTwseNumber(item.l), price),
@@ -431,6 +435,10 @@ function bestTwsePrice(item) {
   return parseTwseNumber(item.y);
 }
 
+function bestTwseSidePrice(value) {
+  return parseTwseNumber(String(value || '').split('_')[0]);
+}
+
 function rowsFromChart(result) {
   const quote = result.indicators.quote[0];
   return (result.timestamp || []).map(function(ts, index) {
@@ -492,10 +500,12 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
     name: base.name,
     group: base.group,
     price: round2(latest.close),
+    bidPrice: latestQuote && latestQuote.bidPrice != null ? round2(latestQuote.bidPrice) : round2(latest.close),
+    askPrice: latestQuote && latestQuote.askPrice != null ? round2(latestQuote.askPrice) : round2(latest.close),
     stopPrice: stopPrice,
     targetPrice: targetPrice,
     grade: grade,
-    dayTradeOk: grade !== 'BLOCKED' && volumeRatio >= 1.1 && Math.abs(intradayReturnPct) >= 0.002,
+    dayTradeOk: grade !== 'BLOCKED' && volumeRatio >= 1.1 && Math.abs(intradayReturnPct) >= 0.002 && quoteSpreadPct(latestQuote, latest.close) <= 0.006,
     intradayReturnPct: Math.max(-0.03, Math.min(0.03, intradayReturnPct)),
     industryOk: base.industryOk,
     fundamentalOk: base.fundamentalOk,
@@ -513,6 +523,9 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
       sourceSymbol: base.symbol,
       latestQuoteTime: latestQuote && latestQuote.time ? latestQuote.time : null,
       latestQuoteProvider: latestQuote && latestQuote.provider ? latestQuote.provider : null,
+      bidPrice: latestQuote && latestQuote.bidPrice != null ? round2(latestQuote.bidPrice) : null,
+      askPrice: latestQuote && latestQuote.askPrice != null ? round2(latestQuote.askPrice) : null,
+      spreadPct: quoteSpreadPct(latestQuote, latest.close),
       dailyClose: last(rows).close,
       markedClose: last(markedCloses),
       chip: Object.assign({}, chipSignal, {
@@ -666,9 +679,10 @@ function sellByRules(account, day, marketState) {
       stillHolding.push(position);
       return;
     }
-    const grossAmount = position.shares * candidate.price;
-    const shouldSell = candidate.price <= position.stopPrice ||
-      candidate.price >= position.targetPrice ||
+    const sellPrice = executionSellPrice(candidate);
+    const grossAmount = position.shares * sellPrice;
+    const shouldSell = sellPrice <= position.stopPrice ||
+      sellPrice >= position.targetPrice ||
       candidate.grade === 'BLOCKED' ||
       marketState.mode === 'DEFENSIVE';
 
@@ -691,7 +705,7 @@ function sellByRules(account, day, marketState) {
       symbol: position.symbol,
       name: position.name,
       shares: position.shares,
-      price: candidate.price,
+      price: sellPrice,
       grossAmount: grossAmount,
       fee: fee,
       tax: tax,
@@ -708,13 +722,14 @@ function buyByRules(account, day, marketState) {
   }).forEach(function(candidate) {
     if (account.positions.some(function(position) { return position.symbol === candidate.symbol; })) return;
     const budget = account.initialCapital * positionPct(candidate, account);
-    const unitCost = candidate.price * CONFIG.boardLot;
+    const buyPrice = executionBuyPrice(candidate);
+    const unitCost = buyPrice * CONFIG.boardLot;
     const availableCash = tradableCash(account);
     const units = Math.floor(Math.min(budget, availableCash) / unitCost);
     const shares = units * CONFIG.boardLot;
     if (shares <= 0) return;
 
-    const grossAmount = shares * candidate.price;
+    const grossAmount = shares * buyPrice;
     const fee = tradeFee(grossAmount);
     const totalCost = grossAmount + fee;
     if (totalCost > tradableCash(account)) return;
@@ -725,7 +740,7 @@ function buyByRules(account, day, marketState) {
       symbol: candidate.symbol,
       name: candidate.name,
       shares: shares,
-      avgCost: candidate.price,
+      avgCost: buyPrice,
       totalCost: totalCost,
       stopPrice: candidate.stopPrice,
       targetPrice: candidate.targetPrice
@@ -736,7 +751,7 @@ function buyByRules(account, day, marketState) {
       symbol: candidate.symbol,
       name: candidate.name,
       shares: shares,
-      price: candidate.price,
+      price: buyPrice,
       grossAmount: grossAmount,
       fee: fee,
       tax: 0,
@@ -752,15 +767,16 @@ function runDayTrades(account, day, marketState) {
     return candidate.dayTradeOk && candidate.grade !== 'BLOCKED';
   }).forEach(function(candidate) {
     const budget = account.initialCapital * CONFIG.dayTradeCapitalPct;
-    const unitCost = candidate.price * CONFIG.boardLot;
+    const buyPrice = executionBuyPrice(candidate);
+    const sellPrice = executionSellPrice(candidate);
+    const unitCost = buyPrice * CONFIG.boardLot;
     const units = Math.floor(Math.min(budget, tradableCash(account)) / unitCost);
     const shares = units * CONFIG.boardLot;
     if (shares <= 0) return;
 
-    const buyAmount = shares * candidate.price;
+    const buyAmount = shares * buyPrice;
     const buyFee = tradeFee(buyAmount);
     if (buyAmount + buyFee > tradableCash(account)) return;
-    const sellPrice = candidate.price * (1 + candidate.intradayReturnPct);
     const sellAmount = shares * sellPrice;
     const sellFee = tradeFee(sellAmount);
     const tax = sellTax(sellAmount, true);
@@ -775,12 +791,12 @@ function runDayTrades(account, day, marketState) {
       symbol: candidate.symbol,
       name: candidate.name,
       shares: shares,
-      price: candidate.price,
+      price: buyPrice,
       grossAmount: buyAmount + sellAmount,
       fee: buyFee + sellFee,
       tax: tax,
       pnl: pnl,
-      reason: 'Intraday rule simulation'
+      reason: 'Intraday rule simulation using current ask/bid'
     });
   });
 }
@@ -796,7 +812,7 @@ function sellReason(candidate, marketState, position) {
 function marketValue(positions, day) {
   return positions.reduce(function(sum, position) {
     const candidate = findCandidate(day, position.symbol);
-    const grossValue = position.shares * (candidate ? candidate.price : position.avgCost);
+    const grossValue = position.shares * (candidate ? executionSellPrice(candidate) : position.avgCost);
     return sum + netSellProceeds(grossValue, false);
   }, 0);
 }
@@ -816,6 +832,20 @@ function sellTax(amount, isDayTrade) {
 
 function netSellProceeds(amount, isDayTrade) {
   return amount - tradeFee(amount) - sellTax(amount, isDayTrade);
+}
+
+function executionBuyPrice(candidate) {
+  return Number(candidate.askPrice || candidate.price || 0);
+}
+
+function executionSellPrice(candidate) {
+  return Number(candidate.bidPrice || candidate.price || 0);
+}
+
+function quoteSpreadPct(quote, fallbackPrice) {
+  if (!quote || quote.bidPrice == null || quote.askPrice == null) return 0;
+  const mid = (quote.bidPrice + quote.askPrice) / 2 || fallbackPrice || 1;
+  return mid ? Math.max(0, quote.askPrice - quote.bidPrice) / mid : 0;
 }
 
 function minCashReserve(account) {

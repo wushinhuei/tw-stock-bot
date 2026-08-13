@@ -82,6 +82,7 @@ let scenario = Array.isArray(window.ACTUAL_SCENARIO) && window.ACTUAL_SCENARIO.l
   : defaultScenario;
 let activeResult = null;
 let refreshInFlight = false;
+let refreshTimerId = null;
 
 function stock(symbol, name, group, price, stopPrice, targetPrice, grade, dayTradeOk, intradayReturnPct) {
   const allA = grade === 'A';
@@ -337,10 +338,18 @@ function netSellProceeds(amount, isDayTrade) {
   return amount - tradeFee(amount) - sellTax(amount, isDayTrade);
 }
 
+function executionBuyPrice(candidate) {
+  return Number(candidate?.askPrice || candidate?.price || 0);
+}
+
+function executionSellPrice(candidate) {
+  return Number(candidate?.bidPrice || candidate?.price || 0);
+}
+
 function marketValue(positions, day) {
   return positions.reduce((sum, position) => {
     const candidate = findCandidate(day, position.symbol);
-    const grossValue = position.shares * (candidate ? candidate.price : position.avgCost);
+    const grossValue = position.shares * (candidate ? executionSellPrice(candidate) : position.avgCost);
     return sum + netSellProceeds(grossValue, false);
   }, 0);
 }
@@ -441,7 +450,7 @@ function renderTodayDecision(result, day) {
 function renderPositions(result, day) {
   const rows = result.positions.map(position => {
     const candidate = findCandidate(day, position.symbol);
-    const current = candidate ? candidate.price : position.avgCost;
+    const current = candidate ? executionSellPrice(candidate) : position.avgCost;
     const value = position.shares * current;
     const netValue = netSellProceeds(value, false);
     const pnl = netValue - position.totalCost;
@@ -706,6 +715,11 @@ function isTaiwanMarketLive() {
   return minutes >= 8 * 60 + 55 && minutes <= 13 * 60 + 35;
 }
 
+function refreshIntervalMs() {
+  if (!appsScriptEndpoint()) return 5 * 60 * 1000;
+  return isTaiwanMarketLive() ? 15 * 1000 : 60 * 1000;
+}
+
 async function refreshData(options = {}) {
   if (refreshInFlight) return;
   refreshInFlight = true;
@@ -740,8 +754,14 @@ async function refreshData(options = {}) {
 function initDataRefresh() {
   const refreshButton = document.querySelector('#refreshDataButton');
   if (refreshButton) refreshButton.addEventListener('click', () => refreshData({ force: true }));
-  refreshData();
-  window.setInterval(refreshData, appsScriptEndpoint() ? 60 * 1000 : 5 * 60 * 1000);
+  refreshData().finally(scheduleNextRefresh);
+}
+
+function scheduleNextRefresh() {
+  if (refreshTimerId) window.clearTimeout(refreshTimerId);
+  refreshTimerId = window.setTimeout(() => {
+    refreshData().finally(scheduleNextRefresh);
+  }, refreshIntervalMs());
 }
 
 initRulesModal();
