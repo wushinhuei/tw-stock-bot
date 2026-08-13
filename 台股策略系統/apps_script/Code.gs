@@ -6,11 +6,12 @@ const CONFIG = {
   initialCapital: 100000,
   simulationStartDate: START_DATE,
   boardLot: 1,
-  standardPositionPct: 0.2,
-  halfPositionPct: 0.1,
+  standardPositionPct: 0.25,
+  halfPositionPct: 0.15,
+  minCashReservePct: 0.3,
   dailyStopLossPct: -0.02,
   weeklyStopLossPct: -0.05,
-  dayTradeCapitalPct: 0.08,
+  dayTradeCapitalPct: 0.1,
   brokerFeeRate: 0.001425,
   minBrokerFee: 1,
   stockSellTaxRate: 0.003,
@@ -649,7 +650,7 @@ function canOpenPosition(candidate, marketState, account) {
   if (candidate.grade === 'BLOCKED' || candidate.price <= candidate.stopPrice) return false;
   if (marketState.mode === 'DEFENSIVE') return false;
   if (candidate.grade === 'A') return true;
-  return candidate.grade === 'B' && marketState.mode === 'AGGRESSIVE';
+  return candidate.grade === 'B' && (marketState.mode === 'AGGRESSIVE' || marketState.mode === 'LIGHT');
 }
 
 function positionPct(candidate, account) {
@@ -708,14 +709,15 @@ function buyByRules(account, day, marketState) {
     if (account.positions.some(function(position) { return position.symbol === candidate.symbol; })) return;
     const budget = account.initialCapital * positionPct(candidate, account);
     const unitCost = candidate.price * CONFIG.boardLot;
-    const units = Math.floor(Math.min(budget, account.cash) / unitCost);
+    const availableCash = tradableCash(account);
+    const units = Math.floor(Math.min(budget, availableCash) / unitCost);
     const shares = units * CONFIG.boardLot;
     if (shares <= 0) return;
 
     const grossAmount = shares * candidate.price;
     const fee = tradeFee(grossAmount);
     const totalCost = grossAmount + fee;
-    if (totalCost > account.cash) return;
+    if (totalCost > tradableCash(account)) return;
 
     account.cash -= totalCost;
     account.totalFees += fee;
@@ -751,13 +753,13 @@ function runDayTrades(account, day, marketState) {
   }).forEach(function(candidate) {
     const budget = account.initialCapital * CONFIG.dayTradeCapitalPct;
     const unitCost = candidate.price * CONFIG.boardLot;
-    const units = Math.floor(Math.min(budget, account.cash) / unitCost);
+    const units = Math.floor(Math.min(budget, tradableCash(account)) / unitCost);
     const shares = units * CONFIG.boardLot;
     if (shares <= 0) return;
 
     const buyAmount = shares * candidate.price;
     const buyFee = tradeFee(buyAmount);
-    if (buyAmount + buyFee > account.cash) return;
+    if (buyAmount + buyFee > tradableCash(account)) return;
     const sellPrice = candidate.price * (1 + candidate.intradayReturnPct);
     const sellAmount = shares * sellPrice;
     const sellFee = tradeFee(sellAmount);
@@ -814,6 +816,14 @@ function sellTax(amount, isDayTrade) {
 
 function netSellProceeds(amount, isDayTrade) {
   return amount - tradeFee(amount) - sellTax(amount, isDayTrade);
+}
+
+function minCashReserve(account) {
+  return (account.initialCapital || CONFIG.initialCapital) * CONFIG.minCashReservePct;
+}
+
+function tradableCash(account) {
+  return Math.max(0, Number(account.cash || 0) - minCashReserve(account));
 }
 
 function sma(values, period) {
