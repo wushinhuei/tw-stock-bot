@@ -1,34 +1,62 @@
-# 台股極短線自動分析系統 + Line Bot 智慧風控助手
+# 台股每日自動買賣模擬
 
-專為台股當沖與極短線操作設計的自動化分析系統與 Line 機器人，特點如下：
-1. **扣費淨純利算計**：自動帶入券商雙向手續費折扣（如6折、2.8折）與當沖證交稅減半，計算淨保本價與淨報酬目標。
-2. **極短線風控警報**：盤中秒級監控分時 VWAP 均價線與 -1.5% ~ -2% 停損線，即時發送 Line 緊急平倉卡片。
-3. **Web Dashboard & Line Flex Message**：提供現代化網頁儀表板與 Line 互動卡片。
+這個專案用固定規則模擬台股每日買賣，不會自動下單。  
+前端部署在 GitHub Pages，資料與模擬邏輯由 Google Apps Script 在雲端定時執行。
 
-## 目錄結構
+## 網址
+
+- 前端網站：https://wushinhuei.github.io/tw-stock-bot/
+- Apps Script 專案：https://script.google.com/d/10V4wAflJ30eQBWCsfikj-4xPX5uKY0IgBIGeaDarqeUJoiMd5ob8O_9o/edit
+
+## 架構
+
+```text
+Google Apps Script 每 1 分鐘執行
+        ↓
+抓 TWSE MIS 即時報價、TWSE 法人/資券、Yahoo 歷史線圖
+        ↓
+依大盤、族群、技術、動能、籌碼、風控規則評分
+        ↓
+模擬買進、賣出、當沖
+        ↓
+扣除手續費與交易稅後記錄損益
+        ↓
+GitHub Pages 前端讀取 Apps Script Web API
 ```
-tw-stock-bot/
-├── backend/
-│   ├── app.py                  # FastAPI 主伺服器
-│   ├── fee_calculator.py       # 雙向手續費與淨保本價算計模組
-│   ├── analytics_engine.py     # 短線/當沖量價與 VWAP 診斷引擎
-│   └── line_bot_handler.py     # Line Flex Message JSON 產生器
-├── frontend/
-│   └── index.html              # Web Dashboard 與 Line 模擬器
-└── requirements.txt            # Python 依賴
+
+## 主要檔案
+
+```text
+index.html
 ```
 
-## 快速啟動方法
+GitHub Pages 根目錄入口，導向台股策略系統網頁。
 
-1. **安裝依賴**
-   ```bash
-   pip install -r requirements.txt
-   ```
+```text
+台股策略系統/web/
+```
 
-2. **啟動後端 API 伺服器**
-   ```bash
-   python backend/app.py
-   ```
+前端網站。包含畫面、樣式、Apps Script endpoint 設定與靜態備援資料。
 
-3. **開啟前端 Web Dashboard**
-   在瀏覽器中直接開啟 `frontend/index.html` 即可瀏覽極短線診斷儀表板、純利試算器與 Line 卡片模擬。
+```text
+台股策略系統/apps_script/
+```
+
+Apps Script 後端。負責抓資料、計算訊號、模擬交易、儲存最新狀態。
+
+```text
+操作規則.md
+```
+
+股票選股、進出場、風控、籌碼與當沖規則。
+
+## 資料來源
+
+- TWSE MIS 即時報價
+- TWSE T86 三大法人買賣超
+- TWSE MI_MARGN 融資融券
+- Yahoo Finance 歷史線圖
+
+## 注意
+
+本系統只做模擬與績效追蹤，不連券商 API、不真實下單、不保證獲利。
