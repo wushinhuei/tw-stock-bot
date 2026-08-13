@@ -81,6 +81,7 @@ let scenario = Array.isArray(window.ACTUAL_SCENARIO) && window.ACTUAL_SCENARIO.l
   ? window.ACTUAL_SCENARIO
   : defaultScenario;
 let activeResult = null;
+let refreshInFlight = false;
 
 function stock(symbol, name, group, price, stopPrice, targetPrice, grade, dayTradeOk, intradayReturnPct) {
   const allA = grade === 'A';
@@ -687,8 +688,28 @@ async function loadStaticPayload() {
   window.PRECOMPUTED_SIMULATION = await loadWindowAssignment('simulation_result.js', 'PRECOMPUTED_SIMULATION');
 }
 
+function taipeiNowParts() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  return Object.fromEntries(parts.map(part => [part.type, part.value]));
+}
+
+function isTaiwanMarketLive() {
+  const now = taipeiNowParts();
+  if (now.weekday === 'Sat' || now.weekday === 'Sun') return false;
+  const minutes = Number(now.hour) * 60 + Number(now.minute);
+  return minutes >= 8 * 60 + 55 && minutes <= 13 * 60 + 35;
+}
+
 async function refreshData(options = {}) {
-  const force = Boolean(options.force);
+  if (refreshInFlight) return;
+  refreshInFlight = true;
+  const force = Boolean(options.force) || isTaiwanMarketLive();
   const button = document.querySelector('#refreshDataButton');
   if (button) {
     button.disabled = true;
@@ -707,6 +728,7 @@ async function refreshData(options = {}) {
   } catch (error) {
     console.error(error);
   } finally {
+    refreshInFlight = false;
     if (button) {
       button.disabled = false;
       button.classList.remove('is-loading');

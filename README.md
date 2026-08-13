@@ -24,6 +24,8 @@ Google Apps Script 每 1 分鐘執行
 GitHub Pages 前端讀取 Apps Script Web API
 ```
 
+盤中網頁會每 1 分鐘直接呼叫 Apps Script `action=refresh`，主動重抓 TWSE MIS 報價；盤後則讀取已儲存的最新結果。
+
 ## 主要檔案
 
 ```text
