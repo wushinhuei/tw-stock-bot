@@ -633,7 +633,62 @@ function requestText(url) {
   });
 }
 
-async function refreshData() {
+function appsScriptEndpoint() {
+  const endpoint = String(window.APPS_SCRIPT_ENDPOINT || '').trim();
+  return /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(endpoint) ? endpoint : '';
+}
+
+function appsScriptUrl(action) {
+  const url = new URL(appsScriptEndpoint());
+  url.searchParams.set('action', action);
+  url.searchParams.set('t', Date.now());
+  return url.toString();
+}
+
+function requestJsonp(url) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `twStockCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement('script');
+    const cleanup = () => {
+      delete window[callbackName];
+      script.remove();
+    };
+
+    window[callbackName] = payload => {
+      cleanup();
+      resolve(payload);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error(`Unable to load Apps Script ${url}`));
+    };
+
+    const glue = url.includes('?') ? '&' : '?';
+    script.src = `${url}${glue}callback=${encodeURIComponent(callbackName)}`;
+    document.head.appendChild(script);
+  });
+}
+
+async function loadAppsScriptPayload(action) {
+  const endpoint = appsScriptEndpoint();
+  if (!endpoint) return false;
+  const payload = await requestJsonp(appsScriptUrl(action));
+  if (!payload || payload.ok === false || !Array.isArray(payload.scenario) || !payload.simulation) {
+    throw new Error(payload && payload.error ? payload.error : 'Invalid Apps Script payload');
+  }
+  window.ACTUAL_SCENARIO = payload.scenario;
+  window.PRECOMPUTED_SIMULATION = payload.simulation;
+  return true;
+}
+
+async function loadStaticPayload() {
+  window.ACTUAL_SCENARIO = await loadWindowAssignment('actual_data.js', 'ACTUAL_SCENARIO');
+  window.PRECOMPUTED_SIMULATION = await loadWindowAssignment('simulation_result.js', 'PRECOMPUTED_SIMULATION');
+}
+
+async function refreshData(options = {}) {
+  const force = Boolean(options.force);
   const button = document.querySelector('#refreshDataButton');
   if (button) {
     button.disabled = true;
@@ -642,8 +697,11 @@ async function refreshData() {
   }
 
   try {
-    window.ACTUAL_SCENARIO = await loadWindowAssignment('actual_data.js', 'ACTUAL_SCENARIO');
-    window.PRECOMPUTED_SIMULATION = await loadWindowAssignment('simulation_result.js', 'PRECOMPUTED_SIMULATION');
+    const loadedFromAppsScript = await loadAppsScriptPayload(force ? 'refresh' : 'read').catch(error => {
+      console.warn(error);
+      return false;
+    });
+    if (!loadedFromAppsScript) await loadStaticPayload();
     scenario = window.ACTUAL_SCENARIO;
     render(currentSimulation());
   } catch (error) {
@@ -659,9 +717,9 @@ async function refreshData() {
 
 function initDataRefresh() {
   const refreshButton = document.querySelector('#refreshDataButton');
-  if (refreshButton) refreshButton.addEventListener('click', refreshData);
+  if (refreshButton) refreshButton.addEventListener('click', () => refreshData({ force: true }));
   refreshData();
-  window.setInterval(refreshData, 5 * 60 * 1000);
+  window.setInterval(refreshData, appsScriptEndpoint() ? 60 * 1000 : 5 * 60 * 1000);
 }
 
 initRulesModal();

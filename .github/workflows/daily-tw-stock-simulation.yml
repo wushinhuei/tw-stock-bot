@@ -2,11 +2,6 @@ name: Daily Taiwan Stock Simulation
 
 on:
   workflow_dispatch:
-  schedule:
-    # Taiwan regular session, every 5 minutes from 09:00 to 13:55 Asia/Taipei.
-    - cron: "*/5 1-5 * * 1-5"
-    # After close snapshot at 15:20 Asia/Taipei.
-    - cron: "20 7 * * 1-5"
 
 permissions:
   contents: write

@@ -1,0 +1,1 @@
+window.APPS_SCRIPT_ENDPOINT = '';
