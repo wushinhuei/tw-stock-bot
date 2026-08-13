@@ -9,7 +9,8 @@ apps_script/
 ```
 
 Google Apps Script 後端：
-- 每 1 分鐘自動更新。
+- 每 1 分鐘觸發一次，但只有台股交易日 08:45-15:45 真正更新。
+- 週末、證交所休市日與非更新時段直接回傳快取，節省 Apps Script 與資料 API 用量。
 - 抓 TWSE MIS 即時報價。
 - 抓 TWSE BFT41U 盤後定價交易。
 - 抓 TWSE T86 法人買賣超。
@@ -24,7 +25,7 @@ web/
 
 GitHub Pages 前端：
 - 顯示總資產、報酬率、持倉、交易紀錄。
-- 每 1 分鐘讀取 Apps Script 最新結果。
+- 每 1 分鐘讀取 Apps Script 最新結果；休市或非更新時段只讀快取。
 - 按「更新資料」會要求 Apps Script 立即重抓。
 - Apps Script 失敗時會退回靜態備援資料。
 

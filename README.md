@@ -11,7 +11,7 @@
 ## 架構
 
 ```text
-Google Apps Script 每 1 分鐘執行
+Google Apps Script 每 1 分鐘觸發一次，但只有台股交易日 08:45-15:45 會真正抓資料
         ↓
 抓 TWSE MIS 即時報價、TWSE 法人/資券、Yahoo 歷史線圖
         ↓
@@ -24,7 +24,7 @@ Google Apps Script 每 1 分鐘執行
 GitHub Pages 前端讀取 Apps Script Web API
 ```
 
-盤中網頁會約每 15 秒呼叫 Apps Script `action=refresh`，主動重抓 TWSE MIS 報價；盤後則每 1 分鐘讀取已儲存的最新結果。模擬買進以賣一價估算，賣出與持倉估值以買一價估算。收盤後若證交所 BFT41U 盤後定價資料已發布，系統會額外執行一次盤後定價模擬，並以盤後成交價估算買進、賣出與持倉價值。
+盤中網頁會約每 15 秒呼叫 Apps Script `action=refresh`，主動重抓 TWSE MIS 報價；盤後則每 1 分鐘讀取已儲存的最新結果。Apps Script 會用台北時間與證交所休市日資料判斷是否需要執行，週末、休市日與非更新時段會直接回傳快取，避免浪費用量。模擬買進以賣一價估算，賣出與持倉估值以買一價估算。收盤後若證交所 BFT41U 盤後定價資料已發布，系統會額外執行一次盤後定價模擬，並以盤後成交價估算買進、賣出與持倉價值。
 
 ## 主要檔案
 
@@ -56,6 +56,7 @@ Apps Script 後端。負責抓資料、計算訊號、模擬交易、儲存最�
 
 - TWSE MIS 即時報價
 - TWSE BFT41U 盤後定價交易
+- TWSE holidaySchedule 開休市日
 - TWSE T86 三大法人買賣超
 - TWSE MI_MARGN 融資融券
 - Yahoo Finance 歷史線圖

@@ -1,5 +1,6 @@
 const START_DATE = '2026-08-10';
 const STATE_KEY = 'TW_STOCK_DASHBOARD_STATE_V1';
+const HOLIDAY_CACHE_PREFIX = 'TWSE_NON_TRADING_DATES_';
 const RAW_BASE = 'https://raw.githubusercontent.com/wushinhuei/tw-stock-bot/main/%E5%8F%B0%E8%82%A1%E7%AD%96%E7%95%A5%E7%B3%BB%E7%B5%B1/web/';
 
 const CONFIG = {
@@ -37,7 +38,9 @@ function doGet(e) {
   let payload;
 
   try {
-    payload = action === 'refresh' ? refreshDashboard() : readOrSeedPayload();
+    payload = action === 'refresh'
+      ? refreshDashboard({ force: params.force === '1' || params.force === 'true' })
+      : readOrSeedPayload();
   } catch (error) {
     payload = {
       ok: false,
@@ -58,7 +61,7 @@ function doGet(e) {
 }
 
 function scheduledUpdate() {
-  refreshDashboard();
+  return refreshDashboard();
 }
 
 function installMinuteTrigger() {
@@ -78,7 +81,13 @@ function clearSimulationState() {
   PropertiesService.getScriptProperties().deleteProperty(STATE_KEY);
 }
 
-function refreshDashboard() {
+function refreshDashboard(options) {
+  options = options || {};
+  const schedule = scheduledRefreshDecision(new Date());
+  if (!schedule.isTradingDay || (!options.force && !schedule.shouldRun)) {
+    return skippedRefreshPayload(schedule);
+  }
+
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(25000)) return readOrSeedPayload();
 
@@ -92,6 +101,7 @@ function refreshDashboard() {
       ok: true,
       source: 'apps-script',
       generatedAt: new Date().toISOString(),
+      schedule: schedule,
       scenario: scenario,
       simulation: simulation
     };
@@ -272,6 +282,15 @@ function safeFetchAfterMarketTrades(targetDate, items) {
   }
 }
 
+function skippedRefreshPayload(schedule) {
+  const payload = readOrSeedPayload();
+  payload.schedule = Object.assign({}, schedule, {
+    skipped: true,
+    skippedAt: new Date().toISOString()
+  });
+  return payload;
+}
+
 function fetchAfterMarketTrades(targetDate, items) {
   const url = 'https://www.twse.com.tw/rwd/zh/afterTrading/BFT41U?date=' +
     encodeURIComponent(ymdCompact(targetDate)) + '&response=json';
@@ -400,6 +419,85 @@ function fetchLatestTwseTable(path, targetDate, params, isUsable) {
     }
   }
   throw new Error('No usable TWSE table for ' + path + ' near ' + targetDate);
+}
+
+function scheduledRefreshDecision(now) {
+  const parts = taipeiDateTimeParts(now);
+  const tradingDay = tradingDayDecision(parts.ymd);
+  const marketStart = 8 * 60 + 45;
+  const afterMarketEnd = 15 * 60 + 45;
+  const shouldRun = tradingDay.isTradingDay && parts.minutes >= marketStart && parts.minutes <= afterMarketEnd;
+  return {
+    shouldRun: shouldRun,
+    isTradingDay: tradingDay.isTradingDay,
+    reason: shouldRun ? 'TRADING_UPDATE_WINDOW' : tradingDay.reason || 'OUTSIDE_UPDATE_WINDOW',
+    date: parts.ymd,
+    time: parts.hhmm,
+    timezone: 'Asia/Taipei',
+    updateWindow: '08:45-15:45',
+    holidayCheckError: tradingDay.error || null
+  };
+}
+
+function tradingDayDecision(ymd) {
+  const date = parseYmd(ymd);
+  const day = date.getUTCDay();
+  if (day === 0 || day === 6) {
+    return { isTradingDay: false, reason: 'WEEKEND' };
+  }
+
+  try {
+    const dates = twseNonTradingDates(date.getUTCFullYear());
+    if (dates.indexOf(ymd) >= 0) {
+      return { isTradingDay: false, reason: 'TWSE_CLOSED' };
+    }
+  } catch (error) {
+    return { isTradingDay: true, reason: 'HOLIDAY_CHECK_FAILED', error: error.message };
+  }
+
+  return { isTradingDay: true, reason: 'TRADING_DAY' };
+}
+
+function twseNonTradingDates(year) {
+  const key = HOLIDAY_CACHE_PREFIX + year;
+  const props = PropertiesService.getScriptProperties();
+  const saved = props.getProperty(key);
+  if (saved) return JSON.parse(saved);
+
+  const json = fetchJson('https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule', {
+    Referer: 'https://www.twse.com.tw/',
+    'User-Agent': 'Mozilla/5.0'
+  });
+  const rocYear = String(year - 1911);
+  const dates = [];
+  (Array.isArray(json) ? json : []).forEach(function(row) {
+    const rawDate = String(row.Date || '');
+    if (rawDate.slice(0, rocYear.length) !== rocYear) return;
+    const text = [row.Name, row.Description].join(' ');
+    const isClosed = /放假|無交易|休市|停止交易/.test(text) && !/開始交易|最後交易/.test(text);
+    if (isClosed) dates.push(rocDateToYmd(rawDate));
+  });
+  props.setProperty(key, JSON.stringify(dates));
+  return dates;
+}
+
+function taipeiDateTimeParts(date) {
+  const ymd = Utilities.formatDate(date, 'Asia/Taipei', 'yyyy-MM-dd');
+  const hhmm = Utilities.formatDate(date, 'Asia/Taipei', 'HH:mm');
+  const parts = hhmm.split(':').map(function(value) { return Number(value); });
+  return {
+    ymd: ymd,
+    hhmm: hhmm,
+    minutes: parts[0] * 60 + parts[1]
+  };
+}
+
+function rocDateToYmd(value) {
+  const text = String(value || '');
+  const year = Number(text.slice(0, text.length - 4)) + 1911;
+  const month = text.slice(-4, -2);
+  const day = text.slice(-2);
+  return year + '-' + month + '-' + day;
 }
 
 function parseInstitutionalRows(json) {

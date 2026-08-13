@@ -664,10 +664,11 @@ function appsScriptEndpoint() {
   return /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(endpoint) ? endpoint : '';
 }
 
-function appsScriptUrl(action) {
+function appsScriptUrl(action, options = {}) {
   const url = new URL(appsScriptEndpoint());
   url.searchParams.set('action', action);
   url.searchParams.set('t', Date.now());
+  if (options.force) url.searchParams.set('force', '1');
   return url.toString();
 }
 
@@ -696,10 +697,10 @@ function requestJsonp(url) {
   });
 }
 
-async function loadAppsScriptPayload(action) {
+async function loadAppsScriptPayload(action, options = {}) {
   const endpoint = appsScriptEndpoint();
   if (!endpoint) return false;
-  const payload = await requestJsonp(appsScriptUrl(action));
+  const payload = await requestJsonp(appsScriptUrl(action, options));
   if (!payload || payload.ok === false || !Array.isArray(payload.scenario) || !payload.simulation) {
     throw new Error(payload && payload.error ? payload.error : 'Invalid Apps Script payload');
   }
@@ -748,7 +749,9 @@ async function refreshData(options = {}) {
   }
 
   try {
-    const loadedFromAppsScript = await loadAppsScriptPayload(force ? 'refresh' : 'read').catch(error => {
+    const loadedFromAppsScript = await loadAppsScriptPayload(force ? 'refresh' : 'read', {
+      force: Boolean(options.force),
+    }).catch(error => {
       console.warn(error);
       return false;
     });
