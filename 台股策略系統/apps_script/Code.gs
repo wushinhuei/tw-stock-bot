@@ -660,6 +660,7 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
   const high20 = highest(closes.slice(0, -1), 20) || prev.close;
   const rsi14 = rsi(closes, 14);
   const m = macd(closes);
+  const obv = analyzeObv(mergedRows, 42, 20);
   const trendOk = ma20 != null && ma50 != null && latest.close > ma20 && latest.close > ma50;
   const volumeRatio = volume20 ? latest.volume / volume20 : 1;
   const volumePriceOk = latest.close >= high20 * 0.985 || volumeRatio >= 1.2;
@@ -667,9 +668,10 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
   const chipSignal = officialChip || buildChipSignal(null, null, null, null);
   const institutionalNetRatio = latest.volume && chipSignal.institutional ? chipSignal.institutional.totalNet / latest.volume : 0;
   const dynamicChipOk = chipSignal.chipFlowOk && (base.chipOk || institutionalNetRatio >= 0.03 || chipSignal.largeTraderProxyOk);
-  const all = base.industryOk && base.fundamentalOk && dynamicChipOk && trendOk && volumePriceOk && momentumOk;
+  const all = base.industryOk && base.fundamentalOk && dynamicChipOk && trendOk && volumePriceOk && momentumOk && obv.bullish;
   const backed = base.industryOk || base.fundamentalOk || dynamicChipOk;
-  const grade = all ? 'A' : trendOk && volumePriceOk && momentumOk && backed ? 'B' : trendOk || volumePriceOk || momentumOk ? 'C' : 'BLOCKED';
+  let grade = all ? 'A' : trendOk && volumePriceOk && momentumOk && backed ? 'B' : trendOk || volumePriceOk || momentumOk ? 'C' : 'BLOCKED';
+  if ((obv.priceBreakout && !obv.breakoutConfirmed) || obv.topDivergence) grade = downgradeGrade(grade);
   const stopPrice = Math.round(Math.min(latest.close * 0.94, ma20 || latest.close * 0.94) * 10) / 10;
   const targetPrice = Math.round(latest.close * 1.08 * 10) / 10;
   const intradayReturnPct = latest.open ? latest.close / latest.open - 1 : 0;
@@ -698,6 +700,7 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
     trendOk: trendOk,
     volumePriceOk: volumePriceOk,
     momentumOk: momentumOk,
+    obvOk: obv.bullish,
     metrics: {
       date: latest.date,
       ma20: ma20,
@@ -705,6 +708,7 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
       rsi14: rsi14,
       macdHist: m.hist,
       volumeRatio: volumeRatio,
+      obv: obv,
       sourceSymbol: base.symbol,
       latestQuoteTime: latestQuote && latestQuote.time ? latestQuote.time : null,
       latestQuoteProvider: latestQuote && latestQuote.provider ? latestQuote.provider : null,
@@ -750,6 +754,7 @@ function runFreshSimulation(days) {
     daily: [],
     dailyStopped: false,
     weeklyLimited: false,
+    weeklyLimitWeek: null,
     maxDrawdown: 0
   };
   days.filter(function(day) { return day.date >= CONFIG.simulationStartDate; })
@@ -765,8 +770,9 @@ function advanceOneDay(previous, day) {
 
 function simulateDay(account, day) {
   const marketState = evaluateMarket(day);
-  account.dailyStopped = false;
+  account.weeklyLimited = account.weeklyLimitWeek === weekKey(day.date);
   sellByRules(account, day, marketState);
+  updateDailyStop(account, day);
   buyByRules(account, day, marketState);
   runDayTrades(account, day, marketState);
 
@@ -779,7 +785,9 @@ function simulateDay(account, day) {
 
   const peak = Math.max(account.initialCapital, maxDailyEquity(account.daily), equity);
   account.maxDrawdown = Math.min(account.maxDrawdown || 0, equity / peak - 1);
-  account.weeklyLimited = equity / account.initialCapital - 1 <= CONFIG.weeklyStopLossPct;
+  if (weeklyReturn(account.daily, day.date, equity, account.initialCapital) <= CONFIG.weeklyStopLossPct) {
+    account.weeklyLimitWeek = nextWeekKey(day.date);
+  }
   account.daily.push({
     date: day.date,
     equity: equity,
@@ -794,9 +802,9 @@ function simulateDay(account, day) {
 function applyAfterMarketSession(previous, day) {
   const account = cloneAccount(previous);
   const marketState = evaluateMarket(day);
-  account.dailyStopped = false;
 
   sellByRules(account, day, marketState);
+  updateDailyStop(account, day);
   buyByRules(account, day, marketState);
 
   const positionValue = marketValue(account.positions, day);
@@ -818,7 +826,9 @@ function applyAfterMarketSession(previous, day) {
 
   const peak = Math.max(account.initialCapital, maxDailyEquity(account.daily), equity);
   account.maxDrawdown = Math.min(account.maxDrawdown || 0, equity / peak - 1);
-  account.weeklyLimited = equity / account.initialCapital - 1 <= CONFIG.weeklyStopLossPct;
+  if (weeklyReturn(account.daily, day.date, equity, account.initialCapital) <= CONFIG.weeklyStopLossPct) {
+    account.weeklyLimitWeek = nextWeekKey(day.date);
+  }
   return finalizeAccount(account, day);
 }
 
@@ -840,6 +850,12 @@ function markToMarket(previous, day) {
       marketLabel: evaluateMarket(day).label,
       session: day.session || lastDaily.session || 'REGULAR'
     });
+  }
+
+  updateDailyStop(account, day);
+  account.weeklyLimited = account.weeklyLimitWeek === weekKey(day.date);
+  if (weeklyReturn(account.daily, day.date, equity, account.initialCapital) <= CONFIG.weeklyStopLossPct) {
+    account.weeklyLimitWeek = nextWeekKey(day.date);
   }
 
   return finalizeAccount(account, day);
@@ -868,6 +884,7 @@ function cloneAccount(previous) {
     daily: JSON.parse(JSON.stringify(previous.daily || [])),
     dailyStopped: Boolean(previous.dailyStopped),
     weeklyLimited: Boolean(previous.weeklyLimited),
+    weeklyLimitWeek: previous.weeklyLimitWeek || null,
     maxDrawdown: Number(previous.maxDrawdown || 0)
   };
 }
@@ -935,7 +952,7 @@ function sellByRules(account, day, marketState) {
       tax: tax,
       pnl: pnl,
       session: candidate.session || day.session || 'REGULAR',
-      reason: sellReason(candidate, marketState, position) + sessionReason(candidate)
+      reason: sellReason(candidate, marketState, position) + obvTradeNote(candidate) + sessionReason(candidate)
     });
   });
   account.positions = stillHolding;
@@ -948,10 +965,7 @@ function buyByRules(account, day, marketState) {
     if (account.positions.some(function(position) { return position.symbol === candidate.symbol; })) return;
     const budget = account.initialCapital * positionPct(candidate, account);
     const buyPrice = executionBuyPrice(candidate);
-    const unitCost = buyPrice * CONFIG.boardLot;
-    const availableCash = tradableCash(account);
-    const units = Math.floor(Math.min(budget, availableCash) / unitCost);
-    const shares = units * CONFIG.boardLot;
+    const shares = affordableShares(account, buyPrice, budget);
     if (shares <= 0) return;
 
     const grossAmount = shares * buyPrice;
@@ -982,7 +996,7 @@ function buyByRules(account, day, marketState) {
       tax: 0,
       pnl: 0,
       session: candidate.session || day.session || 'REGULAR',
-      reason: candidate.grade + ' rule entry; fee ' + fee + sessionReason(candidate)
+      reason: candidate.grade + ' rule entry; fee ' + fee + obvTradeNote(candidate) + sessionReason(candidate)
     });
   });
 }
@@ -996,9 +1010,7 @@ function runDayTrades(account, day, marketState) {
     const budget = account.initialCapital * CONFIG.dayTradeCapitalPct;
     const buyPrice = executionBuyPrice(candidate);
     const sellPrice = executionSellPrice(candidate);
-    const unitCost = buyPrice * CONFIG.boardLot;
-    const units = Math.floor(Math.min(budget, tradableCash(account)) / unitCost);
-    const shares = units * CONFIG.boardLot;
+    const shares = affordableShares(account, buyPrice, budget);
     if (shares <= 0) return;
 
     const buyAmount = shares * buyPrice;
@@ -1091,6 +1103,69 @@ function tradableCash(account) {
   return Math.max(0, Number(account.cash || 0) - minCashReserve(account));
 }
 
+function obvTradeNote(candidate) {
+  const signal = candidate && candidate.metrics ? candidate.metrics.obv : null;
+  if (!signal || !signal.liquid) return '; OBV unavailable';
+  if (signal.topDivergence) return '; OBV bearish divergence warning';
+  if (signal.breakoutConfirmed) return '; OBV breakout confirmed';
+  if (signal.bullish) return '; OBV above rising MA42';
+  if (signal.bottomDivergence) return '; OBV bullish divergence watch only';
+  return '; OBV not confirmed';
+}
+
+function affordableShares(account, price, budget) {
+  if (!(price > 0)) return 0;
+  const lot = CONFIG.boardLot;
+  const available = Math.min(Number(budget || 0), tradableCash(account));
+  let shares = Math.floor(available / price / lot) * lot;
+  while (shares > 0 && shares * price + tradeFee(shares * price) > tradableCash(account)) {
+    shares -= lot;
+  }
+  return Math.max(0, shares);
+}
+
+function updateDailyStop(account, day) {
+  const currentEquity = Number(account.cash || 0) + marketValue(account.positions, day);
+  const previousDay = previousDailyEntry(account.daily, day.date);
+  const referenceEquity = previousDay ? previousDay.equity : account.initialCapital;
+  account.dailyStopped = referenceEquity > 0 && currentEquity / referenceEquity - 1 <= CONFIG.dailyStopLossPct;
+  return account.dailyStopped;
+}
+
+function previousDailyEntry(daily, date) {
+  for (let i = daily.length - 1; i >= 0; i -= 1) {
+    if (daily[i].date < date) return daily[i];
+  }
+  return null;
+}
+
+function weeklyReturn(daily, date, equity, initialCapital) {
+  const currentWeek = weekKey(date);
+  let referenceEquity = initialCapital;
+  for (let i = daily.length - 1; i >= 0; i -= 1) {
+    if (daily[i].date < date && weekKey(daily[i].date) !== currentWeek) {
+      referenceEquity = daily[i].equity;
+      break;
+    }
+  }
+  return referenceEquity > 0 ? equity / referenceEquity - 1 : 0;
+}
+
+function weekKey(value) {
+  const date = parseYmd(value);
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return date.getUTCFullYear() + '-W' + String(week).padStart(2, '0');
+}
+
+function nextWeekKey(value) {
+  const date = parseYmd(value);
+  date.setUTCDate(date.getUTCDate() + 7);
+  return weekKey(formatYmd(date));
+}
+
 function sma(values, period) {
   if (values.length < period) return null;
   return values.slice(values.length - period).reduce(function(sum, value) { return sum + value; }, 0) / period;
@@ -1099,6 +1174,11 @@ function sma(values, period) {
 function highest(values, period) {
   if (values.length < period) return null;
   return Math.max.apply(null, values.slice(values.length - period));
+}
+
+function lowest(values, period) {
+  if (values.length < period) return null;
+  return Math.min.apply(null, values.slice(values.length - period));
 }
 
 function rsi(values, period) {
@@ -1137,6 +1217,63 @@ function macd(values) {
     signal: last(signal),
     hist: last(dif) - last(signal)
   };
+}
+
+function obvSeries(rows) {
+  if (!rows.length) return [];
+  const values = [0];
+  for (let i = 1; i < rows.length; i += 1) {
+    const volume = Math.max(0, Number(rows[i].volume || 0));
+    const direction = rows[i].close > rows[i - 1].close ? 1 : rows[i].close < rows[i - 1].close ? -1 : 0;
+    values.push(values[i - 1] + direction * volume);
+  }
+  return values;
+}
+
+function analyzeObv(rows, signalPeriod, breakoutPeriod) {
+  signalPeriod = signalPeriod || 42;
+  breakoutPeriod = breakoutPeriod || 20;
+  const values = obvSeries(rows);
+  const latestValue = last(values);
+  const previousValue = values.length > 1 ? values[values.length - 2] : latestValue;
+  const signal = sma(values, signalPeriod);
+  const previousSignal = sma(values.slice(0, -1), signalPeriod);
+  const priorRows = rows.slice(0, -1);
+  const priorValues = values.slice(0, -1);
+  const windowSize = Math.min(breakoutPeriod, priorRows.length);
+  const priceHigh = windowSize ? highest(priorRows.map(function(row) { return row.close; }), windowSize) : null;
+  const priceLow = windowSize ? lowest(priorRows.map(function(row) { return row.close; }), windowSize) : null;
+  const obvHigh = windowSize ? highest(priorValues, windowSize) : null;
+  const obvLow = windowSize ? lowest(priorValues, windowSize) : null;
+  const positiveVolumeDays = rows.slice(-signalPeriod).filter(function(row) { return Number(row.volume || 0) > 0; }).length;
+  const liquid = positiveVolumeDays >= Math.min(15, rows.length);
+  const latestClose = last(rows).close;
+  const priceBreakout = priceHigh != null && latestClose >= priceHigh;
+  const priceBreakdown = priceLow != null && latestClose <= priceLow;
+  const obvBreakout = obvHigh != null && latestValue >= obvHigh;
+  const topDivergence = liquid && priceBreakout && obvHigh != null && latestValue < obvHigh;
+  const bottomDivergence = liquid && priceBreakdown && obvLow != null && latestValue > obvLow;
+  const bullish = liquid && signal != null && previousSignal != null && latestValue > signal && signal > previousSignal && latestValue > previousValue;
+  return {
+    value: latestValue,
+    ma42: signal,
+    ma42Slope: signal != null && previousSignal != null ? signal - previousSignal : null,
+    aboveMa42: signal != null && latestValue > signal,
+    rising: latestValue > previousValue,
+    bullish: bullish,
+    liquid: liquid,
+    priceBreakout: priceBreakout,
+    obvBreakout: obvBreakout,
+    breakoutConfirmed: liquid && priceBreakout && obvBreakout,
+    topDivergence: topDivergence,
+    bottomDivergence: bottomDivergence
+  };
+}
+
+function downgradeGrade(grade) {
+  if (grade === 'A') return 'B';
+  if (grade === 'B') return 'C';
+  return grade;
 }
 
 function maxDailyEquity(daily) {

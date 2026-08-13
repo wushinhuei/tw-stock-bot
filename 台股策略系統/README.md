@@ -46,3 +46,13 @@ apps_script/Code.gs
 ```
 
 修改後用 clasp 推送到 Apps Script，並更新 Web App 部署版本。
+
+## 本機測試
+
+策略核心測試使用 Node.js 內建測試工具，不需要另外安裝套件：
+
+```powershell
+node --test ..\tests\strategy_core.test.js
+```
+
+目前涵蓋每日停損、下一週半倉限制、最低現金保留，以及盤後重複刷新不得重複交易。

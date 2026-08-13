@@ -452,11 +452,14 @@ function renderHistoryReturns(result) {
 function renderTodayDecision(result, day) {
   const marketState = evaluateMarket(day);
   const buys = day.candidates.filter(candidate => canOpenPosition(candidate, marketState, result));
+  const obvConfirmed = day.candidates.filter(candidate => candidate.metrics?.obv?.bullish);
+  const obvWarnings = day.candidates.filter(candidate => candidate.metrics?.obv?.topDivergence);
   const text = buys.length
     ? `今日規則允許買進：${buys.map(item => `${item.symbol} ${item.name}`).join('、')}。`
     : '今日沒有新買點，系統只管理持倉與風控。';
+  const obvText = `OBV 多頭確認 ${obvConfirmed.length} 檔${obvWarnings.length ? `；頂背離警示 ${obvWarnings.map(item => item.symbol).join('、')}` : '；無頂背離警示'}。`;
   document.querySelector('#todayDecision').innerHTML = `
-    <div><strong>${marketState.label}</strong><span>${text}</span></div>
+    <div><strong>${marketState.label}</strong><span>${text}<br>${obvText}</span></div>
     <div><strong>${currency(result.finalEquity)}</strong><span>目前模擬總資產</span></div>
   `;
 }
@@ -489,7 +492,13 @@ function positionStatus(candidate, position) {
   if (!candidate) return '無今日資料';
   if (candidate.price <= position.stopPrice) return '跌破停損，下一日賣出';
   if (candidate.price >= position.targetPrice) return '達目標價，下一日停利';
-  return candidate.grade === 'A' || candidate.grade === 'B' ? '續抱' : '防守觀察';
+  const obv = candidate.metrics?.obv;
+  if (obv?.topDivergence) return 'OBV 頂背離，停止加碼';
+  if (obv?.bottomDivergence) return 'OBV 底背離，僅觀察';
+  if (candidate.grade === 'A' || candidate.grade === 'B') {
+    return obv?.bullish ? '續抱；OBV 多頭確認' : '續抱；OBV 未確認';
+  }
+  return '防守觀察';
 }
 
 function renderDailyRows(days) {
