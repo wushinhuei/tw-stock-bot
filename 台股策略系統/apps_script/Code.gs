@@ -144,12 +144,13 @@ function buildScenario() {
 
   const candidates = [];
   const twseQuotes = safeFetchTwseQuotes(UNIVERSE);
+  const chipData = safeFetchOfficialChipData(latestMarket.date, UNIVERSE);
   UNIVERSE.forEach(function(stockInfo) {
     try {
       const result = fetchChart(stockInfo.symbol, '1y', '1d');
       const yahooQuote = safeFetchLatestQuote(stockInfo.symbol);
       const latestQuote = twseQuotes[stockInfo.code] || yahooQuote;
-      candidates.push(gradeCandidate(stockInfo, rowsFromChart(result), latestQuote));
+      candidates.push(gradeCandidate(stockInfo, rowsFromChart(result), latestQuote, chipData[stockInfo.code]));
     } catch (error) {
       console.warn('Skip ' + stockInfo.symbol + ': ' + error.message);
     }
@@ -167,9 +168,10 @@ function buildScenario() {
     groups: groupCounts,
     candidates: candidates,
     source: {
-      provider: 'Apps Script + TWSE MIS + Yahoo Finance chart API',
+      provider: 'Apps Script + TWSE MIS + TWSE T86/MI_MARGN + Yahoo Finance chart API',
       generatedAt: new Date().toISOString(),
-      startDate: START_DATE
+      startDate: START_DATE,
+      chipDates: chipData._meta || null
     }
   }];
 }
@@ -250,6 +252,153 @@ function fetchTwseQuotes(items) {
   return quotes;
 }
 
+function safeFetchOfficialChipData(targetDate, items) {
+  try {
+    return fetchOfficialChipData(targetDate, items);
+  } catch (error) {
+    console.warn('Official chip fallback: ' + error.message);
+    const out = {};
+    out._meta = { error: error.message, provider: 'TWSE T86/MI_MARGN' };
+    return out;
+  }
+}
+
+function fetchOfficialChipData(targetDate, items) {
+  const institutionPayload = fetchLatestTwseTable('fund/T86', targetDate, {
+    selectType: 'ALLBUT0999'
+  }, function(json) {
+    return json && json.stat === 'OK' && Array.isArray(json.data);
+  });
+  const marginPayload = fetchLatestTwseTable('exchangeReport/MI_MARGN', targetDate, {
+    selectType: 'ALL'
+  }, function(json) {
+    return json && json.stat === 'OK' && Array.isArray(json.tables) && json.tables.length > 1;
+  });
+
+  const institutional = parseInstitutionalRows(institutionPayload.json);
+  const margin = parseMarginRows(marginPayload.json);
+  const out = {};
+  items.forEach(function(item) {
+    out[item.code] = buildChipSignal(
+      institutional[item.code] || null,
+      margin[item.code] || null,
+      institutionPayload.date,
+      marginPayload.date
+    );
+  });
+  out._meta = {
+    provider: 'TWSE T86/MI_MARGN',
+    institutionalDate: institutionPayload.date,
+    marginDate: marginPayload.date,
+    largeTraderProxy: 'institutional net-buy ratio plus margin/short balance change; TWSE has no stable public daily large-holder API for this use case'
+  };
+  return out;
+}
+
+function fetchLatestTwseTable(path, targetDate, params, isUsable) {
+  const dates = recentDateCandidates(targetDate, 14);
+  for (let i = 0; i < dates.length; i += 1) {
+    const date = dates[i];
+    const query = Object.assign({}, params, { response: 'json', date: ymdCompact(date) });
+    const url = 'https://www.twse.com.tw/' + path + '?' + toQuery(query);
+    try {
+      const json = fetchJson(url, {
+        Referer: 'https://www.twse.com.tw/',
+        'User-Agent': 'Mozilla/5.0'
+      });
+      if (isUsable(json)) {
+        return { date: json.date || ymdCompact(date), json: json };
+      }
+    } catch (error) {
+      console.warn(path + ' ' + date + ': ' + error.message);
+    }
+  }
+  throw new Error('No usable TWSE table for ' + path + ' near ' + targetDate);
+}
+
+function parseInstitutionalRows(json) {
+  const out = {};
+  (json.data || []).forEach(function(row) {
+    const code = String(row[0] || '').trim();
+    if (!code) return;
+    const foreignNet = numberAt(row, 4);
+    const foreignDealerNet = numberAt(row, 7);
+    const trustNet = numberAt(row, 10);
+    const dealerNet = numberAt(row, 11);
+    const totalNet = numberAt(row, 18);
+    out[code] = {
+      foreignNet: foreignNet,
+      foreignDealerNet: foreignDealerNet,
+      trustNet: trustNet,
+      dealerNet: dealerNet,
+      totalNet: totalNet
+    };
+  });
+  return out;
+}
+
+function parseMarginRows(json) {
+  const table = json.tables && json.tables[1] ? json.tables[1] : null;
+  if (!table) return {};
+  const out = {};
+  (table.data || []).forEach(function(row) {
+    const code = String(row[0] || '').trim();
+    if (!code) return;
+    const marginPrev = parseTwseNumber(row[5]) || 0;
+    const marginToday = parseTwseNumber(row[6]) || 0;
+    const shortPrev = parseTwseNumber(row[11]) || 0;
+    const shortToday = parseTwseNumber(row[12]) || 0;
+    out[code] = {
+      marginBuy: parseTwseNumber(row[2]) || 0,
+      marginSell: parseTwseNumber(row[3]) || 0,
+      marginCashRepay: parseTwseNumber(row[4]) || 0,
+      marginPrev: marginPrev,
+      marginToday: marginToday,
+      marginChange: marginToday - marginPrev,
+      shortBuy: parseTwseNumber(row[8]) || 0,
+      shortSell: parseTwseNumber(row[9]) || 0,
+      shortCashRepay: parseTwseNumber(row[10]) || 0,
+      shortPrev: shortPrev,
+      shortToday: shortToday,
+      shortChange: shortToday - shortPrev,
+      dayTradeOffset: parseTwseNumber(row[14]) || 0
+    };
+  });
+  return out;
+}
+
+function buildChipSignal(institutional, margin, institutionalDate, marginDate) {
+  const hasInstitutional = Boolean(institutional);
+  const hasMargin = Boolean(margin);
+  const foreignNet = hasInstitutional ? institutional.foreignNet : 0;
+  const dealerNet = hasInstitutional ? institutional.dealerNet : 0;
+  const trustNet = hasInstitutional ? institutional.trustNet : 0;
+  const totalNet = hasInstitutional ? institutional.totalNet : 0;
+  const marginChange = hasMargin ? margin.marginChange : 0;
+  const shortChange = hasMargin ? margin.shortChange : 0;
+  const marginChangeRatio = hasMargin && margin.marginPrev ? marginChange / margin.marginPrev : 0;
+  const shortChangeRatio = hasMargin && margin.shortPrev ? shortChange / margin.shortPrev : 0;
+  const institutionalOk = !hasInstitutional || (totalNet > 0 && (foreignNet > 0 || dealerNet > 0 || trustNet > 0));
+  const marginOk = !hasMargin || marginChangeRatio <= 0.02;
+  const shortOk = !hasMargin || shortChangeRatio <= 0.08;
+  const largeTraderProxyOk = !hasInstitutional || totalNet > 0 || foreignNet > 0;
+  const chipFlowOk = institutionalOk && marginOk && shortOk && largeTraderProxyOk;
+
+  return {
+    institutional: institutional || null,
+    margin: margin || null,
+    institutionalDate: institutionalDate || null,
+    marginDate: marginDate || null,
+    institutionalOk: institutionalOk,
+    marginOk: marginOk,
+    shortOk: shortOk,
+    largeTraderProxyOk: largeTraderProxyOk,
+    chipFlowOk: chipFlowOk,
+    marginChangeRatio: marginChangeRatio,
+    shortChangeRatio: shortChangeRatio
+  };
+}
+
 function fetchJson(url, headers) {
   return JSON.parse(fetchText(url, headers));
 }
@@ -310,7 +459,7 @@ function mergeLatestRow(rows, latestQuote) {
   return merged;
 }
 
-function gradeCandidate(base, rows, latestQuote) {
+function gradeCandidate(base, rows, latestQuote, officialChip) {
   const mergedRows = mergeLatestRow(rows, latestQuote);
   const closes = rows.map(function(row) { return row.close; });
   const markedCloses = mergedRows.map(function(row) { return row.close; });
@@ -327,8 +476,11 @@ function gradeCandidate(base, rows, latestQuote) {
   const volumeRatio = volume20 ? latest.volume / volume20 : 1;
   const volumePriceOk = latest.close >= high20 * 0.985 || volumeRatio >= 1.2;
   const momentumOk = (rsi14 == null || rsi14 >= 50) && (m.hist == null || m.hist >= 0);
-  const all = base.industryOk && base.fundamentalOk && base.chipOk && trendOk && volumePriceOk && momentumOk;
-  const backed = base.industryOk || base.fundamentalOk || base.chipOk;
+  const chipSignal = officialChip || buildChipSignal(null, null, null, null);
+  const institutionalNetRatio = latest.volume && chipSignal.institutional ? chipSignal.institutional.totalNet / latest.volume : 0;
+  const dynamicChipOk = chipSignal.chipFlowOk && (base.chipOk || institutionalNetRatio >= 0.03 || chipSignal.largeTraderProxyOk);
+  const all = base.industryOk && base.fundamentalOk && dynamicChipOk && trendOk && volumePriceOk && momentumOk;
+  const backed = base.industryOk || base.fundamentalOk || dynamicChipOk;
   const grade = all ? 'A' : trendOk && volumePriceOk && momentumOk && backed ? 'B' : trendOk || volumePriceOk || momentumOk ? 'C' : 'BLOCKED';
   const stopPrice = Math.round(Math.min(latest.close * 0.94, ma20 || latest.close * 0.94) * 10) / 10;
   const targetPrice = Math.round(latest.close * 1.08 * 10) / 10;
@@ -346,7 +498,7 @@ function gradeCandidate(base, rows, latestQuote) {
     intradayReturnPct: Math.max(-0.03, Math.min(0.03, intradayReturnPct)),
     industryOk: base.industryOk,
     fundamentalOk: base.fundamentalOk,
-    chipOk: base.chipOk,
+    chipOk: dynamicChipOk,
     trendOk: trendOk,
     volumePriceOk: volumePriceOk,
     momentumOk: momentumOk,
@@ -361,7 +513,12 @@ function gradeCandidate(base, rows, latestQuote) {
       latestQuoteTime: latestQuote && latestQuote.time ? latestQuote.time : null,
       latestQuoteProvider: latestQuote && latestQuote.provider ? latestQuote.provider : null,
       dailyClose: last(rows).close,
-      markedClose: last(markedCloses)
+      markedClose: last(markedCloses),
+      chip: Object.assign({}, chipSignal, {
+        institutionalNetRatio: institutionalNetRatio,
+        baseChipOk: base.chipOk,
+        dynamicChipOk: dynamicChipOk
+      })
     }
   };
 }
@@ -714,6 +871,46 @@ function maxDailyEquity(daily) {
 
 function coalesce(value, fallback) {
   return value != null ? value : fallback;
+}
+
+function numberAt(row, index) {
+  if (index == null || index < 0) return 0;
+  return parseTwseNumber(row[index]) || 0;
+}
+
+function recentDateCandidates(targetDate, days) {
+  const out = [];
+  const start = parseYmd(targetDate);
+  for (let i = 0; i <= days; i += 1) {
+    const d = new Date(start.getTime());
+    d.setDate(d.getDate() - i);
+    out.push(formatYmd(d));
+  }
+  return out;
+}
+
+function parseYmd(value) {
+  const text = String(value || '').slice(0, 10);
+  const parts = text.split('-').map(function(part) { return Number(part); });
+  if (parts.length === 3 && parts.every(function(part) { return Number.isFinite(part); })) {
+    return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  }
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+function formatYmd(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function ymdCompact(value) {
+  return String(value || '').replace(/-/g, '').slice(0, 8);
+}
+
+function toQuery(params) {
+  return Object.keys(params).map(function(key) {
+    return encodeURIComponent(key) + '=' + encodeURIComponent(params[key]);
+  }).join('&');
 }
 
 function round2(value) {
