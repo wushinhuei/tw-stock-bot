@@ -411,7 +411,6 @@ function render(result) {
 
   renderTodayDecision(result, latestDay);
   renderPositions(result, latestDay);
-  renderDailyRows(result.daily);
   renderTrades(result.trades, latestDay.date);
   renderCurve(result.daily);
 }
@@ -528,19 +527,6 @@ function positionStatus(candidate, position) {
   if (candidate.price <= position.stopPrice) return '跌破停損，下一日賣出';
   if (candidate.price >= position.targetPrice) return '達目標價，下一日停利';
   return candidate.grade === 'A' || candidate.grade === 'B' ? '續抱' : '防守觀察';
-}
-
-function renderDailyRows(days) {
-  document.querySelector('#dailyRows').innerHTML = days.map(day => `
-    <tr>
-      <td>${day.date}</td>
-      <td>${currency(day.equity)}</td>
-      <td>${currency(day.cash)}</td>
-      <td>${currency(day.positionValue)}</td>
-      <td class="${day.dayPnl >= 0 ? 'gain' : 'loss'}">${currency(day.dayPnl)}</td>
-      <td>${day.marketLabel}</td>
-    </tr>
-  `).join('');
 }
 
 function renderTrades(trades, currentDate) {
