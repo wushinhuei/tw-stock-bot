@@ -82,6 +82,7 @@ let scenario = Array.isArray(window.ACTUAL_SCENARIO) && window.ACTUAL_SCENARIO.l
   ? window.ACTUAL_SCENARIO
   : defaultScenario;
 let activeResult = null;
+let activeLatestDay = null;
 let refreshInFlight = false;
 let refreshTimerId = null;
 
@@ -398,6 +399,7 @@ function sellReason(candidate, marketState, position) {
 function render(result) {
   activeResult = result;
   const latestDay = scenario.filter(day => day.date >= CONFIG.simulationStartDate).at(-1);
+  activeLatestDay = latestDay;
   renderLastUpdated(result, latestDay);
   document.querySelector('#finalEquity').textContent = currency(result.finalEquity);
   document.querySelector('#finalDate').textContent = `自 ${CONFIG.simulationStartDate} 起，截至 ${latestDay.date}`;
@@ -515,11 +517,18 @@ function renderPositions(result, day) {
         <td>${price(current)}<br><span>${quoteSession}</span></td>
         <td>${currency(netValue)}<br><span>稅費後估值</span></td>
         <td class="${pnl >= 0 ? 'gain' : 'loss'}">${currency(pnl)} (${pct(pnlPct)})</td>
-        <td>${positionStatus(candidate, position)}</td>
+        <td>
+          <button type="button" class="status-button" data-position-status="${position.symbol}">
+            ${positionStatus(candidate, position)}
+          </button>
+        </td>
       </tr>
     `;
   }).join('');
   document.querySelector('#positionRows').innerHTML = rows || '<tr><td colspan="7">目前無持股，系統等待下一個合格買點。</td></tr>';
+  document.querySelectorAll('[data-position-status]').forEach(button => {
+    button.addEventListener('click', () => openPositionStatus(button.dataset.positionStatus));
+  });
 }
 
 function positionStatus(candidate, position) {
@@ -527,6 +536,78 @@ function positionStatus(candidate, position) {
   if (candidate.price <= position.stopPrice) return '跌破停損，下一日賣出';
   if (candidate.price >= position.targetPrice) return '達目標價，下一日停利';
   return candidate.grade === 'A' || candidate.grade === 'B' ? '續抱' : '防守觀察';
+}
+
+function openPositionStatus(symbol) {
+  const modal = document.querySelector('#positionStatusModal');
+  const content = document.querySelector('#positionStatusContent');
+  if (!modal || !content || !activeResult || !activeLatestDay) return;
+  const position = activeResult.positions.find(item => item.symbol === symbol);
+  const candidate = findCandidate(activeLatestDay, symbol);
+  if (!position) return;
+  content.innerHTML = positionStatusDetail(position, candidate);
+  modal.hidden = false;
+  document.body.classList.add('modal-open');
+  const closeButton = modal.querySelector('.icon-close');
+  if (closeButton) closeButton.focus();
+}
+
+function positionStatusDetail(position, candidate) {
+  const status = positionStatus(candidate, position);
+  const current = candidate ? executionSellPrice(candidate) : position.avgCost;
+  const netValue = netSellProceeds(position.shares * current, false);
+  const pnl = netValue - position.totalCost;
+  const checks = candidate ? [
+    ['等級', candidate.grade || '-'],
+    ['趨勢', candidate.trendOk ? '通過' : '未通過'],
+    ['量價', candidate.volumePriceOk ? '通過' : '未通過'],
+    ['動能', candidate.momentumOk ? '通過' : '未通過'],
+    ['籌碼', candidate.chipOk ? '通過' : '未通過'],
+    ['OBV', candidate.obvOk ? '通過' : '未通過'],
+  ] : [['資料', '今日無候選股資料']];
+  const reasons = positionStatusReasons(candidate, position, current);
+
+  return `
+    <section>
+      <h3>${position.symbol} ${position.name}：${status}</h3>
+      <div class="status-summary">
+        <div><span>持股</span><strong>${position.shares.toLocaleString('zh-TW')} 股</strong></div>
+        <div><span>成本</span><strong>${price(position.avgCost)}</strong></div>
+        <div><span>現價</span><strong>${price(current)}</strong></div>
+        <div><span>未實現損益</span><strong class="${pnl >= 0 ? 'gain' : 'loss'}">${currency(pnl)}</strong></div>
+        <div><span>停損價</span><strong>${price(position.stopPrice)}</strong></div>
+        <div><span>目標價</span><strong>${price(position.targetPrice)}</strong></div>
+      </div>
+    </section>
+    <section>
+      <h3>判斷原因</h3>
+      <ul>${reasons.map(reason => `<li>${reason}</li>`).join('')}</ul>
+    </section>
+    <section>
+      <h3>訊號檢查</h3>
+      <div class="status-checks">
+        ${checks.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function positionStatusReasons(candidate, position, current) {
+  if (!candidate) return ['目前沒有今日即時候選股資料，暫以原持倉資料估值。'];
+  if (current <= position.stopPrice) return [`現價 ${price(current)} 已跌破停損價 ${price(position.stopPrice)}，依規則列為下一次賣出。`];
+  if (current >= position.targetPrice) return [`現價 ${price(current)} 已達目標價 ${price(position.targetPrice)}，依規則列為停利候選。`];
+  if (candidate.grade === 'A' || candidate.grade === 'B') {
+    return [
+      `目前等級為 ${candidate.grade}，核心訊號仍在可持有範圍。`,
+      `現價 ${price(current)} 尚未跌破停損價 ${price(position.stopPrice)}。`,
+      `現價尚未達目標價 ${price(position.targetPrice)}，系統繼續用規則管理持倉。`,
+    ];
+  }
+  return [
+    `目前等級為 ${candidate.grade || '未分級'}，未達 A/B 續抱強度，因此列為防守觀察。`,
+    `尚未跌破停損價 ${price(position.stopPrice)}，所以沒有立即賣出。`,
+    `系統會持續觀察趨勢、量價、動能與籌碼是否恢復。`,
+  ];
 }
 
 function renderTrades(trades, currentDate) {
@@ -612,6 +693,22 @@ function initReturnsModal() {
   };
 
   openButton.addEventListener('click', open);
+  closeButtons.forEach(button => button.addEventListener('click', close));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+}
+
+function initPositionStatusModal() {
+  const modal = document.querySelector('#positionStatusModal');
+  if (!modal) return;
+
+  const closeButtons = modal.querySelectorAll('[data-close-position-status]');
+  const close = () => {
+    modal.hidden = true;
+    document.body.classList.remove('modal-open');
+  };
+
   closeButtons.forEach(button => button.addEventListener('click', close));
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !modal.hidden) close();
@@ -827,5 +924,6 @@ function scheduleNextRefresh() {
 
 initRulesModal();
 initReturnsModal();
+initPositionStatusModal();
 initDataRefresh();
 render(currentSimulation());

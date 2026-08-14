@@ -347,6 +347,48 @@ tbody tr:hover {
   background: var(--red-soft);
 }
 
+.status-button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-color: var(--line);
+  background: linear-gradient(180deg, #ffffff, #eef7f8);
+  color: #0f3f4d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status-dialog {
+  max-width: 760px;
+}
+
+.status-summary,
+.status-checks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.status-summary div,
+.status-checks div {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #f6fafb);
+}
+
+.status-summary span,
+.status-checks span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status-summary strong,
+.status-checks strong {
+  font-size: 16px;
+}
+
 .grade {
   font-weight: 800;
 }
@@ -657,6 +699,8 @@ td input {
   .decision-strip,
   .check-grid,
   .return-summary,
+  .status-summary,
+  .status-checks,
   .rules-table {
     grid-template-columns: 1fr;
   }

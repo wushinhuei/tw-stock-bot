@@ -192,6 +192,20 @@
     </section>
   </div>
 
+  <div id="positionStatusModal" class="rules-modal" hidden>
+    <div class="rules-backdrop" data-close-position-status></div>
+    <section class="rules-dialog status-dialog" role="dialog" aria-modal="true" aria-labelledby="positionStatusTitle">
+      <div class="rules-header">
+        <div>
+          <p class="eyebrow">Position Status</p>
+          <h2 id="positionStatusTitle">持倉狀態說明</h2>
+        </div>
+        <button type="button" class="icon-close" data-close-position-status aria-label="關閉持倉狀態說明">×</button>
+      </div>
+      <div id="positionStatusContent" class="rules-content"></div>
+    </section>
+  </div>
+
   <div id="rulesModal" class="rules-modal" hidden>
     <div class="rules-backdrop" data-close-rules></div>
     <section class="rules-dialog" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
@@ -301,6 +315,6 @@
   <script src="apps_script_config.js?v=20260813-apps-script"></script>
   <script src="actual_data.js?v=20260810-actual"></script>
   <script src="simulation_result.js?v=20260810-actions"></script>
-  <script src="app.js?v=20260814-chart-only"></script>
+  <script src="app.js?v=20260814-status-reasons"></script>
 </body>
 </html>
