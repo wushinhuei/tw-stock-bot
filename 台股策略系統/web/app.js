@@ -143,6 +143,17 @@ function formatTaipeiDateTime(value) {
   }).format(date);
 }
 
+function todayTaipeiDate() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function pct(value) {
   return `${(Number(value || 0) * 100).toFixed(2)}%`;
 }
@@ -469,7 +480,7 @@ function render(result) {
   renderTodayDecision(result, latestDay);
   renderAGradeCandidates(latestDay);
   renderPositions(result, latestDay);
-  renderTrades(result.trades, latestDay.date);
+  renderTrades(result.trades, todayTaipeiDate());
   renderCurve(result.daily);
 }
 
@@ -731,7 +742,7 @@ function renderTrades(trades, currentDate) {
       <td class="${trade.pnl >= 0 ? 'gain' : 'loss'}">${currency(trade.pnl)}</td>
       <td class="reason">${displayTradeReason(trade.reason)}</td>
     </tr>
-  `).join('') || '<tr><td colspan="9">今日尚無自動交易紀錄。</td></tr>';
+  `).join('') || '<tr><td colspan="9">今日暫無交易。</td></tr>';
 }
 
 function uniqueTradeDates(trades) {
