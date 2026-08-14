@@ -115,7 +115,7 @@ function refreshDashboard(options) {
 function buildScenarioForRefresh(previous, schedule) {
   const previousDay = previous && Array.isArray(previous.scenario) ? last(previous.scenario) : null;
   if (previousDay && previousDay.date === schedule.date && Array.isArray(previousDay.candidates)) {
-    return [quickRefreshScenario(previousDay, schedule)];
+    return quickRefreshScenario(previousDay, schedule);
   }
   return buildScenario();
 }
