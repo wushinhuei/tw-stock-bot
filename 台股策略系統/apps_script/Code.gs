@@ -494,7 +494,7 @@ function candidateFromHeldPosition(position, item, quote, previousDay) {
     bidPrice: bidPrice,
     askPrice: askPrice,
     grade: 'C',
-    reason: 'Existing holding quote supplement; not in current top-volume target scan',
+    reason: '既有持倉補報價；未列入今日成交量前 100 名目標族群掃描',
     stopPrice: position.stopPrice || round2(price * 0.98),
     targetPrice: position.targetPrice || round2(price * 1.08),
     dayTradeOk: false,
@@ -1388,7 +1388,7 @@ function rotateOutOfWeakPositions(account, day, marketState) {
       tax: tax,
       pnl: pnl,
       session: candidate.session || day.session || 'REGULAR',
-      reason: 'Rotate out of non-A holding because A-grade candidates are available' + sessionReason(candidate)
+      reason: '出現 A 級候選股，非 A 持倉輪動轉出' + sessionReason(candidate)
     });
   });
   account.positions = stillHolding;
@@ -1435,7 +1435,7 @@ function buyByRules(account, day, marketState) {
       tax: 0,
       pnl: 0,
       session: candidate.session || day.session || 'REGULAR',
-      reason: candidate.grade + ' rule entry; fee ' + fee + sessionReason(candidate)
+      reason: candidate.grade + ' 級共振，強制依規則買進；手續費 ' + fee + sessionReason(candidate)
     });
   });
 }
@@ -1477,7 +1477,7 @@ function runDayTrades(account, day, marketState) {
       tax: tax,
       pnl: pnl,
       session: 'REGULAR',
-      reason: 'Intraday rule simulation using current ask/bid'
+      reason: '當沖規則模擬，使用目前委買／委賣價估算'
     });
   });
 }
@@ -1489,18 +1489,18 @@ function hasTrade(account, date, symbol, action) {
 }
 
 function sellReason(candidate, marketState, position) {
-  if (candidate.price <= position.stopPrice) return 'Stop loss';
-  if (candidate.price >= position.targetPrice) return 'Target reached';
-  if (candidate.grade === 'BLOCKED') return 'Signal blocked';
-  if (marketState.mode === 'DEFENSIVE') return 'Market defensive';
-  return 'Rule exit';
+  if (candidate.price <= position.stopPrice) return '跌破停損價';
+  if (candidate.price >= position.targetPrice) return '達到目標價';
+  if (candidate.grade === 'BLOCKED') return '訊號遭規則阻擋';
+  if (marketState.mode === 'DEFENSIVE') return '大盤進入防守模式';
+  return '依出場規則賣出';
 }
 
 function sessionReason(candidate) {
   if (candidate && candidate.session === 'AFTER_MARKET') {
-    return '; after-hours fixed-price simulation';
+    return '；盤後定價模擬';
   }
-  return '; regular-session simulation';
+  return '；盤中模擬';
 }
 
 function marketValue(positions, day) {

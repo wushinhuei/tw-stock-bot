@@ -531,7 +531,7 @@ function renderHistoryTradeRows(trades, selectedDate) {
   document.querySelector('#historyTradeRows').innerHTML = filteredTrades.slice().reverse().map(trade => `
     <tr>
       <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
-      <td><span class="badge ${actionBadgeClass(trade.action)}">${trade.action}</span></td>
+      <td><span class="badge ${actionBadgeClass(trade.action)}">${displayTradeAction(trade.action)}</span></td>
       <td><strong>${trade.symbol}</strong><br><span>${trade.name}</span></td>
       <td>${Number(trade.shares || 0).toLocaleString('zh-TW')}</td>
       <td>${price(trade.price)}</td>
@@ -539,7 +539,7 @@ function renderHistoryTradeRows(trades, selectedDate) {
       <td>${currency(trade.fee || 0)}</td>
       <td>${currency(trade.tax || 0)}</td>
       <td class="${(trade.pnl || 0) >= 0 ? 'gain' : 'loss'}">${currency(trade.pnl || 0)}</td>
-      <td class="reason">${trade.reason || '-'}</td>
+      <td class="reason">${displayTradeReason(trade.reason)}</td>
     </tr>
   `).join('') || '<tr><td colspan="10">該日期尚無交易明細</td></tr>';
 }
@@ -722,14 +722,14 @@ function renderTrades(trades, currentDate) {
   document.querySelector('#tradeRows').innerHTML = todayTrades.slice().reverse().map(trade => `
     <tr>
       <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
-      <td><span class="badge ${actionBadgeClass(trade.action)}">${trade.action}</span></td>
+      <td><span class="badge ${actionBadgeClass(trade.action)}">${displayTradeAction(trade.action)}</span></td>
       <td><strong>${trade.symbol}</strong><br><span>${trade.name}</span></td>
       <td>${trade.shares.toLocaleString('zh-TW')}</td>
       <td>${price(trade.price)}</td>
       <td>${currency(trade.fee || 0)}</td>
       <td>${currency(trade.tax || 0)}</td>
       <td class="${trade.pnl >= 0 ? 'gain' : 'loss'}">${currency(trade.pnl)}</td>
-      <td class="reason">${trade.reason}</td>
+      <td class="reason">${displayTradeReason(trade.reason)}</td>
     </tr>
   `).join('') || '<tr><td colspan="9">今日尚無自動交易紀錄。</td></tr>';
 }
@@ -742,6 +742,36 @@ function actionBadgeClass(action) {
   if (action === '買進' || action === 'BUY') return 'buy';
   if (action === '賣出' || action === 'SELL') return 'blocked';
   return 'watch';
+}
+
+function displayTradeAction(action) {
+  const map = {
+    BUY: '買進',
+    SELL: '賣出',
+    DAYTRADE: '當沖',
+    buy: '買進',
+    sell: '賣出',
+    daytrade: '當沖',
+  };
+  return map[action] || action || '-';
+}
+
+function displayTradeReason(reason) {
+  if (!reason) return '-';
+  return String(reason)
+    .replace(/Intraday rule simulation using current ask\/bid/g, '當沖規則模擬，使用目前委買／委賣價估算')
+    .replace(/Rotate out of non-A holding because A-grade candidates are available/g, '出現 A 級候選股，非 A 持倉輪動轉出')
+    .replace(/Existing holding quote supplement; not in current top-volume target scan/g, '既有持倉補報價；未列入今日成交量前 100 名目標族群掃描')
+    .replace(/([ABC]) rule entry; fee ([0-9,.]+)/g, '$1 級共振，強制依規則買進；手續費 $2')
+    .replace(/Stop loss/g, '跌破停損價')
+    .replace(/Target reached/g, '達到目標價')
+    .replace(/Signal blocked/g, '訊號遭規則阻擋')
+    .replace(/Market defensive/g, '大盤進入防守模式')
+    .replace(/Rule exit/g, '依出場規則賣出')
+    .replace(/; after-hours fixed-price simulation/g, '；盤後定價模擬')
+    .replace(/; regular-session simulation/g, '；盤中模擬')
+    .replace(/after-hours fixed-price simulation/g, '盤後定價模擬')
+    .replace(/regular-session simulation/g, '盤中模擬');
 }
 
 function renderCurve(days) {
