@@ -676,7 +676,12 @@ function requestJsonp(url) {
   return new Promise((resolve, reject) => {
     const callbackName = `twStockCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const script = document.createElement('script');
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`Apps Script timeout ${url}`));
+    }, 30000);
     const cleanup = () => {
+      window.clearTimeout(timer);
       delete window[callbackName];
       script.remove();
     };
@@ -740,7 +745,7 @@ function refreshIntervalMs() {
 async function refreshData(options = {}) {
   if (refreshInFlight) return;
   refreshInFlight = true;
-  const force = Boolean(options.force) || isTaiwanMarketLive();
+  const force = Boolean(options.force);
   const button = document.querySelector('#refreshDataButton');
   if (button) {
     button.disabled = true;

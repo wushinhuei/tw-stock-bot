@@ -93,7 +93,7 @@ function refreshDashboard(options) {
 
   try {
     const previous = readOrSeedPayload();
-    const scenario = buildScenario();
+    const scenario = buildScenarioForRefresh(previous, schedule);
     const latestDay = last(scenario);
     const previousSimulation = previous && previous.simulation ? previous.simulation : null;
     const simulation = nextSimulation(previousSimulation, latestDay);
@@ -110,6 +110,14 @@ function refreshDashboard(options) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function buildScenarioForRefresh(previous, schedule) {
+  const previousDay = previous && Array.isArray(previous.scenario) ? last(previous.scenario) : null;
+  if (previousDay && previousDay.date === schedule.date && Array.isArray(previousDay.candidates)) {
+    return [quickRefreshScenario(previousDay, schedule)];
+  }
+  return buildScenario();
 }
 
 function readOrSeedPayload() {
@@ -189,6 +197,75 @@ function buildScenario() {
       chipDates: chipData._meta || null
     }
   }];
+}
+
+function quickRefreshScenario(previousDay, schedule) {
+  const twseQuotes = safeFetchTwseQuotes(UNIVERSE);
+  const afterMarketTrades = safeFetchAfterMarketTrades(previousDay.date, UNIVERSE);
+  const marketQuote = safeFetchLatestQuote('^TWII');
+  const candidates = previousDay.candidates.map(function(candidate) {
+    const baseQuote = twseQuotes[candidate.symbol] || {
+      price: candidate.price,
+      bidPrice: candidate.bidPrice,
+      askPrice: candidate.askPrice,
+      volume: 0,
+      time: candidate.metrics && candidate.metrics.latestQuoteTime,
+      provider: candidate.metrics && candidate.metrics.latestQuoteProvider
+    };
+    const quote = applyAfterMarketTrade(baseQuote, afterMarketTrades[candidate.symbol]);
+    return updateCandidateQuote(candidate, quote);
+  });
+
+  return [Object.assign({}, previousDay, {
+    session: hasAfterMarketTrades(afterMarketTrades) ? 'AFTER_MARKET' : 'REGULAR',
+    market: Object.assign({}, previousDay.market, {
+      close: marketQuote && marketQuote.price != null ? round2(marketQuote.price) : previousDay.market.close
+    }),
+    candidates: candidates,
+    source: Object.assign({}, previousDay.source || {}, {
+      provider: 'Apps Script quick refresh + TWSE MIS + TWSE BFT41U after-hours',
+      generatedAt: new Date().toISOString(),
+      refreshMode: 'quick',
+      schedule: schedule,
+      afterMarketDate: afterMarketTrades._meta ? afterMarketTrades._meta.date : null
+    })
+  })];
+}
+
+function updateCandidateQuote(candidate, quote) {
+  if (!quote || quote.price == null) return candidate;
+  const price = round2(quote.price);
+  const bidPrice = quote.bidPrice != null ? round2(quote.bidPrice) : price;
+  const askPrice = quote.askPrice != null ? round2(quote.askPrice) : price;
+  const updated = Object.assign({}, candidate, {
+    price: price,
+    bidPrice: bidPrice,
+    askPrice: askPrice,
+    session: quote.session || 'REGULAR',
+    afterMarketPrice: quote.afterMarket ? round2(quote.afterMarket.price) : null,
+    afterMarketVolume: quote.afterMarket ? quote.afterMarket.volume : 0,
+    afterMarketTransactions: quote.afterMarket ? quote.afterMarket.transactions : 0,
+    afterMarketBidVolume: quote.afterMarket ? quote.afterMarket.bidVolume : 0,
+    afterMarketAskVolume: quote.afterMarket ? quote.afterMarket.askVolume : 0
+  });
+  updated.intradayReturnPct = candidate.metrics && candidate.metrics.dailyClose
+    ? Math.max(-0.03, Math.min(0.03, price / candidate.metrics.dailyClose - 1))
+    : candidate.intradayReturnPct;
+  updated.dayTradeOk = candidate.grade !== 'BLOCKED' &&
+    Boolean(candidate.dayTradeOk || Math.abs(updated.intradayReturnPct || 0) >= 0.002) &&
+    quoteSpreadPct(quote, price) <= 0.006;
+  updated.metrics = Object.assign({}, candidate.metrics || {}, {
+    latestQuoteTime: quote.time || null,
+    latestQuoteProvider: quote.provider || null,
+    session: quote.session || 'REGULAR',
+    bidPrice: quote.bidPrice != null ? bidPrice : null,
+    askPrice: quote.askPrice != null ? askPrice : null,
+    afterMarket: quote.afterMarket || null,
+    spreadPct: quoteSpreadPct(quote, price),
+    markedClose: price,
+    refreshMode: 'quick'
+  });
+  return updated;
 }
 
 function fetchChart(symbol, range, interval) {

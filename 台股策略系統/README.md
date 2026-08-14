@@ -25,8 +25,8 @@ web/
 
 GitHub Pages 前端：
 - 顯示總資產、報酬率、持倉、交易紀錄。
-- 每 1 分鐘讀取 Apps Script 最新結果；休市或非更新時段只讀快取。
-- 按「更新資料」會要求 Apps Script 立即重抓。
+- 盤中約每 15 秒讀取 Apps Script 最新快取；休市或非更新時段只讀快取。
+- 按「更新資料」才會要求 Apps Script 立即重抓。
 - Apps Script 失敗時會退回靜態備援資料。
 
 ```text
