@@ -210,6 +210,7 @@ button:hover,
 .workspace,
 .holdings-panel,
 .journal,
+.scanner-panel,
 .simulation-panel {
   padding: 22px;
 }
@@ -237,6 +238,67 @@ button:hover,
 .decision-strip span {
   color: var(--muted);
   line-height: 1.5;
+}
+
+.candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.candidate-card,
+.empty-candidates {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 15px;
+  background:
+    linear-gradient(180deg, #ffffff, #f6fafb);
+  display: grid;
+  gap: 12px;
+  border-top: 3px solid var(--gold);
+}
+
+.candidate-card strong,
+.empty-candidates strong {
+  font-size: 18px;
+}
+
+.candidate-card span,
+.empty-candidates span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.candidate-price {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--green);
+}
+
+.candidate-signals,
+.candidate-plan {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.candidate-signals span,
+.candidate-plan span {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: #18517f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.candidate-plan span {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.empty-candidates {
+  grid-column: 1 / -1;
 }
 
 .section-title {
@@ -679,6 +741,7 @@ td input {
   .totals,
   .simulation-totals,
   .decision-strip,
+  .candidate-grid,
   .check-grid,
   .return-summary,
   .rules-table {
@@ -697,6 +760,7 @@ td input {
   .totals,
   .simulation-totals,
   .decision-strip,
+  .candidate-grid,
   .check-grid,
   .return-summary,
   .status-summary,

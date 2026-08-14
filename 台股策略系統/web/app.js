@@ -157,8 +157,7 @@ function canOpenPosition(candidate, marketState, account) {
   if (account.dailyStopped) return false;
   if (candidate.grade === 'BLOCKED' || candidate.price <= candidate.stopPrice) return false;
   if (marketState.mode === 'DEFENSIVE') return false;
-  if (candidate.grade === 'A') return true;
-  return candidate.grade === 'B' && marketState.mode === 'AGGRESSIVE';
+  return candidate.grade === 'A';
 }
 
 function positionPct(candidate, account) {
@@ -319,7 +318,7 @@ function runDayTrades(account, day, marketState) {
   if (day.session === 'AFTER_MARKET') return;
   if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
   day.candidates
-    .filter(candidate => candidate.dayTradeOk && candidate.grade !== 'BLOCKED')
+    .filter(candidate => candidate.dayTradeOk && candidate.grade === 'A')
     .forEach(candidate => {
       const budget = account.initialCapital * CONFIG.dayTradeCapitalPct;
       const lotCost = candidate.price * CONFIG.boardLot;
@@ -412,6 +411,7 @@ function render(result) {
   document.querySelector('#maxDrawdown').className = 'loss';
 
   renderTodayDecision(result, latestDay);
+  renderAGradeCandidates(latestDay);
   renderPositions(result, latestDay);
   renderTrades(result.trades, latestDay.date);
   renderCurve(result.daily);
@@ -590,6 +590,50 @@ function positionStatusDetail(position, candidate) {
       </div>
     </section>
   `;
+}
+
+function renderAGradeCandidates(day) {
+  const target = document.querySelector('#aGradeCandidates');
+  if (!target || !day) return;
+  const source = day.source?.universe || {};
+  const aGrades = (day.candidates || [])
+    .filter(candidate => candidate.grade === 'A')
+    .sort((a, b) => (a.metrics?.volumeRank || 999) - (b.metrics?.volumeRank || 999));
+
+  if (!aGrades.length) {
+    target.innerHTML = `
+      <div class="empty-candidates">
+        <strong>今日尚無 A 級候選股</strong>
+        <span>系統已先過濾成交量前 ${source.topVolumeLimit || 100} 名與指定族群；未達產業、籌碼、趨勢、量價、動能全共振時，不主動買進。</span>
+      </div>
+    `;
+    return;
+  }
+
+  target.innerHTML = aGrades.map(candidate => {
+    const rank = candidate.metrics?.volumeRank ? `成交量第 ${candidate.metrics.volumeRank} 名` : '成交量排名：-';
+    const volumeRatio = candidate.metrics?.volumeRatio ? `${Number(candidate.metrics.volumeRatio).toFixed(2)} 倍量` : '量能：-';
+    const rsiText = candidate.metrics?.rsi14 != null ? `RSI ${Number(candidate.metrics.rsi14).toFixed(1)}` : 'RSI -';
+    const macdText = candidate.metrics?.macdHist != null ? `MACD ${Number(candidate.metrics.macdHist).toFixed(2)}` : 'MACD -';
+    return `
+      <article class="candidate-card">
+        <div>
+          <strong>${candidate.symbol} ${candidate.name}</strong>
+          <span>${candidate.group} · ${rank}</span>
+        </div>
+        <div class="candidate-price">${price(candidate.price)}</div>
+        <div class="candidate-signals">
+          <span>${volumeRatio}</span>
+          <span>${rsiText}</span>
+          <span>${macdText}</span>
+        </div>
+        <div class="candidate-plan">
+          <span>停損 ${price(candidate.stopPrice)}</span>
+          <span>目標 ${price(candidate.targetPrice)}</span>
+        </div>
+      </article>
+    `;
+  }).join('');
 }
 
 function positionStatusReasons(candidate, position, current) {

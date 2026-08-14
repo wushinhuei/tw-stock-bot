@@ -14,13 +14,15 @@ const CONFIG = {
   weeklyStopLossPct: -0.05,
   dayTradeCapitalPct: 0.1,
   afterMarketPositionPct: 0.1,
+  topVolumeLimit: 100,
+  maxScanCandidates: 30,
   brokerFeeRate: 0.001425,
   minBrokerFee: 1,
   stockSellTaxRate: 0.003,
   dayTradeSellTaxRate: 0.0015
 };
 
-const UNIVERSE = [
+const FALLBACK_UNIVERSE = [
   { symbol: '2382.TW', code: '2382', name: '\u5ee3\u9054', group: 'AI\u8a2d\u5099', industryOk: true, fundamentalOk: true, chipOk: true },
   { symbol: '2049.TW', code: '2049', name: '\u4e0a\u9280', group: '\u6a5f\u5668\u4eba', industryOk: true, fundamentalOk: false, chipOk: false },
   { symbol: '1513.TW', code: '1513', name: '\u4e2d\u8208\u96fb', group: '\u96fb\u529b', industryOk: true, fundamentalOk: true, chipOk: false },
@@ -30,6 +32,34 @@ const UNIVERSE = [
   { symbol: '2308.TW', code: '2308', name: '\u53f0\u9054\u96fb', group: '\u96fb\u529b', industryOk: true, fundamentalOk: true, chipOk: true },
   { symbol: '2357.TW', code: '2357', name: '\u83ef\u78a9', group: 'AI\u8a2d\u5099', industryOk: true, fundamentalOk: true, chipOk: false }
 ];
+
+const TARGET_GROUP_RULES = [
+  {
+    group: 'AI設備',
+    keywords: [
+      'AI', '人工智慧', '伺服器', '雲端', '散熱', '光通訊', '網通', 'PCB', 'CCL',
+      '電源', '機殼', '導軌', '軸承', '廣達', '緯創', '英業達', '鴻海', '華碩',
+      '技嘉', '微星', '奇鋐', '雙鴻', '健策', '台光電', '金像電', '欣興', '台達電'
+    ]
+  },
+  {
+    group: '電力',
+    keywords: ['電力', '電機', '重電', '電纜', '線纜', '變壓器', '能源', '綠能', '電源', '中興電', '華城', '士電', '亞力', '大同', '台達電']
+  },
+  {
+    group: '半導體',
+    keywords: ['半導體', '晶圓', '矽', '封測', 'IC', '晶片', '電子', '設備', '材料', '台積電', '聯發科', '聯電', '日月光', '世界', '環球晶', '辛耘', '弘塑', '旺矽', '穎崴']
+  },
+  {
+    group: '機器人',
+    keywords: ['機器人', '自動化', '工具機', '傳動', '線軌', '馬達', '伺服', '控制器', '上銀', '直得', '和椿', '所羅門', '新代', '羅昇']
+  }
+];
+
+const FALLBACK_UNIVERSE_BY_CODE = FALLBACK_UNIVERSE.reduce(function(map, item) {
+  map[item.code] = item;
+  return map;
+}, {});
 
 function doGet(e) {
   const params = e && e.parameter ? e.parameter : {};
@@ -162,11 +192,13 @@ function buildScenario() {
     ma50: round2(sma(marketCloses, 50))
   };
 
+  const universeResult = buildTradingUniverse(latestMarket.date);
+  const universe = universeResult.items;
   const candidates = [];
-  const twseQuotes = safeFetchTwseQuotes(UNIVERSE);
-  const afterMarketTrades = safeFetchAfterMarketTrades(latestMarket.date, UNIVERSE);
-  const chipData = safeFetchOfficialChipData(latestMarket.date, UNIVERSE);
-  UNIVERSE.forEach(function(stockInfo) {
+  const twseQuotes = safeFetchTwseQuotes(universe);
+  const afterMarketTrades = safeFetchAfterMarketTrades(latestMarket.date, universe);
+  const chipData = safeFetchOfficialChipData(latestMarket.date, universe);
+  universe.forEach(function(stockInfo) {
     try {
       const result = fetchChart(stockInfo.symbol, '1y', '1d');
       const yahooQuote = safeFetchLatestQuote(stockInfo.symbol);
@@ -193,15 +225,169 @@ function buildScenario() {
       provider: 'Apps Script + TWSE MIS + TWSE BFT41U after-hours + TWSE T86/MI_MARGN + Yahoo Finance chart API',
       generatedAt: new Date().toISOString(),
       startDate: START_DATE,
+      universe: universeResult.meta,
       afterMarketDate: afterMarketTrades._meta ? afterMarketTrades._meta.date : null,
       chipDates: chipData._meta || null
     }
   }];
 }
 
+function buildTradingUniverse(targetDate) {
+  const fallbackMeta = {
+    mode: 'fallback',
+    source: 'static fallback universe',
+    topVolumeLimit: CONFIG.topVolumeLimit,
+    scannedLimit: FALLBACK_UNIVERSE.length,
+    filteredCount: FALLBACK_UNIVERSE.length,
+    groups: targetGroupNames()
+  };
+
+  try {
+    const ranked = fetchTopVolumeStocks(targetDate, CONFIG.topVolumeLimit);
+    const selected = ranked
+      .map(function(row) { return classifyTargetStock(row); })
+      .filter(Boolean)
+      .slice(0, CONFIG.maxScanCandidates);
+
+    if (!selected.length) {
+      return { items: FALLBACK_UNIVERSE, meta: Object.assign({}, fallbackMeta, {
+        reason: 'top volume list had no target-group matches'
+      }) };
+    }
+
+    return {
+      items: selected,
+      meta: {
+        mode: 'dynamic',
+        source: 'TWSE MI_INDEX top volume',
+        date: targetDate,
+        topVolumeLimit: CONFIG.topVolumeLimit,
+        scannedLimit: CONFIG.maxScanCandidates,
+        rankedCount: ranked.length,
+        filteredCount: selected.length,
+        groups: targetGroupNames()
+      }
+    };
+  } catch (error) {
+    console.warn('Dynamic universe fallback: ' + error.message);
+    return { items: FALLBACK_UNIVERSE, meta: Object.assign({}, fallbackMeta, {
+      error: error.message
+    }) };
+  }
+}
+
+function universeFromCandidates(candidates) {
+  const items = (candidates || []).map(function(candidate) {
+    const inherited = FALLBACK_UNIVERSE_BY_CODE[candidate.symbol] || {};
+    return {
+      symbol: (candidate.symbol || inherited.code) + '.TW',
+      code: candidate.symbol || inherited.code,
+      name: candidate.name || inherited.name || candidate.symbol,
+      group: candidate.group || inherited.group || '目標族群',
+      industryOk: candidate.industryOk !== false,
+      fundamentalOk: candidate.fundamentalOk !== false,
+      chipOk: Boolean(candidate.metrics && candidate.metrics.chip && candidate.metrics.chip.baseChipOk) || Boolean(inherited.chipOk),
+      volumeRank: candidate.metrics && candidate.metrics.volumeRank,
+      screeningVolume: candidate.metrics && candidate.metrics.screeningVolume
+    };
+  }).filter(function(item) {
+    return item.code;
+  });
+  return items.length ? items : FALLBACK_UNIVERSE;
+}
+
+function fetchTopVolumeStocks(targetDate, limit) {
+  const payload = fetchLatestTwseTable('exchangeReport/MI_INDEX', targetDate, {
+    type: 'ALLBUT0999'
+  }, function(json) {
+    return parseTopVolumeRows(json, limit).length > 0;
+  });
+  return parseTopVolumeRows(payload.json, limit).map(function(row) {
+    return Object.assign({}, row, { sourceDate: payload.date });
+  });
+}
+
+function parseTopVolumeRows(json, limit) {
+  const tables = json && Array.isArray(json.tables)
+    ? json.tables
+    : [{ fields: json && json.fields, data: json && json.data }];
+  let rows = [];
+
+  tables.forEach(function(table) {
+    const fields = table && table.fields ? table.fields : [];
+    const data = table && table.data ? table.data : [];
+    const codeIndex = fieldIndex(fields, /證券代號/);
+    const nameIndex = fieldIndex(fields, /證券名稱/);
+    const volumeIndex = fieldIndex(fields, /成交股數|成交量/);
+    const closeIndex = fieldIndex(fields, /收盤價|成交價/);
+    if (codeIndex < 0 || nameIndex < 0 || volumeIndex < 0) return;
+
+    rows = rows.concat(data.map(function(rowObject) {
+      const row = rowObject && rowObject.value ? rowObject.value : rowObject;
+      if (!Array.isArray(row)) return null;
+      const code = String(row[codeIndex] || '').trim();
+      if (!/^\d{4}$/.test(code)) return null;
+      return {
+        code: code,
+        name: String(row[nameIndex] || '').trim(),
+        volume: parseTwseNumber(row[volumeIndex]) || 0,
+        close: closeIndex >= 0 ? parseTwseNumber(row[closeIndex]) : null
+      };
+    }).filter(Boolean));
+  });
+
+  return rows
+    .sort(function(a, b) { return b.volume - a.volume; })
+    .slice(0, limit || CONFIG.topVolumeLimit)
+    .map(function(row, index) {
+      return Object.assign({}, row, { volumeRank: index + 1 });
+    });
+}
+
+function classifyTargetStock(row) {
+  const inherited = FALLBACK_UNIVERSE_BY_CODE[row.code] || null;
+  const group = inherited ? inherited.group : detectTargetGroup(row);
+  if (!group) return null;
+  return {
+    symbol: row.code + '.TW',
+    code: row.code,
+    name: row.name,
+    group: group,
+    industryOk: true,
+    fundamentalOk: inherited ? inherited.fundamentalOk : true,
+    chipOk: inherited ? inherited.chipOk : false,
+    volumeRank: row.volumeRank,
+    screeningVolume: row.volume,
+    screeningClose: row.close
+  };
+}
+
+function detectTargetGroup(row) {
+  const text = [row.code, row.name].join(' ');
+  for (let i = 0; i < TARGET_GROUP_RULES.length; i += 1) {
+    const rule = TARGET_GROUP_RULES[i];
+    for (let j = 0; j < rule.keywords.length; j += 1) {
+      if (text.indexOf(rule.keywords[j]) >= 0) return rule.group;
+    }
+  }
+  return null;
+}
+
+function targetGroupNames() {
+  return TARGET_GROUP_RULES.map(function(rule) { return rule.group; });
+}
+
+function fieldIndex(fields, pattern) {
+  for (let i = 0; i < fields.length; i += 1) {
+    if (pattern.test(String(fields[i] || ''))) return i;
+  }
+  return -1;
+}
+
 function quickRefreshScenario(previousDay, schedule) {
-  const twseQuotes = safeFetchTwseQuotes(UNIVERSE);
-  const afterMarketTrades = safeFetchAfterMarketTrades(previousDay.date, UNIVERSE);
+  const refreshUniverse = universeFromCandidates(previousDay.candidates || []);
+  const twseQuotes = safeFetchTwseQuotes(refreshUniverse);
+  const afterMarketTrades = safeFetchAfterMarketTrades(previousDay.date, refreshUniverse);
   const marketQuote = safeFetchLatestQuote('^TWII');
   const candidates = previousDay.candidates.map(function(candidate) {
     const baseQuote = twseQuotes[candidate.symbol] || {
@@ -226,6 +412,9 @@ function quickRefreshScenario(previousDay, schedule) {
       provider: 'Apps Script quick refresh + TWSE MIS + TWSE BFT41U after-hours',
       generatedAt: new Date().toISOString(),
       refreshMode: 'quick',
+      universe: Object.assign({}, previousDay.source && previousDay.source.universe ? previousDay.source.universe : {}, {
+        refreshedCount: refreshUniverse.length
+      }),
       schedule: schedule,
       afterMarketDate: afterMarketTrades._meta ? afterMarketTrades._meta.date : null
     })
@@ -782,6 +971,9 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
       rsi14: rsi14,
       macdHist: m.hist,
       volumeRatio: volumeRatio,
+      volumeRank: base.volumeRank || null,
+      screeningVolume: base.screeningVolume || null,
+      screeningClose: base.screeningClose || null,
       sourceSymbol: base.symbol,
       latestQuoteTime: latestQuote && latestQuote.time ? latestQuote.time : null,
       latestQuoteProvider: latestQuote && latestQuote.provider ? latestQuote.provider : null,
@@ -962,8 +1154,7 @@ function canOpenPosition(candidate, marketState, account) {
   if (account.dailyStopped) return false;
   if (candidate.grade === 'BLOCKED' || candidate.price <= candidate.stopPrice) return false;
   if (marketState.mode === 'DEFENSIVE') return false;
-  if (candidate.grade === 'A') return true;
-  return candidate.grade === 'B' && (marketState.mode === 'AGGRESSIVE' || marketState.mode === 'LIGHT');
+  return candidate.grade === 'A';
 }
 
 function positionPct(candidate, account) {
@@ -1068,7 +1259,7 @@ function runDayTrades(account, day, marketState) {
   if (day.session === 'AFTER_MARKET') return;
   if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
   day.candidates.filter(function(candidate) {
-    return candidate.dayTradeOk && candidate.grade !== 'BLOCKED';
+    return candidate.dayTradeOk && candidate.grade === 'A';
   }).forEach(function(candidate) {
     const budget = account.initialCapital * CONFIG.dayTradeCapitalPct;
     const buyPrice = executionBuyPrice(candidate);

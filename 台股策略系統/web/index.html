@@ -55,6 +55,16 @@
       <div id="todayDecision" class="decision-strip"></div>
     </section>
 
+    <section class="panel scanner-panel">
+      <div class="section-title">
+        <div>
+          <h2>今日 A 級候選股</h2>
+          <p>只從成交量前 100 名，且屬 AI、電力、半導體、機器人族群的股票中挑選；A 級才允許主動模擬買進。</p>
+        </div>
+      </div>
+      <div id="aGradeCandidates" class="candidate-grid"></div>
+    </section>
+
     <section class="panel holdings-panel">
       <div class="section-title">
         <div>
@@ -254,7 +264,7 @@
           <h3>A/B/C 進場分級</h3>
           <div class="rules-table">
             <div><strong>A 級</strong><span>全部條件共振，可用標準部位。</span></div>
-            <div><strong>B 級</strong><span>缺一項，但大盤與趨勢仍強，只能半部位。</span></div>
+            <div><strong>B 級</strong><span>缺一項，但大盤與趨勢仍強；目前僅列入觀察，不主動買進。</span></div>
             <div><strong>C 級</strong><span>只有技術訊號，缺產業或籌碼背書，只觀察不買。</span></div>
           </div>
         </section>
@@ -262,6 +272,8 @@
         <section>
           <h3>技術與動能</h3>
           <ul>
+            <li>候選股池先限定為成交量前 100 名，並只挑 AI、電力、半導體、機器人等族群。</li>
+            <li>只有 A 級可主動波段買進或當沖；B 級與 C 級只觀察，不新增部位。</li>
             <li>有效突破需站上魔王線、景線或前高，且成交量放大到平均量 2 倍以上。</li>
             <li>MACD 快慢線在零軸上、柱狀圖翻紅，代表多頭動能較強。</li>
             <li>RSI 站上 50 偏多；強勢股 RSI 大於 70 不一定立刻賣出。</li>
@@ -330,6 +342,6 @@
   <script src="apps_script_config.js?v=20260813-apps-script"></script>
   <script src="actual_data.js?v=20260810-actual"></script>
   <script src="simulation_result.js?v=20260810-actions"></script>
-  <script src="app.js?v=20260814-exit-rules"></script>
+  <script src="app.js?v=20260814-a-grade-scanner"></script>
 </body>
 </html>
