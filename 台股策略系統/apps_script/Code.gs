@@ -146,9 +146,9 @@ function buildScenarioForRefresh(previous, schedule) {
   const previousDay = previous && Array.isArray(previous.scenario) ? last(previous.scenario) : null;
   const hasScannerUniverse = Boolean(previousDay && previousDay.source && previousDay.source.universe && previousDay.source.universe.mode);
   if (previousDay && previousDay.date === schedule.date && Array.isArray(previousDay.candidates) && hasScannerUniverse) {
-    return quickRefreshScenario(previousDay, schedule);
+    return quickRefreshScenario(previousDay, schedule, previous && previous.simulation ? previous.simulation.positions : []);
   }
-  return buildScenario();
+  return buildScenario(previous && previous.simulation ? previous.simulation.positions : []);
 }
 
 function readOrSeedPayload() {
@@ -181,7 +181,7 @@ function parseWindowAssignment(text, key) {
   return JSON.parse(match[1]);
 }
 
-function buildScenario() {
+function buildScenario(existingPositions) {
   const marketResult = fetchChart('^TWII', '1y', '1d');
   const marketQuote = safeFetchLatestQuote('^TWII');
   const marketRows = mergeLatestRow(rowsFromChart(marketResult), marketQuote);
@@ -193,7 +193,7 @@ function buildScenario() {
     ma50: round2(sma(marketCloses, 50))
   };
 
-  const universeResult = buildTradingUniverse(latestMarket.date);
+  const universeResult = buildTradingUniverse(latestMarket.date, existingPositions || []);
   const universe = universeResult.items;
   const candidates = [];
   const twseQuotes = safeFetchTwseQuotes(universe);
@@ -233,25 +233,28 @@ function buildScenario() {
   }];
 }
 
-function buildTradingUniverse(targetDate) {
+function buildTradingUniverse(targetDate, existingPositions) {
+  const heldItems = positionUniverseItems(existingPositions || []);
   const fallbackMeta = {
     mode: 'fallback',
     source: 'static fallback universe',
     topVolumeLimit: CONFIG.topVolumeLimit,
     scannedLimit: FALLBACK_UNIVERSE.length,
     filteredCount: FALLBACK_UNIVERSE.length,
+    heldSupplementCount: heldItems.length,
     groups: targetGroupNames()
   };
 
   try {
     const ranked = fetchTopVolumeStocks(targetDate, CONFIG.topVolumeLimit);
-    const selected = ranked
+    let selected = ranked
       .map(function(row) { return classifyTargetStock(row); })
       .filter(Boolean)
       .slice(0, CONFIG.maxScanCandidates);
+    selected = mergeUniverseItems(selected, heldItems);
 
     if (!selected.length) {
-      return { items: FALLBACK_UNIVERSE, meta: Object.assign({}, fallbackMeta, {
+      return { items: mergeUniverseItems(FALLBACK_UNIVERSE, heldItems), meta: Object.assign({}, fallbackMeta, {
         reason: 'top volume list had no target-group matches'
       }) };
     }
@@ -266,15 +269,45 @@ function buildTradingUniverse(targetDate) {
         scannedLimit: CONFIG.maxScanCandidates,
         rankedCount: ranked.length,
         filteredCount: selected.length,
+        heldSupplementCount: heldItems.length,
         groups: targetGroupNames()
       }
     };
   } catch (error) {
     console.warn('Dynamic universe fallback: ' + error.message);
-    return { items: FALLBACK_UNIVERSE, meta: Object.assign({}, fallbackMeta, {
+    return { items: mergeUniverseItems(FALLBACK_UNIVERSE, heldItems), meta: Object.assign({}, fallbackMeta, {
       error: error.message
     }) };
   }
+}
+
+function positionUniverseItems(positions) {
+  return (positions || []).map(function(position) {
+    const inherited = FALLBACK_UNIVERSE_BY_CODE[position.symbol] || {};
+    return {
+      symbol: (position.symbol || inherited.code) + '.TW',
+      code: position.symbol || inherited.code,
+      name: position.name || inherited.name || position.symbol,
+      group: inherited.group || '既有持倉',
+      industryOk: inherited.industryOk !== false,
+      fundamentalOk: inherited.fundamentalOk !== false,
+      chipOk: Boolean(inherited.chipOk),
+      heldSupplement: true
+    };
+  }).filter(function(item) {
+    return item.code;
+  });
+}
+
+function mergeUniverseItems(primary, supplements) {
+  const map = {};
+  const out = [];
+  (primary || []).concat(supplements || []).forEach(function(item) {
+    if (!item || !item.code || map[item.code]) return;
+    map[item.code] = true;
+    out.push(item);
+  });
+  return out;
 }
 
 function universeFromCandidates(candidates) {
@@ -289,7 +322,8 @@ function universeFromCandidates(candidates) {
       fundamentalOk: candidate.fundamentalOk !== false,
       chipOk: Boolean(candidate.metrics && candidate.metrics.chip && candidate.metrics.chip.baseChipOk) || Boolean(inherited.chipOk),
       volumeRank: candidate.metrics && candidate.metrics.volumeRank,
-      screeningVolume: candidate.metrics && candidate.metrics.screeningVolume
+      screeningVolume: candidate.metrics && candidate.metrics.screeningVolume,
+      heldSupplement: Boolean(candidate.heldSupplement)
     };
   }).filter(function(item) {
     return item.code;
@@ -385,12 +419,16 @@ function fieldIndex(fields, pattern) {
   return -1;
 }
 
-function quickRefreshScenario(previousDay, schedule) {
-  const refreshUniverse = universeFromCandidates(previousDay.candidates || []);
+function quickRefreshScenario(previousDay, schedule, existingPositions) {
+  const baseCandidates = previousDay.candidates || [];
+  const refreshUniverse = mergeUniverseItems(
+    universeFromCandidates(baseCandidates),
+    positionUniverseItems(existingPositions || [])
+  );
   const twseQuotes = safeFetchTwseQuotes(refreshUniverse);
   const afterMarketTrades = safeFetchAfterMarketTrades(previousDay.date, refreshUniverse);
   const marketQuote = safeFetchLatestQuote('^TWII');
-  const candidates = previousDay.candidates.map(function(candidate) {
+  const candidates = baseCandidates.map(function(candidate) {
     const baseQuote = twseQuotes[candidate.symbol] || {
       price: candidate.price,
       bidPrice: candidate.bidPrice,
@@ -401,6 +439,25 @@ function quickRefreshScenario(previousDay, schedule) {
     };
     const quote = applyAfterMarketTrade(baseQuote, afterMarketTrades[candidate.symbol]);
     return updateCandidateQuote(candidate, quote);
+  });
+  const known = {};
+  candidates.forEach(function(candidate) {
+    known[candidate.symbol] = true;
+  });
+  (existingPositions || []).forEach(function(position) {
+    if (!position || !position.symbol || known[position.symbol]) return;
+    const item = positionUniverseItems([position])[0];
+    if (!item) return;
+    const baseQuote = twseQuotes[position.symbol] || {
+      price: position.avgCost,
+      bidPrice: position.avgCost,
+      askPrice: position.avgCost,
+      volume: 0,
+      time: null,
+      provider: 'position-cost-fallback'
+    };
+    const quote = applyAfterMarketTrade(baseQuote, afterMarketTrades[position.symbol]);
+    candidates.push(candidateFromHeldPosition(position, item, quote, previousDay));
   });
 
   return [Object.assign({}, previousDay, {
@@ -414,12 +471,58 @@ function quickRefreshScenario(previousDay, schedule) {
       generatedAt: new Date().toISOString(),
       refreshMode: 'quick',
       universe: Object.assign({}, previousDay.source && previousDay.source.universe ? previousDay.source.universe : {}, {
-        refreshedCount: refreshUniverse.length
+        refreshedCount: refreshUniverse.length,
+        heldSupplementCount: positionUniverseItems(existingPositions || []).length
       }),
       schedule: schedule,
       afterMarketDate: afterMarketTrades._meta ? afterMarketTrades._meta.date : null
     })
   })];
+}
+
+function candidateFromHeldPosition(position, item, quote, previousDay) {
+  const price = round2(quote && quote.price != null ? quote.price : position.avgCost);
+  const bidPrice = quote && quote.bidPrice != null ? round2(quote.bidPrice) : price;
+  const askPrice = quote && quote.askPrice != null ? round2(quote.askPrice) : price;
+  const dailyClose = price;
+  return {
+    date: previousDay.date,
+    symbol: position.symbol,
+    name: position.name || item.name || position.symbol,
+    group: item.group || '既有持倉',
+    price: price,
+    bidPrice: bidPrice,
+    askPrice: askPrice,
+    grade: 'C',
+    reason: 'Existing holding quote supplement; not in current top-volume target scan',
+    stopPrice: position.stopPrice || round2(price * 0.98),
+    targetPrice: position.targetPrice || round2(price * 1.08),
+    dayTradeOk: false,
+    intradayReturnPct: 0,
+    heldSupplement: true,
+    industryOk: item.industryOk,
+    fundamentalOk: item.fundamentalOk,
+    chipOk: item.chipOk,
+    session: quote && quote.session ? quote.session : 'REGULAR',
+    afterMarketPrice: quote && quote.afterMarket ? round2(quote.afterMarket.price) : null,
+    afterMarketVolume: quote && quote.afterMarket ? quote.afterMarket.volume : 0,
+    afterMarketTransactions: quote && quote.afterMarket ? quote.afterMarket.transactions : 0,
+    afterMarketBidVolume: quote && quote.afterMarket ? quote.afterMarket.bidVolume : 0,
+    afterMarketAskVolume: quote && quote.afterMarket ? quote.afterMarket.askVolume : 0,
+    metrics: {
+      heldSupplement: true,
+      dailyClose: dailyClose,
+      latestQuoteTime: quote && quote.time ? quote.time : null,
+      latestQuoteProvider: quote && quote.provider ? quote.provider : null,
+      session: quote && quote.session ? quote.session : 'REGULAR',
+      bidPrice: bidPrice,
+      askPrice: askPrice,
+      afterMarket: quote && quote.afterMarket ? quote.afterMarket : null,
+      spreadPct: quoteSpreadPct(quote, price),
+      markedClose: price,
+      refreshMode: 'quick'
+    }
+  };
 }
 
 function updateCandidateQuote(candidate, quote) {
@@ -959,6 +1062,7 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
     grade: grade,
     dayTradeOk: grade !== 'BLOCKED' && volumeRatio >= 1.1 && Math.abs(intradayReturnPct) >= 0.002 && quoteSpreadPct(latestQuote, latest.close) <= 0.006,
     intradayReturnPct: Math.max(-0.03, Math.min(0.03, intradayReturnPct)),
+    heldSupplement: Boolean(base.heldSupplement),
     industryOk: base.industryOk,
     fundamentalOk: base.fundamentalOk,
     chipOk: dynamicChipOk,
@@ -975,6 +1079,7 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
       volumeRank: base.volumeRank || null,
       screeningVolume: base.screeningVolume || null,
       screeningClose: base.screeningClose || null,
+      heldSupplement: Boolean(base.heldSupplement),
       sourceSymbol: base.symbol,
       latestQuoteTime: latestQuote && latestQuote.time ? latestQuote.time : null,
       latestQuoteProvider: latestQuote && latestQuote.provider ? latestQuote.provider : null,
@@ -1003,7 +1108,7 @@ function nextSimulation(previous, day) {
     if (day.session === 'AFTER_MARKET' && previousLatestDay.session !== 'AFTER_MARKET') {
       return applyAfterMarketSession(previous, day);
     }
-    return markToMarket(previous, day);
+    return rebalanceSameDay(previous, day);
   }
   return advanceOneDay(previous, day);
 }
@@ -1067,6 +1172,7 @@ function applyAfterMarketSession(previous, day) {
   account.dailyStopped = false;
 
   sellByRules(account, day, marketState);
+  rotateOutOfWeakPositions(account, day, marketState);
   buyByRules(account, day, marketState);
 
   const positionValue = marketValue(account.positions, day);
@@ -1083,6 +1189,40 @@ function applyAfterMarketSession(previous, day) {
       dayPnl: equity - previousEquity,
       marketLabel: marketState.label,
       session: 'AFTER_MARKET'
+    });
+  }
+
+  const peak = Math.max(account.initialCapital, maxDailyEquity(account.daily), equity);
+  account.maxDrawdown = Math.min(account.maxDrawdown || 0, equity / peak - 1);
+  account.weeklyLimited = equity / account.initialCapital - 1 <= CONFIG.weeklyStopLossPct;
+  return finalizeAccount(account, day);
+}
+
+function rebalanceSameDay(previous, day) {
+  const account = cloneAccount(previous);
+  const marketState = evaluateMarket(day);
+  account.dailyStopped = false;
+
+  sellByRules(account, day, marketState);
+  rotateOutOfWeakPositions(account, day, marketState);
+  buyByRules(account, day, marketState);
+  runDayTrades(account, day, marketState);
+
+  const positionValue = marketValue(account.positions, day);
+  const equity = account.cash + positionValue;
+  const previousDaily = account.daily.length > 1 ? account.daily[account.daily.length - 2] : null;
+  const previousEquity = previousDaily ? previousDaily.equity : account.initialCapital;
+  const lastDaily = last(account.daily);
+
+  if (lastDaily) {
+    account.daily[account.daily.length - 1] = Object.assign({}, lastDaily, {
+      date: day.date,
+      equity: equity,
+      cash: account.cash,
+      positionValue: positionValue,
+      dayPnl: equity - previousEquity,
+      marketLabel: marketState.label,
+      session: day.session || lastDaily.session || 'REGULAR'
     });
   }
 
@@ -1153,6 +1293,7 @@ function evaluateMarket(day) {
 
 function canOpenPosition(candidate, marketState, account) {
   if (account.dailyStopped) return false;
+  if (candidate.heldSupplement) return false;
   if (candidate.grade === 'BLOCKED' || candidate.price <= candidate.stopPrice) return false;
   if (marketState.mode === 'DEFENSIVE') return false;
   return candidate.grade === 'A';
@@ -1210,6 +1351,49 @@ function sellByRules(account, day, marketState) {
   account.positions = stillHolding;
 }
 
+function rotateOutOfWeakPositions(account, day, marketState) {
+  if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
+  const hasAOpportunity = day.candidates.some(function(candidate) {
+    return canOpenPosition(candidate, marketState, account);
+  });
+  if (!hasAOpportunity) return;
+
+  const stillHolding = [];
+  account.positions.forEach(function(position) {
+    const candidate = findCandidate(day, position.symbol);
+    if (!candidate || candidate.grade === 'A') {
+      stillHolding.push(position);
+      return;
+    }
+
+    const sellPrice = executionSellPrice(candidate);
+    const grossAmount = position.shares * sellPrice;
+    const fee = tradeFee(grossAmount);
+    const tax = sellTax(grossAmount, false);
+    const proceeds = grossAmount - fee - tax;
+    const pnl = proceeds - position.totalCost;
+    account.cash += proceeds;
+    account.realizedPnl += pnl;
+    account.totalFees += fee;
+    account.totalTaxes += tax;
+    account.trades.push({
+      date: day.date,
+      action: 'SELL',
+      symbol: position.symbol,
+      name: position.name,
+      shares: position.shares,
+      price: sellPrice,
+      grossAmount: grossAmount,
+      fee: fee,
+      tax: tax,
+      pnl: pnl,
+      session: candidate.session || day.session || 'REGULAR',
+      reason: 'Rotate out of non-A holding because A-grade candidates are available' + sessionReason(candidate)
+    });
+  });
+  account.positions = stillHolding;
+}
+
 function buyByRules(account, day, marketState) {
   day.candidates.filter(function(candidate) {
     return canOpenPosition(candidate, marketState, account);
@@ -1260,7 +1444,7 @@ function runDayTrades(account, day, marketState) {
   if (day.session === 'AFTER_MARKET') return;
   if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
   day.candidates.filter(function(candidate) {
-    return candidate.dayTradeOk && candidate.grade === 'A';
+    return candidate.dayTradeOk && candidate.grade === 'A' && !hasTrade(account, day.date, candidate.symbol, 'DAYTRADE');
   }).forEach(function(candidate) {
     const budget = account.initialCapital * CONFIG.dayTradeCapitalPct;
     const buyPrice = executionBuyPrice(candidate);
@@ -1295,6 +1479,12 @@ function runDayTrades(account, day, marketState) {
       session: 'REGULAR',
       reason: 'Intraday rule simulation using current ask/bid'
     });
+  });
+}
+
+function hasTrade(account, date, symbol, action) {
+  return account.trades.some(function(trade) {
+    return trade.date === date && trade.symbol === symbol && trade.action === action;
   });
 }
 

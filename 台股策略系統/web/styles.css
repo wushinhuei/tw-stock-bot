@@ -275,6 +275,12 @@ button:hover,
   color: var(--green);
 }
 
+.candidate-quote {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .candidate-signals,
 .candidate-plan {
   display: flex;

@@ -2,8 +2,9 @@ const CONFIG = {
   initialCapital: 100000,
   simulationStartDate: '2026-08-10',
   boardLot: 1,
-  standardPositionPct: 0.2,
-  halfPositionPct: 0.1,
+  standardPositionPct: 0.25,
+  halfPositionPct: 0.15,
+  minCashReservePct: 0.3,
   dailyStopLossPct: -0.02,
   weeklyStopLossPct: -0.05,
   minStrongPeers: 2,
@@ -191,6 +192,7 @@ function runSimulation(days) {
     const startEquity = account.cash + marketValue(account.positions, day);
 
     sellByRules(account, day, marketState);
+    rotateOutOfWeakPositions(account, day, marketState);
     buyByRules(account, day, marketState);
     runDayTrades(account, day, marketState);
 
@@ -235,9 +237,10 @@ function sellByRules(account, day, marketState) {
       return;
     }
 
-    const value = position.shares * candidate.price;
-    const shouldSell = candidate.price <= position.stopPrice
-      || candidate.price >= position.targetPrice
+    const sellPrice = executionSellPrice(candidate);
+    const value = position.shares * sellPrice;
+    const shouldSell = sellPrice <= position.stopPrice
+      || sellPrice >= position.targetPrice
       || candidate.grade === 'BLOCKED'
       || marketState.mode === 'DEFENSIVE';
 
@@ -256,7 +259,7 @@ function sellByRules(account, day, marketState) {
         symbol: position.symbol,
         name: position.name,
         shares: position.shares,
-        price: candidate.price,
+        price: sellPrice,
         grossAmount: value,
         fee,
         tax,
@@ -271,28 +274,71 @@ function sellByRules(account, day, marketState) {
   account.positions = stillHolding;
 }
 
+function rotateOutOfWeakPositions(account, day, marketState) {
+  if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
+  const hasAOpportunity = day.candidates.some(candidate => canOpenPosition(candidate, marketState, account));
+  if (!hasAOpportunity) return;
+
+  const stillHolding = [];
+  account.positions.forEach(position => {
+    const candidate = findCandidate(day, position.symbol);
+    if (!candidate || candidate.grade === 'A') {
+      stillHolding.push(position);
+      return;
+    }
+
+    const sellPrice = executionSellPrice(candidate);
+    const value = position.shares * sellPrice;
+    const fee = tradeFee(value);
+    const tax = sellTax(value, false);
+    const proceeds = value - fee - tax;
+    const pnl = proceeds - position.totalCost;
+    account.cash += proceeds;
+    account.realizedPnl += pnl;
+    account.totalFees += fee;
+    account.totalTaxes += tax;
+    account.trades.push({
+      date: day.date,
+      action: '賣出',
+      symbol: position.symbol,
+      name: position.name,
+      shares: position.shares,
+      price: sellPrice,
+      grossAmount: value,
+      fee,
+      tax,
+      pnl,
+      session: candidate.session || day.session || 'REGULAR',
+      reason: `出現 A 級候選股，非 A 持倉輪動轉出；${sessionLabel(candidate.session || day.session)}`,
+    });
+  });
+  account.positions = stillHolding;
+}
+
 function buyByRules(account, day, marketState) {
   day.candidates
     .filter(candidate => canOpenPosition(candidate, marketState, account))
     .forEach(candidate => {
       if (account.positions.some(position => position.symbol === candidate.symbol)) return;
       const budget = account.initialCapital * positionPct(candidate, account);
-      const lotCost = candidate.price * CONFIG.boardLot;
-      const lotsByBudget = Math.floor(Math.min(budget, account.cash) / lotCost);
-      const lots = lotsByBudget > 0 ? lotsByBudget : account.cash >= lotCost ? 1 : 0;
+      const buyPrice = executionBuyPrice(candidate);
+      const lotCost = buyPrice * CONFIG.boardLot;
+      const availableCash = tradableCash(account);
+      const lotsByBudget = Math.floor(Math.min(budget, availableCash) / lotCost);
+      const lots = lotsByBudget > 0 ? lotsByBudget : availableCash >= lotCost ? 1 : 0;
       const shares = lots * CONFIG.boardLot;
       if (shares <= 0) return;
-      const cost = shares * candidate.price;
+      const cost = shares * buyPrice;
       const fee = tradeFee(cost);
       const totalCost = cost + fee;
-      if (totalCost > account.cash) return;
+      if (totalCost > tradableCash(account)) return;
       account.cash -= totalCost;
       account.totalFees += fee;
       account.positions.push({
         symbol: candidate.symbol,
         name: candidate.name,
         shares,
-        avgCost: candidate.price,
+        avgCost: buyPrice,
         totalCost,
         stopPrice: candidate.stopPrice,
         targetPrice: candidate.targetPrice,
@@ -303,7 +349,7 @@ function buyByRules(account, day, marketState) {
         symbol: candidate.symbol,
         name: candidate.name,
         shares,
-        price: candidate.price,
+        price: buyPrice,
         grossAmount: cost,
         fee,
         tax: 0,
@@ -318,18 +364,19 @@ function runDayTrades(account, day, marketState) {
   if (day.session === 'AFTER_MARKET') return;
   if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
   day.candidates
-    .filter(candidate => candidate.dayTradeOk && candidate.grade === 'A')
+    .filter(candidate => candidate.dayTradeOk && candidate.grade === 'A' && !hasTrade(account, day.date, candidate.symbol, '當沖'))
     .forEach(candidate => {
       const budget = account.initialCapital * CONFIG.dayTradeCapitalPct;
-      const lotCost = candidate.price * CONFIG.boardLot;
-      const lots = Math.floor(Math.min(budget, account.cash) / lotCost);
+      const buyPrice = executionBuyPrice(candidate);
+      const sellPrice = executionSellPrice(candidate);
+      const lotCost = buyPrice * CONFIG.boardLot;
+      const lots = Math.floor(Math.min(budget, tradableCash(account)) / lotCost);
       const shares = lots * CONFIG.boardLot;
       if (shares <= 0) return;
-      const buyAmount = shares * candidate.price;
-      const sellPrice = candidate.price * (1 + candidate.intradayReturnPct);
+      const buyAmount = shares * buyPrice;
       const sellAmount = shares * sellPrice;
       const buyFee = tradeFee(buyAmount);
-      if (buyAmount + buyFee > account.cash) return;
+      if (buyAmount + buyFee > tradableCash(account)) return;
       const sellFee = tradeFee(sellAmount);
       const tax = sellTax(sellAmount, true);
       const netPnl = sellAmount - buyAmount - buyFee - sellFee - tax;
@@ -343,15 +390,19 @@ function runDayTrades(account, day, marketState) {
         symbol: candidate.symbol,
         name: candidate.name,
         shares,
-        price: candidate.price,
+        price: buyPrice,
         grossAmount: buyAmount + sellAmount,
         fee: buyFee + sellFee,
         tax,
         pnl: netPnl,
         session: 'REGULAR',
-        reason: `符合魔王線放量與三快減，日內模擬平倉；買 ${price(candidate.price)} / 賣 ${price(sellPrice)}`,
+        reason: `符合魔王線放量與三快減，日內模擬平倉；買 ${price(buyPrice)} / 賣 ${price(sellPrice)}`,
       });
     });
+}
+
+function hasTrade(account, date, symbol, action) {
+  return account.trades.some(trade => trade.date === date && trade.symbol === symbol && trade.action === action);
 }
 
 function tradeFee(amount) {
@@ -365,6 +416,11 @@ function sellTax(amount, isDayTrade) {
 
 function netSellProceeds(amount, isDayTrade) {
   return amount - tradeFee(amount) - sellTax(amount, isDayTrade);
+}
+
+function tradableCash(account) {
+  const reserve = account.initialCapital * CONFIG.minCashReservePct;
+  return Math.max(0, account.cash - reserve);
 }
 
 function executionBuyPrice(candidate) {
@@ -597,7 +653,7 @@ function renderAGradeCandidates(day) {
   if (!target || !day) return;
   const source = day.source?.universe || {};
   const aGrades = (day.candidates || [])
-    .filter(candidate => candidate.grade === 'A')
+    .filter(candidate => candidate.grade === 'A' && !candidate.heldSupplement)
     .sort((a, b) => (a.metrics?.volumeRank || 999) - (b.metrics?.volumeRank || 999));
 
   if (!aGrades.length) {
@@ -615,6 +671,12 @@ function renderAGradeCandidates(day) {
     const volumeRatio = candidate.metrics?.volumeRatio ? `${Number(candidate.metrics.volumeRatio).toFixed(2)} 倍量` : '量能：-';
     const rsiText = candidate.metrics?.rsi14 != null ? `RSI ${Number(candidate.metrics.rsi14).toFixed(1)}` : 'RSI -';
     const macdText = candidate.metrics?.macdHist != null ? `MACD ${Number(candidate.metrics.macdHist).toFixed(2)}` : 'MACD -';
+    const bidAsk = candidate.bidPrice != null && candidate.askPrice != null
+      ? `買一 ${price(candidate.bidPrice)} / 賣一 ${price(candidate.askPrice)}`
+      : '買賣價 -';
+    const quoteTime = candidate.metrics?.latestQuoteTime
+      ? `報價 ${formatTaipeiDateTime(candidate.metrics.latestQuoteTime)}`
+      : '報價時間 -';
     return `
       <article class="candidate-card">
         <div>
@@ -622,6 +684,7 @@ function renderAGradeCandidates(day) {
           <span>${candidate.group} · ${rank}</span>
         </div>
         <div class="candidate-price">${price(candidate.price)}</div>
+        <div class="candidate-quote">${bidAsk}<br>${quoteTime}</div>
         <div class="candidate-signals">
           <span>${volumeRatio}</span>
           <span>${rsiText}</span>
