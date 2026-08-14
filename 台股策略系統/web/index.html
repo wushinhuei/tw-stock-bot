@@ -107,8 +107,8 @@
     <section class="panel simulation-panel">
       <div class="section-title">
         <div>
-          <h2>自動交易紀錄</h2>
-          <p>包含波段買賣與當沖模擬交易。</p>
+          <h2>今日自動交易紀錄</h2>
+          <p>只顯示最新交易日的波段買賣與當沖模擬交易。</p>
         </div>
       </div>
       <div class="table-wrap">
@@ -178,6 +178,10 @@
 
         <section class="history-section">
           <h3>歷史交易明細</h3>
+          <div class="history-filter">
+            <label for="historyTradeDate">查詢日期</label>
+            <select id="historyTradeDate"></select>
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -311,6 +315,6 @@
   <script src="apps_script_config.js?v=20260813-apps-script"></script>
   <script src="actual_data.js?v=20260810-actual"></script>
   <script src="simulation_result.js?v=20260810-actions"></script>
-  <script src="app.js?v=20260814-read-cache"></script>
+  <script src="app.js?v=20260814-trade-date-filter"></script>
 </body>
 </html>

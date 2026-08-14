@@ -396,7 +396,7 @@ function render(result) {
   renderTodayDecision(result, latestDay);
   renderPositions(result, latestDay);
   renderDailyRows(result.daily);
-  renderTrades(result.trades);
+  renderTrades(result.trades, latestDay.date);
   renderCurve(result.daily);
 }
 
@@ -433,10 +433,24 @@ function renderHistoryReturns(result) {
     `;
   }).join('') || '<tr><td colspan="7">尚無歷史交易資料</td></tr>';
 
-  document.querySelector('#historyTradeRows').innerHTML = trades.slice().reverse().map(trade => `
+  const historyTradeDate = document.querySelector('#historyTradeDate');
+  const tradeDates = uniqueTradeDates(trades);
+  if (historyTradeDate) {
+    const previousValue = historyTradeDate.value;
+    const selectedDate = tradeDates.includes(previousValue) ? previousValue : tradeDates[0] || '';
+    historyTradeDate.innerHTML = tradeDates.map(date => `<option value="${date}">${date}</option>`).join('');
+    historyTradeDate.value = selectedDate;
+    historyTradeDate.onchange = () => renderHistoryTradeRows(trades, historyTradeDate.value);
+    renderHistoryTradeRows(trades, selectedDate);
+  }
+}
+
+function renderHistoryTradeRows(trades, selectedDate) {
+  const filteredTrades = selectedDate ? trades.filter(trade => trade.date === selectedDate) : [];
+  document.querySelector('#historyTradeRows').innerHTML = filteredTrades.slice().reverse().map(trade => `
     <tr>
       <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
-      <td><span class="badge ${trade.action === '買進' ? 'buy' : trade.action === '賣出' ? 'blocked' : 'watch'}">${trade.action}</span></td>
+      <td><span class="badge ${actionBadgeClass(trade.action)}">${trade.action}</span></td>
       <td><strong>${trade.symbol}</strong><br><span>${trade.name}</span></td>
       <td>${Number(trade.shares || 0).toLocaleString('zh-TW')}</td>
       <td>${price(trade.price)}</td>
@@ -446,7 +460,7 @@ function renderHistoryReturns(result) {
       <td class="${(trade.pnl || 0) >= 0 ? 'gain' : 'loss'}">${currency(trade.pnl || 0)}</td>
       <td class="reason">${trade.reason || '-'}</td>
     </tr>
-  `).join('') || '<tr><td colspan="10">尚無交易明細</td></tr>';
+  `).join('') || '<tr><td colspan="10">該日期尚無交易明細</td></tr>';
 }
 
 function renderTodayDecision(result, day) {
@@ -505,11 +519,12 @@ function renderDailyRows(days) {
   `).join('');
 }
 
-function renderTrades(trades) {
-  document.querySelector('#tradeRows').innerHTML = trades.slice().reverse().map(trade => `
+function renderTrades(trades, currentDate) {
+  const todayTrades = trades.filter(trade => trade.date === currentDate);
+  document.querySelector('#tradeRows').innerHTML = todayTrades.slice().reverse().map(trade => `
     <tr>
       <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
-      <td><span class="badge ${trade.action === '買進' ? 'buy' : trade.action === '賣出' ? 'blocked' : 'watch'}">${trade.action}</span></td>
+      <td><span class="badge ${actionBadgeClass(trade.action)}">${trade.action}</span></td>
       <td><strong>${trade.symbol}</strong><br><span>${trade.name}</span></td>
       <td>${trade.shares.toLocaleString('zh-TW')}</td>
       <td>${price(trade.price)}</td>
@@ -518,7 +533,17 @@ function renderTrades(trades) {
       <td class="${trade.pnl >= 0 ? 'gain' : 'loss'}">${currency(trade.pnl)}</td>
       <td class="reason">${trade.reason}</td>
     </tr>
-  `).join('');
+  `).join('') || '<tr><td colspan="9">今日尚無自動交易紀錄。</td></tr>';
+}
+
+function uniqueTradeDates(trades) {
+  return [...new Set(trades.map(trade => trade.date).filter(Boolean))].sort().reverse();
+}
+
+function actionBadgeClass(action) {
+  if (action === '買進' || action === 'BUY') return 'buy';
+  if (action === '賣出' || action === 'SELL') return 'blocked';
+  return 'watch';
 }
 
 function renderCurve(days) {

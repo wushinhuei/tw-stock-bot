@@ -540,6 +540,30 @@ td input {
   font-size: 17px;
 }
 
+.history-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.history-filter label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.history-filter select {
+  min-width: 150px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 34px 7px 10px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+}
+
 .rules-content section {
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
