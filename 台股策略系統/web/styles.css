@@ -85,9 +85,19 @@ h2 {
 
 .top-actions {
   display: flex;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  max-width: 430px;
+}
+
+.last-updated {
+  flex-basis: 100%;
+  color: #cfe2ee;
+  font-size: 13px;
+  text-align: right;
+  line-height: 1.4;
 }
 
 button,
@@ -612,6 +622,15 @@ td input {
   .section-title {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .top-actions {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .last-updated {
+    text-align: left;
   }
 
   .summary-grid,

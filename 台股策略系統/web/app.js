@@ -126,6 +126,21 @@ function sessionLabel(session) {
   return session === 'AFTER_MARKET' ? '盤後定價' : '盤中';
 }
 
+function formatTaipeiDateTime(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
 function pct(value) {
   return `${(Number(value || 0) * 100).toFixed(2)}%`;
 }
@@ -383,6 +398,7 @@ function sellReason(candidate, marketState, position) {
 function render(result) {
   activeResult = result;
   const latestDay = scenario.filter(day => day.date >= CONFIG.simulationStartDate).at(-1);
+  renderLastUpdated(result, latestDay);
   document.querySelector('#finalEquity').textContent = currency(result.finalEquity);
   document.querySelector('#finalDate').textContent = `自 ${CONFIG.simulationStartDate} 起，截至 ${latestDay.date}`;
   document.querySelector('#totalReturn').textContent = pct(result.totalReturn);
@@ -398,6 +414,14 @@ function render(result) {
   renderDailyRows(result.daily);
   renderTrades(result.trades, latestDay.date);
   renderCurve(result.daily);
+}
+
+function renderLastUpdated(result, latestDay) {
+  const label = document.querySelector('#lastUpdatedAt');
+  if (!label) return;
+  const sourceTime = result?.generatedAt || latestDay?.source?.generatedAt || window.PRECOMPUTED_SIMULATION?.generatedAt;
+  const mode = latestDay?.source?.refreshMode === 'quick' ? '快速報價' : '完整資料';
+  label.textContent = `最後更新：${formatTaipeiDateTime(sourceTime)}（${mode}）`;
 }
 
 function renderHistoryReturns(result) {
@@ -777,6 +801,8 @@ async function refreshData(options = {}) {
     button.classList.add('is-loading');
     button.textContent = '更新中...';
   }
+  const lastUpdatedLabel = document.querySelector('#lastUpdatedAt');
+  if (lastUpdatedLabel) lastUpdatedLabel.textContent = '最後更新：更新中...';
 
   try {
     const loadedFromAppsScript = await loadAppsScriptPayload(force ? 'refresh' : 'read', {
