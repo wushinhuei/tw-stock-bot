@@ -144,7 +144,7 @@ function refreshDashboard(options) {
 
 function buildScenarioForRefresh(previous, schedule) {
   const previousDay = previous && Array.isArray(previous.scenario) ? last(previous.scenario) : null;
-  const hasScannerUniverse = Boolean(previousDay && previousDay.source && previousDay.source.universe);
+  const hasScannerUniverse = Boolean(previousDay && previousDay.source && previousDay.source.universe && previousDay.source.universe.mode);
   if (previousDay && previousDay.date === schedule.date && Array.isArray(previousDay.candidates) && hasScannerUniverse) {
     return quickRefreshScenario(previousDay, schedule);
   }
