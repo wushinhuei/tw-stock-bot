@@ -517,6 +517,15 @@ function renderLastUpdated(result, latestDay) {
   label.textContent = `最後更新：${formatTaipeiDateTime(sourceTime)}（${mode}）`;
 }
 
+function renderRefreshFallback(error) {
+  console.warn(error);
+  const result = currentSimulation();
+  activeTradeSignature = resultTradeSignature(result);
+  render(result);
+  const label = document.querySelector('#lastUpdatedAt');
+  if (label) label.textContent = `最後更新：${formatTaipeiDateTime(new Date().toISOString())}（使用備援資料）`;
+}
+
 function renderHistoryReturns(result) {
   const daily = Array.isArray(result.daily) ? result.daily : [];
   const trades = Array.isArray(result.trades) ? result.trades : [];
@@ -1135,13 +1144,16 @@ async function refreshData(options = {}) {
     activeTradeSignature = resultTradeSignature(result);
     render(result);
   } catch (error) {
-    console.error(error);
+    renderRefreshFallback(error);
   } finally {
     refreshInFlight = false;
     if (button) {
       button.disabled = false;
       button.classList.remove('is-loading');
       button.textContent = '更新資料';
+    }
+    if (lastUpdatedLabel && lastUpdatedLabel.textContent.includes('更新中')) {
+      lastUpdatedLabel.textContent = `最後更新：${formatTaipeiDateTime(new Date().toISOString())}（使用目前畫面資料）`;
     }
   }
 }
