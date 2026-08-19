@@ -77,6 +77,8 @@ function doGet(e) {
   try {
     if (action === 'status') {
       payload = readStatusPayload();
+    } else if (action === 'reset') {
+      payload = resetDashboardState();
     } else {
       payload = action === 'refresh'
         ? refreshDashboard({ force: params.force === '1' || params.force === 'true' })
@@ -120,6 +122,26 @@ function deleteSimulationTriggers() {
 
 function clearSimulationState() {
   PropertiesService.getScriptProperties().deleteProperty(STATE_KEY);
+}
+
+function resetDashboardState() {
+  const scenario = buildScenario([]);
+  const simulation = runFreshSimulation(scenario);
+  const payload = {
+    ok: true,
+    source: 'apps-script-reset',
+    generatedAt: new Date().toISOString(),
+    schedule: scheduledRefreshDecision(new Date()),
+    scenario: scenario,
+    simulation: simulation,
+    reset: {
+      startDate: START_DATE,
+      initialCapital: CONFIG.initialCapital,
+      clearedAt: new Date().toISOString()
+    }
+  };
+  PropertiesService.getScriptProperties().setProperty(STATE_KEY, JSON.stringify(payload));
+  return payload;
 }
 
 function refreshDashboard(options) {
