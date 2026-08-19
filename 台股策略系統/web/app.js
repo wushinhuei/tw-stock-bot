@@ -5,10 +5,14 @@ const CONFIG = {
   standardPositionPct: 0.25,
   halfPositionPct: 0.15,
   minCashReservePct: 0.3,
+  cashCautionPct: 0.4,
   dailyStopLossPct: -0.02,
+  dailySoftStopLossPct: -0.005,
+  dailyProfitLockPct: 0.003,
   weeklyStopLossPct: -0.05,
   minStrongPeers: 2,
   dayTradeCapitalPct: 0.08,
+  overnightPositionPct: 0.12,
   afterMarketPositionPct: 0.1,
   brokerFeeRate: 0.001425,
   minBrokerFee: 1,
@@ -101,6 +105,20 @@ function stock(symbol, name, group, price, stopPrice, targetPrice, grade, dayTra
     targetPrice,
     grade,
     dayTradeOk,
+    overnightOk: allA && tradable,
+    executionPlan: {
+      allowEntry: allA,
+      orderType: allA ? 'LIMIT' : 'NO_TRADE',
+      chaseAllowed: false,
+      cancelAfterSeconds: allA ? 90 : 0,
+      dayTradeOk: Boolean(dayTradeOk && allA),
+      reason: allA ? 'A 級共振但不追價，以限價等待' : '條件不足，先不操作',
+    },
+    overnightPlan: {
+      ok: allA && tradable,
+      positionPct: allA ? CONFIG.overnightPositionPct : 0,
+      reason: allA ? '可列隔日沖候選，隔天不續強就出場' : '隔夜延續條件不足，不列隔日沖',
+    },
     intradayReturnPct,
     industryOk: allA || tradable,
     fundamentalOk: allA,
@@ -171,12 +189,17 @@ function canOpenPosition(candidate, marketState, account) {
   if (account.dailyStopped) return false;
   if (candidate.grade === 'BLOCKED' || candidate.price <= candidate.stopPrice) return false;
   if (marketState.mode === 'DEFENSIVE') return false;
+  if (candidate.executionPlan && !candidate.executionPlan.allowEntry) return false;
   return candidate.grade === 'A';
 }
 
 function positionPct(candidate, account) {
+  const equity = account.finalEquity || account.initialCapital || CONFIG.initialCapital;
+  const cashRatio = equity ? Number(account.cash || 0) / equity : 0;
+  if (cashRatio < CONFIG.cashCautionPct) return Math.min(CONFIG.halfPositionPct, CONFIG.standardPositionPct / 2);
   if (account.weeklyLimited) return CONFIG.halfPositionPct;
   if (candidate.session === 'AFTER_MARKET') return CONFIG.afterMarketPositionPct;
+  if (candidate.overnightOk) return CONFIG.overnightPositionPct;
   return candidate.grade === 'A' ? CONFIG.standardPositionPct : CONFIG.halfPositionPct;
 }
 
@@ -560,12 +583,16 @@ function renderHistoryTradeRows(trades, selectedDate) {
 function renderTodayDecision(result, day) {
   const marketState = evaluateMarket(day);
   const buys = day.candidates.filter(candidate => canOpenPosition(candidate, marketState, result));
+  const preOpenPlan = day.preOpenPlan || day.source?.preOpenPlan;
   const text = buys.length
     ? `今日規則允許買進：${buys.map(item => `${item.symbol} ${item.name}`).join('、')}。`
-    : '今日沒有新買點，系統只管理持倉與風控。';
+    : '今日沒有乾淨新買點，系統只管理持倉與風控。';
+  const cashRatio = result.finalEquity ? Number(result.cash || 0) / result.finalEquity : 0;
+  const capitalText = `現金水位 ${pct(cashRatio)}；每日小賺達 ${pct(CONFIG.dailyProfitLockPct)} 後停止新增風險。`;
   document.querySelector('#todayDecision').innerHTML = `
     <div><strong>${marketState.label}</strong><span>${text}</span></div>
-    <div><strong>${currency(result.finalEquity)}</strong><span>目前模擬總資產</span></div>
+    <div><strong>${currency(result.finalEquity)}</strong><span>${capitalText}</span></div>
+    ${preOpenPlan ? `<div><strong>開盤前：${preOpenPlan.stance}</strong><span>${preOpenPlan.checklist?.slice(0, 2).join('；') || '先確認國際股市與新聞面。'}</span></div>` : ''}
   `;
 }
 
@@ -661,6 +688,29 @@ function positionStatusDetail(position, candidate) {
   `;
 }
 
+function executionOrderLabel(plan) {
+  const map = {
+    LIMIT_OR_MARKETABLE: '限價或小幅可成交價',
+    LIMIT_ONLY: '只限價，不追價',
+    LIMIT: '限價等待',
+    NO_TRADE: '不操作',
+  };
+  return map[plan?.orderType] || '不操作';
+}
+
+function executionPlanText(candidate) {
+  const plan = candidate.executionPlan || {};
+  const chase = plan.chaseAllowed ? `可微追 ${pct(plan.maxChasePct || 0)}` : '不追價';
+  const cancel = plan.cancelAfterSeconds ? `${plan.cancelAfterSeconds} 秒未成交抽單` : '不掛單';
+  return `${executionOrderLabel(plan)} · ${chase} · ${cancel}`;
+}
+
+function overnightPlanText(candidate) {
+  const plan = candidate.overnightPlan || {};
+  if (!plan.ok && !candidate.overnightOk) return '隔日沖：不符合';
+  return `隔日沖候選 · 建議部位 ${pct(plan.positionPct || CONFIG.overnightPositionPct)}`;
+}
+
 function renderAGradeCandidates(day) {
   const target = document.querySelector('#aGradeCandidates');
   if (!target || !day) return;
@@ -690,6 +740,10 @@ function renderAGradeCandidates(day) {
     const quoteTime = candidate.metrics?.latestQuoteTime
       ? `報價 ${formatTaipeiDateTime(candidate.metrics.latestQuoteTime)}`
       : '報價時間 -';
+    const executionText = executionPlanText(candidate);
+    const overnightText = overnightPlanText(candidate);
+    const executionReason = candidate.executionPlan?.reason || '條件不足，先不操作';
+    const overnightReason = candidate.overnightPlan?.reason || '';
     return `
       <article class="candidate-card">
         <div>
@@ -707,6 +761,11 @@ function renderAGradeCandidates(day) {
           <span>停損 ${price(candidate.stopPrice)}</span>
           <span>目標 ${price(candidate.targetPrice)}</span>
         </div>
+        <div class="candidate-execution">
+          <span>${executionText}</span>
+          <span>${overnightText}</span>
+        </div>
+        <div class="candidate-quote">${executionReason}${overnightReason ? `<br>${overnightReason}` : ''}</div>
       </article>
     `;
   }).join('');

@@ -282,14 +282,16 @@ button:hover,
 }
 
 .candidate-signals,
-.candidate-plan {
+.candidate-plan,
+.candidate-execution {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
 .candidate-signals span,
-.candidate-plan span {
+.candidate-plan span,
+.candidate-execution span {
   padding: 6px 9px;
   border-radius: 999px;
   background: var(--blue-soft);
@@ -301,6 +303,11 @@ button:hover,
 .candidate-plan span {
   background: var(--amber-soft);
   color: var(--amber);
+}
+
+.candidate-execution span {
+  background: var(--green-soft);
+  color: var(--green);
 }
 
 .empty-candidates {
