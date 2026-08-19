@@ -14,7 +14,7 @@
     <div>
       <p class="eyebrow">Forced Rules Simulation</p>
       <h1>台股每日自動買賣模擬</h1>
-      <p class="hero-copy">從 2026-08-10 起以初始資金 10 萬每日模擬買賣，以零股操作為主，優先保護本金、沒條件不操作，統計扣除手續費與交易稅後的每週表現；目前只模擬，不下單。</p>
+      <p class="hero-copy">從 2026-08-20 起以初始資金 10 萬每日模擬買賣，以零股操作為主，優先保護本金、沒條件不操作，統計扣除手續費與交易稅後的每週表現；目前只模擬，不下單。</p>
     </div>
     <div class="top-actions">
       <button type="button" id="refreshDataButton" class="primary-action">更新資料</button>
@@ -97,7 +97,7 @@
       <div class="section-title">
         <div>
           <h2>每日資產曲線</h2>
-          <p>自 2026-08-10 起，每個交易日自動檢查賣出、買進與當沖機會。</p>
+          <p>自 2026-08-20 起，每個交易日自動檢查賣出、買進與當沖機會。</p>
         </div>
       </div>
       <div id="equityCurve" class="equity-curve" aria-label="每日資產曲線"></div>
@@ -238,7 +238,7 @@
             <li>每日小賺即可，沒條件不操作，週結算看總表現。</li>
             <li>賺到的錢可納入總資產再投入，但現金水位不足、當日已達小賺或虧損擴大時停止新增風險。</li>
             <li>系統只做模擬提醒，不真實下單。</li>
-            <li>初始資金 100,000 元，從 2026-08-10 開始，以零股操作為主。</li>
+            <li>初始資金 100,000 元，從 2026-08-20 開始，以零股操作為主。</li>
             <li>所有損益都扣除手續費與交易稅後才列入績效。</li>
           </ul>
         </section>
@@ -360,6 +360,6 @@
   <script src="apps_script_config.js?v=20260819-apps-script-v2"></script>
   <script src="actual_data.js?v=20260810-actual"></script>
   <script src="simulation_result.js?v=20260810-actions"></script>
-  <script src="app.js?v=20260819-conservative-execution"></script>
+  <script src="app.js?v=20260820-reset-simulation"></script>
 </body>
 </html>

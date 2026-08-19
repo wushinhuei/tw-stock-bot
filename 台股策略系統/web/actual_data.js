@@ -257,7 +257,7 @@ window.ACTUAL_SCENARIO = [
     "source": {
       "provider": "Yahoo Finance chart API",
       "generatedAt": "2026-08-13T05:19:58.896Z",
-      "startDate": "2026-08-10"
+      "startDate": "2026-08-20"
     }
   }
 ];
