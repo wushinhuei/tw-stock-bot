@@ -144,11 +144,14 @@ function refreshDashboard(options) {
 
 function buildScenarioForRefresh(previous, schedule) {
   const previousDay = previous && Array.isArray(previous.scenario) ? last(previous.scenario) : null;
+  const positions = previous && previous.simulation ? previous.simulation.positions : [];
   const hasScannerUniverse = Boolean(previousDay && previousDay.source && previousDay.source.universe && previousDay.source.universe.mode);
-  if (previousDay && previousDay.date === schedule.date && Array.isArray(previousDay.candidates) && hasScannerUniverse) {
-    return quickRefreshScenario(previousDay, schedule, previous && previous.simulation ? previous.simulation.positions : []);
+
+  if (previousDay && Array.isArray(previousDay.candidates) && hasScannerUniverse) {
+    return quickRefreshScenario(previousDay, schedule, positions);
   }
-  return buildScenario(previous && previous.simulation ? previous.simulation.positions : []);
+
+  return buildScenario(positions);
 }
 
 function readOrSeedPayload() {
@@ -461,6 +464,7 @@ function quickRefreshScenario(previousDay, schedule, existingPositions) {
   });
 
   return [Object.assign({}, previousDay, {
+    date: schedule.date,
     session: hasAfterMarketTrades(afterMarketTrades) ? 'AFTER_MARKET' : 'REGULAR',
     market: Object.assign({}, previousDay.market, {
       close: marketQuote && marketQuote.price != null ? round2(marketQuote.price) : previousDay.market.close
