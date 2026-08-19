@@ -7,7 +7,7 @@ This folder is the Apps Script version of the simulation backend. It is designed
 1. Create a new Google Apps Script project.
 2. Copy `Code.gs` into the script editor.
 3. Copy `appsscript.json` into Project Settings > Show appsscript.json manifest file.
-4. Run `installMinuteTrigger()` once and authorize it.
+4. Run `installRealtimeTradingTrigger()` once and authorize it.
 5. Deploy as Web app:
    - Execute as: Me
    - Who has access: Anyone
@@ -16,6 +16,7 @@ This folder is the Apps Script version of the simulation backend. It is designed
 ## Web API
 
 - `?action=read` returns the latest stored dashboard state.
+- `?action=status` returns a lightweight trade signature so the dashboard can refresh immediately when a background trade changes.
 - `?action=refresh` fetches TWSE/Yahoo data immediately, recalculates simulation P&L, and stores the result.
 - Add `callback=...` for JSONP. The GitHub Pages dashboard uses JSONP to avoid browser CORS issues.
 
