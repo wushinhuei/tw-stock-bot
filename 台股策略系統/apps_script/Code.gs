@@ -103,14 +103,6 @@ function installRealtimeTradingTrigger() {
   ScriptApp.newTrigger('scheduledUpdate').timeBased().everyMinutes(1).create();
 }
 
-function installThirtyMinuteTrigger() {
-  installRealtimeTradingTrigger();
-}
-
-function installMinuteTrigger() {
-  installRealtimeTradingTrigger();
-}
-
 function deleteSimulationTriggers() {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (trigger.getHandlerFunction() === 'scheduledUpdate') {
@@ -1274,29 +1266,6 @@ function rebalanceSameDay(previous, day) {
   const peak = Math.max(account.initialCapital, maxDailyEquity(account.daily), equity);
   account.maxDrawdown = Math.min(account.maxDrawdown || 0, equity / peak - 1);
   account.weeklyLimited = equity / account.initialCapital - 1 <= CONFIG.weeklyStopLossPct;
-  return finalizeAccount(account, day);
-}
-
-function markToMarket(previous, day) {
-  const account = cloneAccount(previous);
-  const positionValue = marketValue(account.positions, day);
-  const equity = account.cash + positionValue;
-  const previousDaily = account.daily.length > 1 ? account.daily[account.daily.length - 2] : null;
-  const previousEquity = previousDaily ? previousDaily.equity : account.initialCapital;
-  const lastDaily = last(account.daily);
-
-  if (lastDaily) {
-    account.daily[account.daily.length - 1] = Object.assign({}, lastDaily, {
-      date: day.date,
-      equity: equity,
-      cash: account.cash,
-      positionValue: positionValue,
-      dayPnl: equity - previousEquity,
-      marketLabel: evaluateMarket(day).label,
-      session: day.session || lastDaily.session || 'REGULAR'
-    });
-  }
-
   return finalizeAccount(account, day);
 }
 
