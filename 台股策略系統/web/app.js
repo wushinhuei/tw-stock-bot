@@ -179,7 +179,7 @@ function pct(value) {
 }
 
 function evaluateMarket(day) {
-  const { close, ma20, ma50 } = day.market;
+  const { close = 0, ma20 = 0, ma50 = 0 } = day?.market || {};
   if (close > ma20 && close > ma50) return { mode: 'AGGRESSIVE', label: '積極做多', maxGrade: 'A' };
   if (close <= ma50) return { mode: 'DEFENSIVE', label: '防守觀察', maxGrade: 'C' };
   return { mode: 'LIGHT', label: '輕倉觀察', maxGrade: 'B' };
@@ -255,7 +255,7 @@ function runSimulation(days) {
     previousEquity = equity;
   });
 
-  const finalEquity = account.daily.at(-1).equity;
+  const finalEquity = account.daily.at(-1)?.equity ?? account.initialCapital;
   return {
     ...account,
     finalEquity,
@@ -476,7 +476,7 @@ function marketValue(positions, day) {
 }
 
 function findCandidate(day, symbol) {
-  return day.candidates.find(candidate => candidate.symbol === symbol);
+  return (day?.candidates || []).find(candidate => candidate.symbol === symbol);
 }
 
 function sellReason(candidate, marketState, position) {
@@ -489,7 +489,14 @@ function sellReason(candidate, marketState, position) {
 
 function render(result) {
   activeResult = result;
-  const latestDay = scenario.filter(day => day.date >= CONFIG.simulationStartDate).at(-1);
+  const latestDay = scenario.filter(day => day.date >= CONFIG.simulationStartDate).at(-1)
+    || scenario.at(-1)
+    || {
+      date: CONFIG.simulationStartDate,
+      candidates: [],
+      source: { generatedAt: new Date().toISOString(), refreshMode: 'fallback' },
+      session: 'REGULAR',
+    };
   activeLatestDay = latestDay;
   renderLastUpdated(result, latestDay);
   document.querySelector('#finalEquity').textContent = currency(result.finalEquity);
