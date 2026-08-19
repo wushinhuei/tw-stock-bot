@@ -125,19 +125,56 @@ function clearSimulationState() {
 }
 
 function resetDashboardState() {
-  const scenario = buildScenario([]);
-  const simulation = runFreshSimulation(scenario);
+  const saved = PropertiesService.getScriptProperties().getProperty(STATE_KEY);
+  const previous = saved ? JSON.parse(saved) : null;
+  const previousScenario = previous && Array.isArray(previous.scenario) ? previous.scenario : [];
+  const previousDay = previousScenario.length ? last(previousScenario) : null;
+  const resetGeneratedAt = new Date().toISOString();
+  const scenario = [Object.assign({
+    date: START_DATE,
+    session: 'RESET',
+    market: { close: 0, ma20: 0, ma50: 0 },
+    preOpenPlan: buildPreOpenPlan({ close: 0, ma20: 0, ma50: 0 }, START_DATE),
+    groups: {},
+    candidates: [],
+    source: {}
+  }, previousDay || {}, {
+    date: START_DATE,
+    source: Object.assign({}, previousDay && previousDay.source ? previousDay.source : {}, {
+      provider: 'Apps Script reset baseline',
+      generatedAt: resetGeneratedAt,
+      startDate: START_DATE,
+      reset: true
+    })
+  })];
+  const simulation = {
+    initialCapital: CONFIG.initialCapital,
+    cash: CONFIG.initialCapital,
+    positions: [],
+    realizedPnl: 0,
+    totalFees: 0,
+    totalTaxes: 0,
+    trades: [],
+    daily: [],
+    dailyStopped: false,
+    weeklyLimited: false,
+    finalEquity: CONFIG.initialCapital,
+    totalReturn: 0,
+    maxDrawdown: 0,
+    generatedAt: resetGeneratedAt,
+    source: scenario[0].source
+  };
   const payload = {
     ok: true,
     source: 'apps-script-reset',
-    generatedAt: new Date().toISOString(),
+    generatedAt: resetGeneratedAt,
     schedule: scheduledRefreshDecision(new Date()),
     scenario: scenario,
     simulation: simulation,
     reset: {
       startDate: START_DATE,
       initialCapital: CONFIG.initialCapital,
-      clearedAt: new Date().toISOString()
+      clearedAt: resetGeneratedAt
     }
   };
   PropertiesService.getScriptProperties().setProperty(STATE_KEY, JSON.stringify(payload));
