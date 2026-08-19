@@ -1,6 +1,6 @@
 const CONFIG = {
   initialCapital: 100000,
-  simulationStartDate: '2026-08-10',
+  simulationStartDate: '2026-08-20',
   boardLot: 1,
   standardPositionPct: 0.25,
   halfPositionPct: 0.15,

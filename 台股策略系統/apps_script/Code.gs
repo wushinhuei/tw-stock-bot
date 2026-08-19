@@ -1,4 +1,4 @@
-const START_DATE = '2026-08-10';
+const START_DATE = '2026-08-20';
 const STATE_KEY = 'TW_STOCK_DASHBOARD_STATE_V1';
 const HOLIDAY_CACHE_PREFIX = 'TWSE_NON_TRADING_DATES_';
 const RAW_BASE = 'https://raw.githubusercontent.com/wushinhuei/tw-stock-bot/main/%E5%8F%B0%E8%82%A1%E7%AD%96%E7%95%A5%E7%B3%BB%E7%B5%B1/web/';
@@ -157,6 +157,11 @@ function buildScenarioForRefresh(previous, schedule) {
   const previousDay = previous && Array.isArray(previous.scenario) ? last(previous.scenario) : null;
   const positions = previous && previous.simulation ? previous.simulation.positions : [];
   const hasScannerUniverse = Boolean(previousDay && previousDay.source && previousDay.source.universe && previousDay.source.universe.mode);
+  const shouldResetForStartDate = !previousDay || previousDay.date < START_DATE || schedule.date < START_DATE;
+
+  if (shouldResetForStartDate) {
+    return buildScenario([]);
+  }
 
   if (previousDay && Array.isArray(previousDay.candidates) && hasScannerUniverse) {
     return quickRefreshScenario(previousDay, schedule, positions);
