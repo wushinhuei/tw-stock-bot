@@ -1,5 +1,10 @@
 const START_DATE = '2026-08-20';
 const STATE_KEY = 'TW_STOCK_DASHBOARD_STATE_V1';
+const SETTINGS_SPREADSHEET_ID_KEY = 'TW_STOCK_SETTINGS_SPREADSHEET_ID';
+const SETTINGS_SHEET_NAME = '策略設定';
+const SETTINGS_CHANGE_LOG_SHEET_NAME = '設定異動紀錄';
+const WEEKLY_REVIEW_SHEET_NAME = '週檢討報告';
+const THIRTY_DAY_REVIEW_SHEET_NAME = '30日檢討報告';
 const HOLIDAY_CACHE_PREFIX = 'TWSE_NON_TRADING_DATES_';
 const RAW_BASE = 'https://raw.githubusercontent.com/wushinhuei/tw-stock-bot/main/%E5%8F%B0%E8%82%A1%E7%AD%96%E7%95%A5%E7%B3%BB%E7%B5%B1/web/';
 
@@ -23,11 +28,50 @@ const CONFIG = {
   maxLimitOrderSpreadPct: 0.006,
   topVolumeLimit: 100,
   maxScanCandidates: 30,
+  monthlyTargetReturnMin: 0.03,
+  monthlyTargetReturnMax: 0.05,
+  allowDayTrade: true,
+  allowOvernight: true,
+  allowChasing: true,
+  allowMarketableOrders: true,
+  allowAutoBuy: true,
+  allowAutoSell: true,
+  simulationMode: true,
   brokerFeeRate: 0.001425,
   minBrokerFee: 1,
   stockSellTaxRate: 0.003,
   dayTradeSellTaxRate: 0.0015
 };
+
+const DEFAULT_CONFIG = Object.assign({}, CONFIG);
+
+const STRATEGY_SETTINGS = [
+  ['initialCapital', '初始資金', 'number', CONFIG.initialCapital, '模擬起始資金'],
+  ['monthlyTargetReturnMin', '月目標報酬率下限', 'number', CONFIG.monthlyTargetReturnMin, '3% 以 0.03 表示'],
+  ['monthlyTargetReturnMax', '月目標報酬率上限', 'number', CONFIG.monthlyTargetReturnMax, '5% 以 0.05 表示'],
+  ['minCashReservePct', '最低現金保留比例', 'number', CONFIG.minCashReservePct, '低於此比例不新增部位'],
+  ['cashCautionPct', '現金警戒比例', 'number', CONFIG.cashCautionPct, '低於此比例只允許小部位'],
+  ['standardPositionPct', '標準單筆部位比例', 'number', CONFIG.standardPositionPct, 'A 級正常買進上限'],
+  ['halfPositionPct', '小部位比例', 'number', CONFIG.halfPositionPct, '保守或減碼時使用'],
+  ['dayTradeCapitalPct', '當沖資金比例', 'number', CONFIG.dayTradeCapitalPct, '單筆當沖資金上限'],
+  ['overnightPositionPct', '隔日沖資金比例', 'number', CONFIG.overnightPositionPct, '隔日沖部位上限'],
+  ['dailyProfitLockPct', '每日小賺停手', 'number', CONFIG.dailyProfitLockPct, '達到後停止新增風險'],
+  ['dailySoftStopLossPct', '日內軟停損', 'number', CONFIG.dailySoftStopLossPct, '達到後停止新增風險'],
+  ['dailyStopLossPct', '日內硬停損', 'number', CONFIG.dailyStopLossPct, '達到後進入防守'],
+  ['weeklyStopLossPct', '週停損', 'number', CONFIG.weeklyStopLossPct, '週虧損達此比例降低風險'],
+  ['maxChasePct', '追價上限', 'number', CONFIG.maxChasePct, '最多追價幅度'],
+  ['maxMarketOrderSpreadPct', '市價允許價差', 'number', CONFIG.maxMarketOrderSpreadPct, '價差小於此值才允許類市價'],
+  ['maxLimitOrderSpreadPct', '限價最大價差', 'number', CONFIG.maxLimitOrderSpreadPct, '價差超過此值不進場'],
+  ['topVolumeLimit', '成交量前 N 名', 'number', CONFIG.topVolumeLimit, '每日先抓成交量前 N 名'],
+  ['maxScanCandidates', '掃描候選上限', 'number', CONFIG.maxScanCandidates, '最多分析幾檔'],
+  ['allowDayTrade', '是否允許當沖', 'boolean', CONFIG.allowDayTrade, 'TRUE/FALSE'],
+  ['allowOvernight', '是否允許隔日沖', 'boolean', CONFIG.allowOvernight, 'TRUE/FALSE'],
+  ['allowChasing', '是否允許追價', 'boolean', CONFIG.allowChasing, 'TRUE/FALSE'],
+  ['allowMarketableOrders', '是否允許市價/類市價', 'boolean', CONFIG.allowMarketableOrders, 'TRUE/FALSE'],
+  ['allowAutoBuy', '是否允許自動買進', 'boolean', CONFIG.allowAutoBuy, '模擬可 TRUE，實單前需確認'],
+  ['allowAutoSell', '是否允許自動賣出', 'boolean', CONFIG.allowAutoSell, '停損/停利模擬'],
+  ['simulationMode', '模擬模式', 'boolean', CONFIG.simulationMode, '實單前保持 TRUE']
+];
 
 const FALLBACK_UNIVERSE = [
   { symbol: '2382.TW', code: '2382', name: '\u5ee3\u9054', group: 'AI\u8a2d\u5099', industryOk: true, fundamentalOk: true, chipOk: true },
@@ -77,6 +121,10 @@ function doGet(e) {
   try {
     if (action === 'status') {
       payload = readStatusPayload();
+    } else if (action === 'settings') {
+      payload = readSettingsPayload();
+    } else if (action === 'initSettings') {
+      payload = initializeSettingsWorkbook();
     } else if (action === 'reset') {
       payload = resetDashboardState();
     } else {
@@ -124,7 +172,169 @@ function clearSimulationState() {
   PropertiesService.getScriptProperties().deleteProperty(STATE_KEY);
 }
 
+function applyRuntimeConfig() {
+  Object.keys(DEFAULT_CONFIG).forEach(function(key) {
+    CONFIG[key] = DEFAULT_CONFIG[key];
+  });
+  const loaded = loadSettingsFromSheet();
+  Object.keys(loaded.values).forEach(function(key) {
+    CONFIG[key] = loaded.values[key];
+  });
+  return loaded;
+}
+
+function readSettingsPayload() {
+  const workbook = getSettingsWorkbook(false);
+  const loaded = applyRuntimeConfig();
+  return {
+    ok: true,
+    source: loaded.source,
+    spreadsheetId: workbook ? workbook.getId() : null,
+    spreadsheetUrl: workbook ? workbook.getUrl() : null,
+    generatedAt: new Date().toISOString(),
+    settings: currentSettingsForPayload(loaded)
+  };
+}
+
+function initializeSettingsWorkbook() {
+  const workbook = getSettingsWorkbook(true);
+  ensureSettingsSheets(workbook);
+  const loaded = applyRuntimeConfig();
+  return {
+    ok: true,
+    source: 'google-sheet',
+    spreadsheetId: workbook.getId(),
+    spreadsheetUrl: workbook.getUrl(),
+    generatedAt: new Date().toISOString(),
+    settings: currentSettingsForPayload(loaded)
+  };
+}
+
+function getSettingsWorkbook(createIfMissing) {
+  const props = PropertiesService.getScriptProperties();
+  const spreadsheetId = props.getProperty(SETTINGS_SPREADSHEET_ID_KEY);
+  if (spreadsheetId) {
+    try {
+      return SpreadsheetApp.openById(spreadsheetId);
+    } catch (error) {
+      console.warn('Settings spreadsheet open failed: ' + error.message);
+    }
+  }
+  if (!createIfMissing) return null;
+  const workbook = SpreadsheetApp.create('台股策略系統 - 策略設定');
+  props.setProperty(SETTINGS_SPREADSHEET_ID_KEY, workbook.getId());
+  return workbook;
+}
+
+function getSettingsSpreadsheetId() {
+  return PropertiesService.getScriptProperties().getProperty(SETTINGS_SPREADSHEET_ID_KEY);
+}
+
+function ensureSettingsSheets(workbook) {
+  ensureStrategySettingsSheet(workbook);
+  ensureSheetWithHeader(workbook, SETTINGS_CHANGE_LOG_SHEET_NAME, ['日期', '參數名稱', '舊值', '新值', '修改原因']);
+  ensureSheetWithHeader(workbook, WEEKLY_REVIEW_SHEET_NAME, ['週期', '起始日', '結束日', '報酬率', '最大回撤', '交易次數', '勝率', '檢討重點']);
+  ensureSheetWithHeader(workbook, THIRTY_DAY_REVIEW_SHEET_NAME, ['週期', '起始日', '結束日', '報酬率', '最大回撤', '交易次數', '勝率', '是否調整', '調整重點']);
+}
+
+function ensureStrategySettingsSheet(workbook) {
+  const sheet = workbook.getSheetByName(SETTINGS_SHEET_NAME) || workbook.insertSheet(SETTINGS_SHEET_NAME);
+  const headers = ['參數代碼', '參數名稱', '目前值', '資料型態', '預設值', '說明', '最後套用時間'];
+  const existing = sheet.getLastRow() ? sheet.getRange(1, 1, 1, headers.length).getValues()[0] : [];
+  if (existing.join('|') !== headers.join('|')) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+  }
+
+  const now = new Date().toISOString();
+  const existingRows = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues()
+    : [];
+  const existingByKey = {};
+  existingRows.forEach(function(row, index) {
+    const key = String(row[0] || '').trim();
+    if (key) existingByKey[key] = { row: row, index: index + 2 };
+  });
+
+  STRATEGY_SETTINGS.forEach(function(setting) {
+    const key = setting[0];
+    const current = existingByKey[key];
+    const row = current ? current.row : [];
+    const value = row[2] !== '' && row[2] != null ? row[2] : setting[3];
+    const output = [key, setting[1], value, setting[2], setting[3], setting[4], row[6] || now];
+    if (current) sheet.getRange(current.index, 1, 1, headers.length).setValues([output]);
+    else sheet.appendRow(output);
+  });
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function ensureSheetWithHeader(workbook, name, headers) {
+  const sheet = workbook.getSheetByName(name) || workbook.insertSheet(name);
+  const existing = sheet.getLastRow() ? sheet.getRange(1, 1, 1, headers.length).getValues()[0] : [];
+  if (existing.join('|') !== headers.join('|')) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, headers.length);
+  }
+  return sheet;
+}
+
+function loadSettingsFromSheet() {
+  const workbook = getSettingsWorkbook(false);
+  if (!workbook) return { source: 'defaults', values: {}, errors: [] };
+  ensureSettingsSheets(workbook);
+  const sheet = workbook.getSheetByName(SETTINGS_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return { source: 'defaults', values: {}, errors: [] };
+
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+  const values = {};
+  const errors = [];
+  rows.forEach(function(row) {
+    const key = String(row[0] || '').trim();
+    if (!key || DEFAULT_CONFIG[key] == null) return;
+    const type = String(row[3] || '').trim() || strategySettingType(key);
+    const parsed = parseSettingValue(row[2], type);
+    if (parsed.valid) values[key] = parsed.value;
+    else errors.push(key + ': ' + parsed.error);
+  });
+  return { source: 'google-sheet', values: values, errors: errors };
+}
+
+function strategySettingType(key) {
+  const setting = STRATEGY_SETTINGS.find(function(item) { return item[0] === key; });
+  return setting ? setting[2] : 'number';
+}
+
+function parseSettingValue(value, type) {
+  if (type === 'boolean') {
+    if (value === true || value === false) return { valid: true, value: value };
+    const text = String(value || '').trim().toUpperCase();
+    if (['TRUE', 'YES', 'Y', '1', '是', '允許'].indexOf(text) >= 0) return { valid: true, value: true };
+    if (['FALSE', 'NO', 'N', '0', '否', '不允許'].indexOf(text) >= 0) return { valid: true, value: false };
+    return { valid: false, error: '布林值需為 TRUE/FALSE' };
+  }
+  const number = Number(value);
+  if (Number.isFinite(number)) return { valid: true, value: number };
+  return { valid: false, error: '數值格式錯誤' };
+}
+
+function currentSettingsForPayload(loaded) {
+  return STRATEGY_SETTINGS.map(function(setting) {
+    const key = setting[0];
+    return {
+      key: key,
+      name: setting[1],
+      value: CONFIG[key],
+      type: setting[2],
+      defaultValue: DEFAULT_CONFIG[key],
+      source: loaded.values[key] == null ? 'default' : loaded.source,
+      description: setting[4]
+    };
+  });
+}
+
 function resetDashboardState() {
+  const settings = applyRuntimeConfig();
   const saved = PropertiesService.getScriptProperties().getProperty(STATE_KEY);
   const previous = saved ? JSON.parse(saved) : null;
   const previousScenario = previous && Array.isArray(previous.scenario) ? previous.scenario : [];
@@ -168,6 +378,7 @@ function resetDashboardState() {
     ok: true,
     source: 'apps-script-reset',
     generatedAt: resetGeneratedAt,
+    settings: currentSettingsForPayload(settings),
     schedule: scheduledRefreshDecision(new Date()),
     scenario: scenario,
     simulation: simulation,
@@ -183,6 +394,7 @@ function resetDashboardState() {
 
 function refreshDashboard(options) {
   options = options || {};
+  const settings = applyRuntimeConfig();
   const schedule = scheduledRefreshDecision(new Date());
   if (!schedule.isTradingDay || (!options.force && !schedule.shouldRun)) {
     return skippedRefreshPayload(schedule);
@@ -201,6 +413,7 @@ function refreshDashboard(options) {
       ok: true,
       source: 'apps-script',
       generatedAt: new Date().toISOString(),
+      settings: currentSettingsForPayload(settings),
       schedule: schedule,
       scenario: scenario,
       simulation: simulation
@@ -239,6 +452,7 @@ function readOrSeedPayload() {
 }
 
 function readStatusPayload() {
+  const settings = applyRuntimeConfig();
   const payload = readOrSeedPayload();
   const simulation = payload && payload.simulation ? payload.simulation : {};
   const trades = Array.isArray(simulation.trades) ? simulation.trades : [];
@@ -250,7 +464,10 @@ function readStatusPayload() {
     scenarioDate: Array.isArray(payload.scenario) && payload.scenario.length ? last(payload.scenario).date : null,
     tradeCount: trades.length,
     latestTrade: latestTrade,
-    tradeSignature: tradeSignature(trades, latestTrade)
+    tradeSignature: tradeSignature(trades, latestTrade),
+    settingsSource: settings.source,
+    settingsSpreadsheetId: getSettingsSpreadsheetId(),
+    settings: currentSettingsForPayload(settings)
   };
 }
 
@@ -801,11 +1018,13 @@ function safeFetchAfterMarketTrades(targetDate, items) {
 }
 
 function skippedRefreshPayload(schedule) {
+  const settings = applyRuntimeConfig();
   const payload = readOrSeedPayload();
   payload.schedule = Object.assign({}, schedule, {
     skipped: true,
     skippedAt: new Date().toISOString()
   });
+  payload.settings = currentSettingsForPayload(settings);
   return payload;
 }
 
@@ -1444,15 +1663,15 @@ function buildPreOpenPlan(market, date) {
 function buildExecutionPlan(grade, trendOk, volumePriceOk, momentumOk, chipOk, volumeRatio, intradayReturnPct, spreadPct) {
   const strongSignal = grade === 'A' && trendOk && volumePriceOk && momentumOk && chipOk;
   const liquid = volumeRatio >= 1.1 && spreadPct <= CONFIG.maxLimitOrderSpreadPct;
-  const chasingRisk = intradayReturnPct > CONFIG.maxChasePct || spreadPct > CONFIG.maxLimitOrderSpreadPct;
-  const dayTradeOk = strongSignal && liquid && Math.abs(intradayReturnPct) >= 0.002;
+  const chasingRisk = !CONFIG.allowChasing || intradayReturnPct > CONFIG.maxChasePct || spreadPct > CONFIG.maxLimitOrderSpreadPct;
+  const dayTradeOk = CONFIG.allowDayTrade && strongSignal && liquid && Math.abs(intradayReturnPct) >= 0.002;
   let orderType = 'NO_TRADE';
   let chaseAllowed = false;
   let cancelAfterSeconds = 0;
   let reason = '條件不足，先不操作';
 
   if (strongSignal && liquid && !chasingRisk) {
-    orderType = spreadPct <= CONFIG.maxMarketOrderSpreadPct && volumeRatio >= 1.5 ? 'LIMIT_OR_MARKETABLE' : 'LIMIT';
+    orderType = CONFIG.allowMarketableOrders && spreadPct <= CONFIG.maxMarketOrderSpreadPct && volumeRatio >= 1.5 ? 'LIMIT_OR_MARKETABLE' : 'LIMIT';
     chaseAllowed = intradayReturnPct <= CONFIG.maxChasePct && spreadPct <= CONFIG.maxMarketOrderSpreadPct;
     cancelAfterSeconds = dayTradeOk ? 20 : 90;
     reason = chaseAllowed ? 'A 級共振且價差小，可微追但需設滑價上限' : 'A 級共振但不追價，以限價等待';
@@ -1483,7 +1702,7 @@ function buildExecutionPlan(grade, trendOk, volumePriceOk, momentumOk, chipOk, v
 function buildOvernightPlan(grade, trendOk, volumePriceOk, momentumOk, chipOk, volumeRatio, intradayReturnPct, latest, prev) {
   const closeNearHigh = latest.high ? latest.close >= latest.high * 0.985 : latest.close >= prev.close;
   const notOverextended = intradayReturnPct <= 0.035;
-  const ok = (grade === 'A' || grade === 'B') &&
+  const ok = CONFIG.allowOvernight && (grade === 'A' || grade === 'B') &&
     trendOk && volumePriceOk && momentumOk && chipOk &&
     volumeRatio >= 1.0 && closeNearHigh && notOverextended;
   return {
@@ -1554,6 +1773,7 @@ function positionPct(candidate, account) {
 }
 
 function sellByRules(account, day, marketState) {
+  if (!CONFIG.allowAutoSell) return;
   const stillHolding = [];
   account.positions.forEach(function(position) {
     const candidate = findCandidate(day, position.symbol);
@@ -1643,6 +1863,7 @@ function rotateOutOfWeakPositions(account, day, marketState) {
 }
 
 function buyByRules(account, day, marketState) {
+  if (!CONFIG.allowAutoBuy) return;
   const throttle = tradingThrottle(account, day);
   if (!throttle.allowNewRisk) return;
   day.candidates.filter(function(candidate) {
@@ -1691,6 +1912,7 @@ function buyByRules(account, day, marketState) {
 }
 
 function runDayTrades(account, day, marketState) {
+  if (!CONFIG.allowDayTrade) return;
   if (day.session === 'AFTER_MARKET') return;
   if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
   const throttle = tradingThrottle(account, day);
