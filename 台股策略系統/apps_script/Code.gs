@@ -94,9 +94,13 @@ function scheduledUpdate() {
   return refreshDashboard();
 }
 
-function installMinuteTrigger() {
+function installThirtyMinuteTrigger() {
   deleteSimulationTriggers();
-  ScriptApp.newTrigger('scheduledUpdate').timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger('scheduledUpdate').timeBased().everyMinutes(30).create();
+}
+
+function installMinuteTrigger() {
+  installThirtyMinuteTrigger();
 }
 
 function deleteSimulationTriggers() {
