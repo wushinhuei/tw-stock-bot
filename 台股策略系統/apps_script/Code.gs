@@ -504,12 +504,16 @@ function quickRefreshScenario(previousDay, schedule, existingPositions) {
     candidates.push(candidateFromHeldPosition(position, item, quote, previousDay));
   });
 
+  const refreshedMarket = Object.assign({}, previousDay.market, {
+    close: marketQuote && marketQuote.price != null ? round2(marketQuote.price) : previousDay.market.close
+  });
+  const preOpenPlan = buildPreOpenPlan(refreshedMarket, schedule.date);
+
   return [Object.assign({}, previousDay, {
     date: schedule.date,
     session: hasAfterMarketTrades(afterMarketTrades) ? 'AFTER_MARKET' : 'REGULAR',
-    market: Object.assign({}, previousDay.market, {
-      close: marketQuote && marketQuote.price != null ? round2(marketQuote.price) : previousDay.market.close
-    }),
+    market: refreshedMarket,
+    preOpenPlan: preOpenPlan,
     candidates: candidates,
     source: Object.assign({}, previousDay.source || {}, {
       provider: 'Apps Script quick refresh + TWSE MIS + TWSE BFT41U after-hours',
@@ -520,7 +524,8 @@ function quickRefreshScenario(previousDay, schedule, existingPositions) {
         heldSupplementCount: positionUniverseItems(existingPositions || []).length
       }),
       schedule: schedule,
-      afterMarketDate: afterMarketTrades._meta ? afterMarketTrades._meta.date : null
+      afterMarketDate: afterMarketTrades._meta ? afterMarketTrades._meta.date : null,
+      preOpenPlan: preOpenPlan
     })
   })];
 }
@@ -530,6 +535,7 @@ function candidateFromHeldPosition(position, item, quote, previousDay) {
   const bidPrice = quote && quote.bidPrice != null ? round2(quote.bidPrice) : price;
   const askPrice = quote && quote.askPrice != null ? round2(quote.askPrice) : price;
   const dailyClose = price;
+  const spreadPct = quoteSpreadPct(quote, price);
   return {
     date: previousDay.date,
     symbol: position.symbol,
@@ -543,6 +549,7 @@ function candidateFromHeldPosition(position, item, quote, previousDay) {
     stopPrice: position.stopPrice || round2(price * 0.98),
     targetPrice: position.targetPrice || round2(price * 1.08),
     dayTradeOk: false,
+    overnightOk: false,
     intradayReturnPct: 0,
     heldSupplement: true,
     industryOk: item.industryOk,
@@ -554,6 +561,13 @@ function candidateFromHeldPosition(position, item, quote, previousDay) {
     afterMarketTransactions: quote && quote.afterMarket ? quote.afterMarket.transactions : 0,
     afterMarketBidVolume: quote && quote.afterMarket ? quote.afterMarket.bidVolume : 0,
     afterMarketAskVolume: quote && quote.afterMarket ? quote.afterMarket.askVolume : 0,
+    executionPlan: buildExecutionPlan('C', false, false, false, Boolean(item.chipOk), 1, 0, spreadPct),
+    overnightPlan: {
+      ok: false,
+      positionPct: 0,
+      reason: '既有持倉只補即時報價，不新增隔日沖部位',
+      exitRules: ['依原停損停利與現金水位管理', '若觸發風險條件則減碼或出場']
+    },
     metrics: {
       heldSupplement: true,
       dailyClose: dailyClose,
@@ -563,7 +577,7 @@ function candidateFromHeldPosition(position, item, quote, previousDay) {
       bidPrice: bidPrice,
       askPrice: askPrice,
       afterMarket: quote && quote.afterMarket ? quote.afterMarket : null,
-      spreadPct: quoteSpreadPct(quote, price),
+      spreadPct: spreadPct,
       markedClose: price,
       refreshMode: 'quick'
     }
@@ -600,6 +614,23 @@ function updateCandidateQuote(candidate, quote) {
     quoteSpreadPct(quote, price)
   );
   updated.dayTradeOk = candidate.grade === 'A' && updated.executionPlan.dayTradeOk;
+  const previousClose = candidate.metrics && candidate.metrics.dailyClose ? candidate.metrics.dailyClose : price;
+  const latestForOvernight = {
+    close: price,
+    high: Math.max(price, candidate.metrics && candidate.metrics.markedClose ? candidate.metrics.markedClose : price)
+  };
+  updated.overnightPlan = buildOvernightPlan(
+    candidate.grade,
+    candidate.trendOk,
+    candidate.volumePriceOk,
+    candidate.momentumOk,
+    candidate.chipOk,
+    candidate.metrics && candidate.metrics.volumeRatio ? candidate.metrics.volumeRatio : 1,
+    updated.intradayReturnPct || 0,
+    latestForOvernight,
+    { close: previousClose }
+  );
+  updated.overnightOk = Boolean(updated.overnightPlan && updated.overnightPlan.ok);
   updated.metrics = Object.assign({}, candidate.metrics || {}, {
     latestQuoteTime: quote.time || null,
     latestQuoteProvider: quote.provider || null,
