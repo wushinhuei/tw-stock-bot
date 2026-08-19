@@ -1036,7 +1036,7 @@ function requestJsonp(url) {
     const timer = window.setTimeout(() => {
       cleanup();
       reject(new Error(`Apps Script timeout ${url}`));
-    }, 30000);
+    }, 75000);
     const cleanup = () => {
       window.clearTimeout(timer);
       delete window[callbackName];
