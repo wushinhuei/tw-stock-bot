@@ -86,6 +86,8 @@ let activeResult = null;
 let activeLatestDay = null;
 let refreshInFlight = false;
 let refreshTimerId = null;
+let tradeWatchTimerId = null;
+let activeTradeSignature = '';
 
 function stock(symbol, name, group, price, stopPrice, targetPrice, grade, dayTradeOk, intradayReturnPct) {
   const allA = grade === 'A';
@@ -994,6 +996,14 @@ async function loadAppsScriptPayload(action, options = {}) {
   return true;
 }
 
+async function loadAppsScriptStatus() {
+  const endpoint = appsScriptEndpoint();
+  if (!endpoint) return null;
+  const payload = await requestJsonp(appsScriptUrl('status'));
+  if (!payload || payload.ok === false) return null;
+  return payload;
+}
+
 async function loadStaticPayload() {
   window.ACTUAL_SCENARIO = await loadWindowAssignment('actual_data.js', 'ACTUAL_SCENARIO');
   window.PRECOMPUTED_SIMULATION = await loadWindowAssignment('simulation_result.js', 'PRECOMPUTED_SIMULATION');
@@ -1021,6 +1031,25 @@ function refreshIntervalMs() {
   return 30 * 60 * 1000;
 }
 
+function tradeWatchIntervalMs() {
+  return 60 * 1000;
+}
+
+function resultTradeSignature(result) {
+  const trades = Array.isArray(result?.trades) ? result.trades : [];
+  const latestTrade = trades.length ? trades[trades.length - 1] : null;
+  if (!latestTrade) return '0:none';
+  return [
+    trades.length,
+    latestTrade.date || '',
+    latestTrade.action || '',
+    latestTrade.symbol || '',
+    latestTrade.shares || '',
+    latestTrade.price || '',
+    latestTrade.pnl || ''
+  ].join('|');
+}
+
 async function refreshData(options = {}) {
   if (refreshInFlight) return;
   refreshInFlight = true;
@@ -1043,7 +1072,9 @@ async function refreshData(options = {}) {
     });
     if (!loadedFromAppsScript) await loadStaticPayload();
     scenario = window.ACTUAL_SCENARIO;
-    render(currentSimulation());
+    const result = currentSimulation();
+    activeTradeSignature = resultTradeSignature(result);
+    render(result);
   } catch (error) {
     console.error(error);
   } finally {
@@ -1059,7 +1090,10 @@ async function refreshData(options = {}) {
 function initDataRefresh() {
   const refreshButton = document.querySelector('#refreshDataButton');
   if (refreshButton) refreshButton.addEventListener('click', () => refreshData({ force: true }));
-  refreshData().finally(scheduleNextRefresh);
+  refreshData().finally(() => {
+    scheduleNextRefresh();
+    scheduleTradeWatch();
+  });
 }
 
 function scheduleNextRefresh() {
@@ -1067,6 +1101,29 @@ function scheduleNextRefresh() {
   refreshTimerId = window.setTimeout(() => {
     refreshData().finally(scheduleNextRefresh);
   }, refreshIntervalMs());
+}
+
+function scheduleTradeWatch() {
+  if (tradeWatchTimerId) window.clearTimeout(tradeWatchTimerId);
+  tradeWatchTimerId = window.setTimeout(() => {
+    checkTradeUpdate().finally(scheduleTradeWatch);
+  }, tradeWatchIntervalMs());
+}
+
+async function checkTradeUpdate() {
+  if (refreshInFlight) return;
+  const status = await loadAppsScriptStatus().catch(error => {
+    console.warn(error);
+    return null;
+  });
+  if (!status || !status.tradeSignature) return;
+  if (!activeTradeSignature) {
+    activeTradeSignature = status.tradeSignature;
+    return;
+  }
+  if (status.tradeSignature !== activeTradeSignature) {
+    await refreshData();
+  }
 }
 
 initRulesModal();

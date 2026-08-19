@@ -68,9 +68,13 @@ function doGet(e) {
   let payload;
 
   try {
-    payload = action === 'refresh'
-      ? refreshDashboard({ force: params.force === '1' || params.force === 'true' })
-      : readOrSeedPayload();
+    if (action === 'status') {
+      payload = readStatusPayload();
+    } else {
+      payload = action === 'refresh'
+        ? refreshDashboard({ force: params.force === '1' || params.force === 'true' })
+        : readOrSeedPayload();
+    }
   } catch (error) {
     payload = {
       ok: false,
@@ -169,6 +173,35 @@ function readOrSeedPayload() {
   const seed = readSeedFromGitHub();
   PropertiesService.getScriptProperties().setProperty(STATE_KEY, JSON.stringify(seed));
   return seed;
+}
+
+function readStatusPayload() {
+  const payload = readOrSeedPayload();
+  const simulation = payload && payload.simulation ? payload.simulation : {};
+  const trades = Array.isArray(simulation.trades) ? simulation.trades : [];
+  const latestTrade = trades.length ? trades[trades.length - 1] : null;
+  return {
+    ok: true,
+    source: payload.source || 'apps-script',
+    generatedAt: payload.generatedAt || simulation.generatedAt || new Date().toISOString(),
+    scenarioDate: Array.isArray(payload.scenario) && payload.scenario.length ? last(payload.scenario).date : null,
+    tradeCount: trades.length,
+    latestTrade: latestTrade,
+    tradeSignature: tradeSignature(trades, latestTrade)
+  };
+}
+
+function tradeSignature(trades, latestTrade) {
+  if (!latestTrade) return '0:none';
+  return [
+    trades.length,
+    latestTrade.date || '',
+    latestTrade.action || '',
+    latestTrade.symbol || '',
+    latestTrade.shares || '',
+    latestTrade.price || '',
+    latestTrade.pnl || ''
+  ].join('|');
 }
 
 function readSeedFromGitHub() {
