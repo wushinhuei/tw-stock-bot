@@ -10,10 +10,17 @@ const CONFIG = {
   standardPositionPct: 0.25,
   halfPositionPct: 0.15,
   minCashReservePct: 0.3,
+  cashCautionPct: 0.4,
   dailyStopLossPct: -0.02,
+  dailySoftStopLossPct: -0.005,
+  dailyProfitLockPct: 0.003,
   weeklyStopLossPct: -0.05,
   dayTradeCapitalPct: 0.1,
+  overnightPositionPct: 0.12,
   afterMarketPositionPct: 0.1,
+  maxChasePct: 0.003,
+  maxMarketOrderSpreadPct: 0.002,
+  maxLimitOrderSpreadPct: 0.006,
   topVolumeLimit: 100,
   maxScanCandidates: 30,
   brokerFeeRate: 0.001425,
@@ -256,6 +263,7 @@ function buildScenario(existingPositions) {
     date: latestMarket.date >= START_DATE ? latestMarket.date : START_DATE,
     session: hasAfterMarketTrades(afterMarketTrades) ? 'AFTER_MARKET' : 'REGULAR',
     market: market,
+    preOpenPlan: buildPreOpenPlan(market, latestMarket.date),
     groups: groupCounts,
     candidates: candidates,
     source: {
@@ -581,9 +589,17 @@ function updateCandidateQuote(candidate, quote) {
   updated.intradayReturnPct = candidate.metrics && candidate.metrics.dailyClose
     ? Math.max(-0.03, Math.min(0.03, price / candidate.metrics.dailyClose - 1))
     : candidate.intradayReturnPct;
-  updated.dayTradeOk = candidate.grade !== 'BLOCKED' &&
-    Boolean(candidate.dayTradeOk || Math.abs(updated.intradayReturnPct || 0) >= 0.002) &&
-    quoteSpreadPct(quote, price) <= 0.006;
+  updated.executionPlan = buildExecutionPlan(
+    candidate.grade,
+    candidate.trendOk,
+    candidate.volumePriceOk,
+    candidate.momentumOk,
+    candidate.chipOk,
+    candidate.metrics && candidate.metrics.volumeRatio ? candidate.metrics.volumeRatio : 1,
+    updated.intradayReturnPct || 0,
+    quoteSpreadPct(quote, price)
+  );
+  updated.dayTradeOk = candidate.grade === 'A' && updated.executionPlan.dayTradeOk;
   updated.metrics = Object.assign({}, candidate.metrics || {}, {
     latestQuoteTime: quote.time || null,
     latestQuoteProvider: quote.provider || null,
@@ -1080,6 +1096,9 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
   const stopPrice = Math.round(Math.min(latest.close * 0.94, ma20 || latest.close * 0.94) * 10) / 10;
   const targetPrice = Math.round(latest.close * 1.08 * 10) / 10;
   const intradayReturnPct = latest.open ? latest.close / latest.open - 1 : 0;
+  const spreadPct = quoteSpreadPct(latestQuote, latest.close);
+  const executionPlan = buildExecutionPlan(grade, trendOk, volumePriceOk, momentumOk, dynamicChipOk, volumeRatio, intradayReturnPct, spreadPct);
+  const overnightPlan = buildOvernightPlan(grade, trendOk, volumePriceOk, momentumOk, dynamicChipOk, volumeRatio, intradayReturnPct, latest, prev);
 
   return {
     symbol: base.code,
@@ -1097,7 +1116,10 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
     stopPrice: stopPrice,
     targetPrice: targetPrice,
     grade: grade,
-    dayTradeOk: grade !== 'BLOCKED' && volumeRatio >= 1.1 && Math.abs(intradayReturnPct) >= 0.002 && quoteSpreadPct(latestQuote, latest.close) <= 0.006,
+    dayTradeOk: grade === 'A' && executionPlan.dayTradeOk,
+    overnightOk: overnightPlan.ok,
+    executionPlan: executionPlan,
+    overnightPlan: overnightPlan,
     intradayReturnPct: Math.max(-0.03, Math.min(0.03, intradayReturnPct)),
     heldSupplement: Boolean(base.heldSupplement),
     industryOk: base.industryOk,
@@ -1124,7 +1146,7 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
       bidPrice: latestQuote && latestQuote.bidPrice != null ? round2(latestQuote.bidPrice) : null,
       askPrice: latestQuote && latestQuote.askPrice != null ? round2(latestQuote.askPrice) : null,
       afterMarket: latestQuote && latestQuote.afterMarket ? latestQuote.afterMarket : null,
-      spreadPct: quoteSpreadPct(latestQuote, latest.close),
+      spreadPct: spreadPct,
       dailyClose: last(rows).close,
       markedClose: last(markedCloses),
       chip: Object.assign({}, chipSignal, {
@@ -1305,17 +1327,134 @@ function evaluateMarket(day) {
   return { mode: 'LIGHT', label: '\u8f15\u5009\u8a66\u55ae', maxGrade: 'B' };
 }
 
+function buildPreOpenPlan(market, date) {
+  const close = market.close;
+  const above20 = close > market.ma20;
+  const above50 = close > market.ma50;
+  const stance = above20 && above50 ? '偏多' : above50 ? '中性偏保守' : '高風險';
+  return {
+    date: date,
+    stance: stance,
+    allowNewPositions: above50,
+    allowChasing: above20 && above50,
+    checklist: [
+      '開盤前確認美股、費半、台指期與匯率方向',
+      '檢查 AI、半導體、電力、機器人族群新聞與公司公告',
+      '避開重大財報、法說、除權息、處置與注意股風險',
+      '若國際市場偏空或新聞混亂，當日只允許小部位或不操作'
+    ]
+  };
+}
+
+function buildExecutionPlan(grade, trendOk, volumePriceOk, momentumOk, chipOk, volumeRatio, intradayReturnPct, spreadPct) {
+  const strongSignal = grade === 'A' && trendOk && volumePriceOk && momentumOk && chipOk;
+  const liquid = volumeRatio >= 1.1 && spreadPct <= CONFIG.maxLimitOrderSpreadPct;
+  const chasingRisk = intradayReturnPct > CONFIG.maxChasePct || spreadPct > CONFIG.maxLimitOrderSpreadPct;
+  const dayTradeOk = strongSignal && liquid && Math.abs(intradayReturnPct) >= 0.002;
+  let orderType = 'NO_TRADE';
+  let chaseAllowed = false;
+  let cancelAfterSeconds = 0;
+  let reason = '條件不足，先不操作';
+
+  if (strongSignal && liquid && !chasingRisk) {
+    orderType = spreadPct <= CONFIG.maxMarketOrderSpreadPct && volumeRatio >= 1.5 ? 'LIMIT_OR_MARKETABLE' : 'LIMIT';
+    chaseAllowed = intradayReturnPct <= CONFIG.maxChasePct && spreadPct <= CONFIG.maxMarketOrderSpreadPct;
+    cancelAfterSeconds = dayTradeOk ? 20 : 90;
+    reason = chaseAllowed ? 'A 級共振且價差小，可微追但需設滑價上限' : 'A 級共振但不追價，以限價等待';
+  } else if (strongSignal && liquid) {
+    orderType = 'LIMIT_ONLY';
+    cancelAfterSeconds = 60;
+    reason = '訊號合格但追價風險偏高，只能限價，不追市價';
+  }
+
+  return {
+    allowEntry: orderType !== 'NO_TRADE',
+    orderType: orderType,
+    chaseAllowed: chaseAllowed,
+    cancelAfterSeconds: cancelAfterSeconds,
+    dayTradeOk: dayTradeOk,
+    spreadPct: spreadPct,
+    maxChasePct: CONFIG.maxChasePct,
+    reason: reason,
+    cancelRules: [
+      '跌回突破價或前一日收盤下方',
+      '委買支撐撤退或價差放大',
+      '大盤或同族群轉弱',
+      '掛單等待逾時仍未成交'
+    ]
+  };
+}
+
+function buildOvernightPlan(grade, trendOk, volumePriceOk, momentumOk, chipOk, volumeRatio, intradayReturnPct, latest, prev) {
+  const closeNearHigh = latest.high ? latest.close >= latest.high * 0.985 : latest.close >= prev.close;
+  const notOverextended = intradayReturnPct <= 0.035;
+  const ok = (grade === 'A' || grade === 'B') &&
+    trendOk && volumePriceOk && momentumOk && chipOk &&
+    volumeRatio >= 1.0 && closeNearHigh && notOverextended;
+  return {
+    ok: ok,
+    positionPct: ok ? CONFIG.overnightPositionPct : 0,
+    reason: ok
+      ? '收盤強、量價與籌碼支撐，可列隔日沖候選，隔天不續強就出場'
+      : '隔夜延續條件不足，不列隔日沖',
+    exitRules: [
+      '隔天開高不續強即停利或退出',
+      '跌破前一日收盤或尾盤支撐即退出',
+      '新聞或國際市場轉弱時降低部位'
+    ]
+  };
+}
+
+function accountEquity(account, day) {
+  if (day) return Number(account.cash || 0) + marketValue(account.positions || [], day);
+  if (account.daily && account.daily.length) return Number(last(account.daily).equity || account.initialCapital || CONFIG.initialCapital);
+  return Number(account.initialCapital || CONFIG.initialCapital);
+}
+
+function accountCashRatio(account, day) {
+  const equity = accountEquity(account, day);
+  return equity ? Number(account.cash || 0) / equity : 0;
+}
+
+function tradingThrottle(account, day) {
+  const equity = accountEquity(account, day);
+  const latestDaily = account.daily && account.daily.length ? last(account.daily) : null;
+  const previousDaily = latestDaily && latestDaily.date === day.date && account.daily.length > 1
+    ? account.daily[account.daily.length - 2]
+    : latestDaily;
+  const previousEquity = previousDaily ? Number(previousDaily.equity || account.initialCapital) : Number(account.initialCapital || CONFIG.initialCapital);
+  const dayReturn = previousEquity ? (equity - previousEquity) / previousEquity : 0;
+  const cashRatio = accountCashRatio(account, day);
+  if (dayReturn >= CONFIG.dailyProfitLockPct) {
+    return { allowNewRisk: false, label: '已達每日小賺目標，停止新增風險', dayReturn: dayReturn, cashRatio: cashRatio };
+  }
+  if (dayReturn <= CONFIG.dailySoftStopLossPct) {
+    return { allowNewRisk: false, label: '日內虧損達軟停損，停止新增風險', dayReturn: dayReturn, cashRatio: cashRatio };
+  }
+  if (cashRatio < CONFIG.minCashReservePct) {
+    return { allowNewRisk: false, label: '現金低於最低保留比例，不新增部位', dayReturn: dayReturn, cashRatio: cashRatio };
+  }
+  if (cashRatio < CONFIG.cashCautionPct) {
+    return { allowNewRisk: true, reduceSize: true, label: '現金偏低，只允許減碼後的小部位', dayReturn: dayReturn, cashRatio: cashRatio };
+  }
+  return { allowNewRisk: true, reduceSize: false, label: '資金水位正常，可依訊號操作', dayReturn: dayReturn, cashRatio: cashRatio };
+}
+
 function canOpenPosition(candidate, marketState, account) {
   if (account.dailyStopped) return false;
   if (candidate.heldSupplement) return false;
   if (candidate.grade === 'BLOCKED' || candidate.price <= candidate.stopPrice) return false;
   if (marketState.mode === 'DEFENSIVE') return false;
+  if (!candidate.executionPlan || !candidate.executionPlan.allowEntry) return false;
   return candidate.grade === 'A';
 }
 
 function positionPct(candidate, account) {
+  const cashRatio = accountCashRatio(account);
+  if (cashRatio < CONFIG.cashCautionPct) return Math.min(CONFIG.halfPositionPct, CONFIG.standardPositionPct / 2);
   if (account.weeklyLimited) return CONFIG.halfPositionPct;
   if (candidate.session === 'AFTER_MARKET') return CONFIG.afterMarketPositionPct;
+  if (candidate.overnightOk) return CONFIG.overnightPositionPct;
   return candidate.grade === 'A' ? CONFIG.standardPositionPct : CONFIG.halfPositionPct;
 }
 
@@ -1409,14 +1548,16 @@ function rotateOutOfWeakPositions(account, day, marketState) {
 }
 
 function buyByRules(account, day, marketState) {
+  const throttle = tradingThrottle(account, day);
+  if (!throttle.allowNewRisk) return;
   day.candidates.filter(function(candidate) {
     return canOpenPosition(candidate, marketState, account);
   }).forEach(function(candidate) {
     if (account.positions.some(function(position) { return position.symbol === candidate.symbol; })) return;
-    const budget = account.initialCapital * positionPct(candidate, account);
+    const budget = accountEquity(account, day) * (throttle.reduceSize ? Math.min(positionPct(candidate, account), CONFIG.halfPositionPct) : positionPct(candidate, account));
     const buyPrice = executionBuyPrice(candidate);
     const unitCost = buyPrice * CONFIG.boardLot;
-    const availableCash = tradableCash(account);
+    const availableCash = tradableCash(account, day);
     const units = Math.floor(Math.min(budget, availableCash) / unitCost);
     const shares = units * CONFIG.boardLot;
     if (shares <= 0) return;
@@ -1424,7 +1565,7 @@ function buyByRules(account, day, marketState) {
     const grossAmount = shares * buyPrice;
     const fee = tradeFee(grossAmount);
     const totalCost = grossAmount + fee;
-    if (totalCost > tradableCash(account)) return;
+    if (totalCost > tradableCash(account, day)) return;
 
     account.cash -= totalCost;
     account.totalFees += fee;
@@ -1449,7 +1590,7 @@ function buyByRules(account, day, marketState) {
       tax: 0,
       pnl: 0,
       session: candidate.session || day.session || 'REGULAR',
-      reason: candidate.grade + ' 級共振，強制依規則買進；手續費 ' + fee + sessionReason(candidate)
+      reason: candidate.grade + ' 級共振，' + candidate.executionPlan.reason + '；' + throttle.label + '；手續費 ' + fee + sessionReason(candidate)
     });
   });
 }
@@ -1457,20 +1598,22 @@ function buyByRules(account, day, marketState) {
 function runDayTrades(account, day, marketState) {
   if (day.session === 'AFTER_MARKET') return;
   if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
+  const throttle = tradingThrottle(account, day);
+  if (!throttle.allowNewRisk || throttle.reduceSize) return;
   day.candidates.filter(function(candidate) {
-    return candidate.dayTradeOk && candidate.grade === 'A' && !hasTrade(account, day.date, candidate.symbol, 'DAYTRADE');
+    return candidate.dayTradeOk && candidate.executionPlan && candidate.executionPlan.dayTradeOk && !hasTrade(account, day.date, candidate.symbol, 'DAYTRADE');
   }).forEach(function(candidate) {
-    const budget = account.initialCapital * CONFIG.dayTradeCapitalPct;
+    const budget = accountEquity(account, day) * CONFIG.dayTradeCapitalPct;
     const buyPrice = executionBuyPrice(candidate);
     const sellPrice = executionSellPrice(candidate);
     const unitCost = buyPrice * CONFIG.boardLot;
-    const units = Math.floor(Math.min(budget, tradableCash(account)) / unitCost);
+    const units = Math.floor(Math.min(budget, tradableCash(account, day)) / unitCost);
     const shares = units * CONFIG.boardLot;
     if (shares <= 0) return;
 
     const buyAmount = shares * buyPrice;
     const buyFee = tradeFee(buyAmount);
-    if (buyAmount + buyFee > tradableCash(account)) return;
+    if (buyAmount + buyFee > tradableCash(account, day)) return;
     const sellAmount = shares * sellPrice;
     const sellFee = tradeFee(sellAmount);
     const tax = sellTax(sellAmount, true);
@@ -1491,7 +1634,7 @@ function runDayTrades(account, day, marketState) {
       tax: tax,
       pnl: pnl,
       session: 'REGULAR',
-      reason: '當沖規則模擬，使用目前委買／委賣價估算'
+      reason: '當沖規則模擬，' + candidate.executionPlan.reason + '；使用目前委買／委賣價估算'
     });
   });
 }
@@ -1556,12 +1699,12 @@ function quoteSpreadPct(quote, fallbackPrice) {
   return mid ? Math.max(0, quote.askPrice - quote.bidPrice) / mid : 0;
 }
 
-function minCashReserve(account) {
-  return (account.initialCapital || CONFIG.initialCapital) * CONFIG.minCashReservePct;
+function minCashReserve(account, day) {
+  return accountEquity(account, day) * CONFIG.minCashReservePct;
 }
 
-function tradableCash(account) {
-  return Math.max(0, Number(account.cash || 0) - minCashReserve(account));
+function tradableCash(account, day) {
+  return Math.max(0, Number(account.cash || 0) - minCashReserve(account, day));
 }
 
 function sma(values, period) {

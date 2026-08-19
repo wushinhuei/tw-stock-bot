@@ -14,7 +14,7 @@
     <div>
       <p class="eyebrow">Forced Rules Simulation</p>
       <h1>台股每日自動買賣模擬</h1>
-      <p class="hero-copy">從 2026-08-10 起以初始資金 10 萬每日強制模擬買賣，以零股操作為主，統計扣除手續費與交易稅後的投報率；目前只模擬，不下單。</p>
+      <p class="hero-copy">從 2026-08-10 起以初始資金 10 萬每日模擬買賣，以零股操作為主，優先保護本金、沒條件不操作，統計扣除手續費與交易稅後的每週表現；目前只模擬，不下單。</p>
     </div>
     <div class="top-actions">
       <button type="button" id="refreshDataButton" class="primary-action">更新資料</button>
@@ -52,7 +52,7 @@
       <div class="section-title">
         <div>
           <h2>今日強制結論</h2>
-          <p>不提供人工選項；系統只顯示依規則得到的結果。</p>
+          <p>以每日小賺、少賠、不硬做為核心；達到小利或條件不足時停止新增風險。</p>
         </div>
       </div>
       <div id="todayDecision" class="decision-strip"></div>
@@ -62,7 +62,7 @@
       <div class="section-title">
         <div>
           <h2>今日 A 級候選股</h2>
-          <p>只從成交量前 100 名，且屬 AI、電力、半導體、機器人族群的股票中挑選；A 級才允許主動模擬買進。</p>
+          <p>只從成交量前 100 名，且屬 AI、電力、半導體、機器人族群的股票中挑選；A 級仍需通過執行品質、現金水位與追價風險才允許模擬買進。</p>
         </div>
       </div>
       <div id="aGradeCandidates" class="candidate-grid"></div>
@@ -235,6 +235,8 @@
           <h3>核心原則</h3>
           <ul>
             <li>大盤優先於個股，風控優先於獲利。</li>
+            <li>每日小賺即可，沒條件不操作，週結算看總表現。</li>
+            <li>賺到的錢可納入總資產再投入，但現金水位不足、當日已達小賺或虧損擴大時停止新增風險。</li>
             <li>系統只做模擬提醒，不真實下單。</li>
             <li>初始資金 100,000 元，從 2026-08-10 開始，以零股操作為主。</li>
             <li>所有損益都扣除手續費與交易稅後才列入績效。</li>
@@ -250,7 +252,8 @@
             <li>確認布林擠壓、W 底、VCP、均線多頭與帶量突破。</li>
             <li>確認 MACD 零軸上、RSI 站上 50，KD 不逆勢解讀。</li>
             <li>依 A/B/C 等級決定是否交易與部位。</li>
-            <li>下單前寫好停損價；達到日損或週損限制即停止交易。</li>
+            <li>開盤前檢查國際股市、費半、台指期、匯率、重大新聞與族群題材。</li>
+            <li>下單前確認限價、追價上限與抽單條件；達到日損、週損或每日小賺目標即停止新增風險。</li>
           </ol>
         </section>
 
@@ -304,8 +307,19 @@
           <ul>
             <li>開盤前 5 分鐘不搶單，先觀察大盤方向與個股是否站穩。</li>
             <li>優先選成交量大、流動性佳、振幅足夠的股票。</li>
+            <li>只做 A 級且價差小、量能放大、盤中波動足夠的標的。</li>
             <li>突破魔王線需 1 分 K 實體紅棒完整越過，且成交量明顯放大。</li>
             <li>跌破買進 K 棒低點或跌回關鍵價下方，立刻出場，不凹單。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>隔日沖與下單品質</h3>
+          <ul>
+            <li>隔日沖只列 A/B 級中收盤強、量價與籌碼仍支持、隔夜風險可控的候選股。</li>
+            <li>預設限價，不追高；只有 A 級、價差極小、族群同步轉強時才允許微追。</li>
+            <li>掛單後若買盤撤退、價差放大、大盤或族群轉弱，或等待逾時未成交，立即抽單。</li>
+            <li>市價或接近市價只用於極高確定性進場或停損出場，並設定最大滑價。</li>
           </ul>
         </section>
 
@@ -323,7 +337,8 @@
           <h3>風控鐵律</h3>
           <ul>
             <li>單筆最大損失控制在總資金 1% 到 2%。</li>
-            <li>單日累計虧損達 2%，當天停止交易。</li>
+            <li>單日累計虧損達 0.5% 時停止新增風險，達 2% 時當天停止交易。</li>
+            <li>單日已達小賺目標時，後續只管理持倉，不再硬做新交易。</li>
             <li>單週累計虧損達 5%，下一週只允許半倉或模擬觀察。</li>
             <li>假突破後冷卻 1 到 3 天，不再追同一條關鍵價。</li>
           </ul>
@@ -345,6 +360,6 @@
   <script src="apps_script_config.js?v=20260819-apps-script-v2"></script>
   <script src="actual_data.js?v=20260810-actual"></script>
   <script src="simulation_result.js?v=20260810-actions"></script>
-  <script src="app.js?v=20260819-trade-watch-refresh"></script>
+  <script src="app.js?v=20260819-conservative-execution"></script>
 </body>
 </html>
