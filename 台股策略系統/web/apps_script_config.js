@@ -1,1 +1,1 @@
-window.APPS_SCRIPT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyPpK7Q2TFv-GKT_SSwMhOE1oQf8EqKlU9KzVmexunK1kNI4-CyQhoZ6YetcQtENdB8/exec';
+window.APPS_SCRIPT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxD-_3fXJsbaWb_8r6_tmqghUcnq-vtFbA3com3N8ViE__jEsVihkdvYNdXp90_ACKp/exec';
