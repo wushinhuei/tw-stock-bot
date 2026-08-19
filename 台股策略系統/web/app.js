@@ -1018,8 +1018,7 @@ function isTaiwanMarketLive() {
 }
 
 function refreshIntervalMs() {
-  if (!appsScriptEndpoint()) return 5 * 60 * 1000;
-  return isTaiwanMarketLive() ? 15 * 1000 : 60 * 1000;
+  return 30 * 60 * 1000;
 }
 
 async function refreshData(options = {}) {
