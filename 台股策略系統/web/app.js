@@ -12,7 +12,6 @@
   const els = {
     refreshButton: byId("refreshButton"),
     settingsLink: byId("settingsLink"),
-    sourceStatus: byId("sourceStatus"),
     lastUpdated: byId("lastUpdated"),
     tradeSignature: byId("tradeSignature"),
     equity: byId("equity"),
@@ -48,7 +47,7 @@
       els.settingsLink.href = config.settingsSheetUrl;
     }
     els.refreshButton.addEventListener("click", () => refreshData(true));
-    render(state.data, "備援資料");
+    render(state.data);
     refreshData(false);
     state.refreshTimer = setInterval(() => refreshData(false), config.refreshIntervalMs || 1800000);
     state.statusTimer = setInterval(checkStatus, config.statusIntervalMs || 60000);
@@ -62,9 +61,9 @@
       const next = normalizePayload(payload);
       state.data = next;
       state.tradeSignature = next.tradeSignature || state.tradeSignature;
-      render(next, force ? "手動更新完成" : "後端資料");
+      render(next);
     } catch (error) {
-      render(state.data, "後端暫不可用，顯示目前資料");
+      render(state.data);
       console.warn("refresh failed", error);
     } finally {
       setLoading(false);
@@ -163,10 +162,9 @@
     };
   }
 
-  function render(data, sourceLabel) {
+  function render(data) {
     const initial = numberOr(data.initialCapital, 100000);
     const totalReturn = initial ? (data.equity - initial) / initial : 0;
-    els.sourceStatus.textContent = sourceLabel;
     els.lastUpdated.textContent = formatDateTime(data.asOf);
     els.tradeSignature.textContent = data.tradeSignature || "--";
     const positions = data.positions || [];
@@ -225,9 +223,8 @@
         <td class="${Number(row.changePct) >= 0 ? "good" : "bad"}">${pct(Number(row.changePct || 0) / 100)}</td>
         <td>${numberText(row.score)}</td>
         <td>${escapeHtml(row.reason || "等待更多資料")}</td>
-        <td><button class="line-action" type="button">觀察</button></td>
       </tr>
-    `).join("") : emptyRow(8, "目前沒有符合條件的候選股。");
+    `).join("") : emptyRow(7, "目前沒有符合條件的候選股。");
   }
 
   function renderPositions(rows, data) {
@@ -247,9 +244,8 @@
         <td>${money(Number(row.shares || 0) * Number(row.avgPrice || 0))}</td>
         <td class="${Number(row.pnl) >= 0 ? "good" : "bad"}">${signedMoney(row.pnl)}</td>
         <td class="${Number(row.pnlPct) >= 0 ? "good" : "bad"}">${pct(Number(row.pnlPct || 0))}</td>
-        <td><span class="kebab">⋮</span></td>
       </tr>
-    `).join("") : emptyRow(12, "目前沒有持倉，策略維持現金水位。");
+    `).join("") : emptyRow(11, "目前沒有持倉，策略維持現金水位。");
   }
 
   function renderTrades(rows) {
@@ -265,9 +261,8 @@
         <td>當日有效</td>
         <td>${escapeHtml(row.condition || "無")}</td>
         <td class="bad">已成交 @ ${numberText(row.price)}</td>
-        <td><button class="line-action" type="button">再次下單</button></td>
       </tr>
-    `).join("") : emptyRow(10, "尚無交易紀錄。");
+    `).join("") : emptyRow(9, "尚無交易紀錄。");
   }
 
   function setLoading(isLoading) {
