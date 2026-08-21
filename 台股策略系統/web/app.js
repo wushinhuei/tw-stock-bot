@@ -277,7 +277,7 @@
         <td>${numberText(row.price)}</td>
         <td>當日有效</td>
         <td>${feeBreakdown(cost)}</td>
-        <td class="${cost.pnl >= 0 ? "good" : "bad"}">已成交 @ ${numberText(row.price)}｜損益 ${signedMoney(cost.pnl)}</td>
+        <td class="bad">已成交 @ ${numberText(row.price)}</td>
       </tr>
     `;
     }).join("") : emptyRow(9, "尚無交易紀錄。");
