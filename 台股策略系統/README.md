@@ -1,43 +1,29 @@
 # 台股策略系統
 
-目前系統已改為 Apps Script 雲端執行，GitHub Pages 只負責顯示結果。
+本系統用於台股每日模擬交易觀察。前端是靜態網頁，後端資料由 Google Apps Script 提供；策略設定由 Google Sheet 管理。
 
-## 目錄
+## 前端
 
-```text
-apps_script/
-```
-
-Google Apps Script 後端：
-- 每 1 分鐘觸發一次，但只有台股交易日 08:45-15:45 真正更新。
-- 週末、證交所休市日與非更新時段直接回傳快取，節省 Apps Script 與資料 API 用量。
-- 抓 TWSE MIS 即時報價。
-- 抓 TWSE BFT41U 盤後定價交易。
-- 抓 TWSE T86 法人買賣超。
-- 抓 TWSE MI_MARGN 融資融券。
-- 抓 Yahoo Finance 歷史線圖。
-- 自動模擬買賣、當沖與盤後定價交易。
-- 記錄扣除手續費與交易稅後的損益。
+入口：
 
 ```text
-web/
+web/index.html
 ```
 
-GitHub Pages 前端：
-- 顯示總資產、報酬率、持倉、交易紀錄。
-- 完整資料每 30 分鐘讀取 Apps Script 最新快取；休市或非更新時段只讀快取。
-- 若背景買賣紀錄改變，會立即刷新網頁資料。
-- 按「更新資料」才會要求 Apps Script 立即重抓。
-- Apps Script 失敗時會退回靜態備援資料。
+常用動作：
 
-## 操作方式
+- 讀取資料：`action=read`
+- 強制刷新：`action=refresh&force=1`
+- 快速狀態：`action=status`
+- 讀策略設定：`action=settings`
+- 初始化設定表：`action=initSettings`
+- 重置模擬：`action=reset`
 
-平常不需要開機，也不需要打開本機程式。Apps Script 觸發器會在 Google 雲端自動執行。
+## 模擬原則
 
-如果要修改交易邏輯，主要改：
+- 只模擬，不下單。
+- A 級候選股才可考慮進場。
+- 現金水位低於警戒時停止新增部位。
+- 當日軟停損、硬停損、週停損皆優先於交易機會。
+- 交易觸發時前端透過交易簽名變動自動刷新。
 
-```text
-apps_script/Code.gs
-```
-
-修改後用 clasp 推送到 Apps Script，並更新 Web App 部署版本。

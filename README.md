@@ -1,66 +1,40 @@
-# 台股每日自動買賣模擬
+# 台股策略系統
 
-這個專案用固定規則模擬台股每日買賣，不會自動下單。  
-前端部署在 GitHub Pages，資料與模擬邏輯由 Google Apps Script 在雲端定時執行。
+這是依照交接包重建的台股每日自動買賣模擬系統。目前只做模擬與觀察，不連券商、不真實下單。
 
-## 網址
+## 快速開始
 
-- 前端網站：https://wushinhuei.github.io/tw-stock-bot/
-- Apps Script 專案：https://script.google.com/d/10V4wAflJ30eQBWCsfikj-4xPX5uKY0IgBIGeaDarqeUJoiMd5ob8O_9o/edit
-
-## 架構
+直接開啟：
 
 ```text
-Google Apps Script 每 1 分鐘觸發一次，但只有台股交易日 08:45-15:45 會真正抓資料
-        ↓
-抓 TWSE MIS 即時報價、TWSE 法人/資券、Yahoo 歷史線圖
-        ↓
-依大盤、族群、技術、動能、籌碼、風控規則評分
-        ↓
-模擬買進、賣出、當沖
-        ↓
-扣除手續費與交易稅後記錄損益
-        ↓
-GitHub Pages 前端讀取 Apps Script Web API
+台股策略系統/web/index.html
 ```
 
-網頁完整資料每 30 分鐘讀取 Apps Script 已儲存的最新快取；實際行情與背景交易由 Apps Script 觸發器在台股交易日 08:45-15:45 每分鐘更新。若背景買賣紀錄改變，網頁會立即刷新；按「更新資料」也會手動要求 Apps Script 立即重抓。Apps Script 會用台北時間與證交所休市日資料判斷是否需要執行，週末、休市日與非更新時段會直接回傳快取，避免浪費用量。模擬買進以賣一價估算，賣出與持倉估值以買一價估算。收盤後若證交所 BFT41U 盤後定價資料已發布，系統會額外執行一次盤後定價模擬，並以盤後成交價估算買進、賣出與持倉價值。
+前端預設連到交接包提供的 Google Apps Script Web App endpoint。若 endpoint 暫時無法回應，畫面會使用本機備援資料並顯示狀態，不會停在更新中。
 
-## 主要檔案
+## 專案結構
 
 ```text
-index.html
+台股策略系統/
+├─ README.md
+├─ 發布檢查清單.md
+├─ apps_script/
+│  ├─ Code.gs
+│  ├─ appsscript.json
+│  └─ README.md
+└─ web/
+   ├─ index.html
+   ├─ app.js
+   ├─ styles.css
+   ├─ apps_script_config.js
+   ├─ actual_data.js
+   └─ simulation_result.js
 ```
 
-GitHub Pages 根目錄入口，導向台股策略系統網頁。
+## 策略目標
 
-```text
-台股策略系統/web/
-```
+- 初始資金：100,000 元。
+- 月目標報酬：3% 到 5%。
+- 觀察期：自 2026-08-20 起 30 個交易日。
+- 原則：保本優先、沒條件不操作、以週績效檢討。
 
-前端網站。包含畫面、樣式、Apps Script endpoint 設定與靜態備援資料。
-
-```text
-台股策略系統/apps_script/
-```
-
-Apps Script 後端。負責抓資料、計算訊號、模擬交易、儲存最新狀態。
-
-```text
-操作規則.md
-```
-
-股票選股、進出場、風控、籌碼與當沖規則。
-
-## 資料來源
-
-- TWSE MIS 即時報價
-- TWSE BFT41U 盤後定價交易
-- TWSE holidaySchedule 開休市日
-- TWSE T86 三大法人買賣超
-- TWSE MI_MARGN 融資融券
-- Yahoo Finance 歷史線圖
-
-## 注意
-
-本系統只做模擬與績效追蹤，不連券商 API、不真實下單、不保證獲利。
