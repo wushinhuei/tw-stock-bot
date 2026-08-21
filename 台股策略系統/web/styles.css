@@ -231,6 +231,10 @@ dd {
   border: 1px solid var(--line);
 }
 
+.section-panel[hidden] {
+  display: none;
+}
+
 .watchlist-panel {
   display: none;
 }
@@ -322,6 +326,13 @@ th {
 
 .broker-table tbody td { border-right: 1px solid #f0f2f5; }
 .broker-table.striped tbody tr:nth-child(even) { background: var(--row-alt); }
+
+.broker-table .month-row td {
+  height: 38px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 900;
+}
 
 .ticker {
   color: var(--blue);
