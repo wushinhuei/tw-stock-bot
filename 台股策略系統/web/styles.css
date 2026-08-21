@@ -231,6 +231,10 @@ dd {
   border: 1px solid var(--line);
 }
 
+.watchlist-panel {
+  display: none;
+}
+
 .balance-panel {
   overflow-x: auto;
 }
