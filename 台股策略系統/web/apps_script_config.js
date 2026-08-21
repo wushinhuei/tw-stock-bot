@@ -1,5 +1,5 @@
 window.TW_STOCK_BOT_CONFIG = {
-  endpoint: "https://script.google.com/macros/s/AKfycbxD-_3fXJsbaWb_8r6_tmqghUcnq-vtFbA3com3N8ViE__jEsVihkdvYNdXp90_ACKp/exec",
+  endpoint: "https://script.google.com/macros/s/AKfycbyNOSX3fnzqfruHoU3G70AuxYBMiI8igmGkGLBCngC65wznX3X93n_ap9tfbLRaRvee/exec",
   refreshIntervalMs: 30 * 60 * 1000,
   statusIntervalMs: 60 * 1000,
   requestTimeoutMs: 75 * 1000,
@@ -7,4 +7,3 @@ window.TW_STOCK_BOT_CONFIG = {
   initialCapital: 100000,
   settingsSheetUrl: "https://docs.google.com/spreadsheets/d/1TLouSeqNnj6K0xgl9-euBtLOEoj-hSHgJuZMtWQgopA/edit"
 };
-
