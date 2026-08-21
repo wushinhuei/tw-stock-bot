@@ -1,7 +1,7 @@
 'use strict';
 
 const { CONFIG } = require('./config');
-const { fetchInvestingRss } = require('./news');
+const { fetchInvestingRss, fetchTaiwanMediaRss } = require('./news');
 const { OrderManager } = require('./orders');
 const { availableToBuy, buildSettlementLedger, hasSettlementShortfall } = require('./settlement');
 const { canAddOn, entryDecision, exitDecision } = require('./strategies');
@@ -70,6 +70,7 @@ class SimulationEngine {
     this.account = options.account || createAccount(this.config.initialCapital);
     this.orderManager = new OrderManager(this.config);
     this.news = [];
+    this.taiwanMediaNews = [];
   }
 
   async restore() {
@@ -79,10 +80,15 @@ class SimulationEngine {
   }
 
   async refreshNews(fetchImpl = fetch) {
-    const result = await fetchInvestingRss(this.config.investingRssUrls, fetchImpl);
-    this.news = result.items;
-    if (this.repository && result.items.length) await this.repository.saveNews(result.items);
-    return result;
+    const [international, taiwan] = await Promise.all([
+      fetchInvestingRss(this.config.investingRssUrls, fetchImpl),
+      fetchTaiwanMediaRss(this.config.taiwanMediaRss, fetchImpl)
+    ]);
+    this.news = international.items;
+    this.taiwanMediaNews = taiwan.items;
+    const items = [...international.items, ...taiwan.items];
+    if (this.repository && items.length) await this.repository.saveNews(items);
+    return { items, international: international.items, taiwan: taiwan.items, errors: [...international.errors, ...taiwan.errors] };
   }
 
   processCandidates(candidates, context) {
@@ -217,7 +223,7 @@ class SimulationEngine {
     return {
       ok: true, source: 'google-cloud-simulator', generatedAt: new Date().toISOString(),
       schedule: { pollMs: this.config.marketPollMs, sessionStart: this.config.sessionStart, sessionEnd: this.config.sessionEnd },
-      account: this.account, candidates, internationalNews: this.news.slice(0, 30), risk,
+      account: this.account, candidates, internationalNews: this.news.slice(0, 30), taiwanMediaNews: this.taiwanMediaNews.slice(0, 30), risk,
       scenario: [{
         date: taipeiDate(), source: 'google-cloud-simulator', candidates,
         internationalNews: this.news.slice(0, 30), market: { mode: risk.allowNewRisk ? 'NORMAL' : 'DEFENSIVE' }

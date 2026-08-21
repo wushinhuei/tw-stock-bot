@@ -769,7 +769,7 @@ function renderAGradeCandidates(day) {
         </div>
         <div class="candidate-price">${price(candidate.price)}</div>
         <div class="candidate-quote"><strong>${candidate.score ?? '-'} 分</strong> · ${candidate.strategy || '策略待判定'}</div>
-        ${candidate.components ? `<div class="candidate-signals"><span>技術 ${candidate.components.technical}/35</span><span>OBV量價 ${candidate.components.volumeObv}/20</span><span>籌碼 ${candidate.components.chip}/15</span><span>基本 ${candidate.components.fundamental}/10</span><span>官方消息 ${candidate.components.officialNews}/15</span><span>執行 ${candidate.components.liquidity}/5</span></div>` : ''}
+        ${candidate.components ? `<div class="candidate-signals"><span>技術 ${candidate.components.technical}/35</span><span>OBV量價 ${candidate.components.volumeObv}/20</span><span>籌碼 ${candidate.components.chip}/15</span><span>基本 ${candidate.components.fundamental}/10</span><span>官方＋媒體消息 ${candidate.components.officialNews}/15</span><span>執行 ${candidate.components.liquidity}/5</span></div>` : ''}
         <div class="candidate-quote">${bidAsk}<br>${quoteTime}</div>
         <div class="candidate-signals">
           <span>${volumeRatio}</span>

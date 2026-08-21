@@ -38,6 +38,9 @@ const CONFIG = Object.freeze({
     'https://www.investing.com/rss/news_11.rss',
     'https://www.investing.com/rss/news_95.rss',
     'https://www.investing.com/rss/news_14.rss'
+  ]),
+  taiwanMediaRss: Object.freeze([
+    Object.freeze({ source: '中央通訊社', url: 'https://feeds.feedburner.com/rsscna/finance', acquisitionMethod: 'RSS' })
   ])
 });
 

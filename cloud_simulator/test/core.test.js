@@ -5,11 +5,11 @@ const test = require('node:test');
 const { CONFIG } = require('../src/config');
 const { SimulationEngine, createAccount, maxEntryBudget, riskState } = require('../src/engine');
 const { analyzeObv } = require('../src/indicators');
-const { parseRss, scoreOfficialEvents } = require('../src/news');
+const { parseRss, scoreOfficialEvents, scoreTaiwanMedia, validateTaiwanMediaItem } = require('../src/news');
 const { OrderManager } = require('../src/orders');
 const { availableToBuy, buildSettlementLedger, settlementDate } = require('../src/settlement');
 const { entryDecision, exitDecision } = require('../src/strategies');
-const { scoreCandidate } = require('../src/scoring');
+const { gradeWithMedia, scoreCandidate } = require('../src/scoring');
 const { MemoryRepository } = require('../src/repository');
 const { buildUniverse } = require('../src/scanner');
 
@@ -79,6 +79,45 @@ test('official future events do not leak into scoring and disposition blocks', (
   ], now);
   assert.equal(result.score, 0.5);
   assert.equal(result.blocked, true);
+});
+
+test('single Taiwan media report is advisory only and does not score', () => {
+  const items = [{ source: '中央通訊社', acquisitionMethod: 'RSS', eventKey: 'evt-1', title: '公司接獲新訂單', url: 'https://example.test/1', publishedAt: '2026-08-21T01:00:00Z', sentiment: 'POSITIVE' }];
+  const result = scoreTaiwanMedia(items, [], new Date('2026-08-21T02:00:00Z'));
+  assert.equal(result.modifier, 0);
+  assert.equal(result.evidence[0].scored, false);
+});
+
+test('two independent Taiwan media sources can add a capped verified modifier', () => {
+  const common = { eventKey: 'evt-2', title: 'AI伺服器訂單成長', publishedAt: '2026-08-21T01:00:00Z', sentiment: 'POSITIVE', impact: 'HIGH' };
+  const items = [
+    { ...common, source: '中央通訊社', acquisitionMethod: 'RSS', url: 'https://example.test/cna' },
+    { ...common, source: 'DIGITIMES', acquisitionMethod: 'MANUAL', url: 'https://example.test/dt' }
+  ];
+  const result = scoreTaiwanMedia(items, [], new Date('2026-08-21T02:00:00Z'));
+  assert.ok(result.modifier > 0 && result.modifier <= 3);
+  assert.equal(result.evidence[0].scored, true);
+});
+
+test('unlicensed automated media collection is rejected', () => {
+  const result = validateTaiwanMediaItem({ source: '經濟日報', acquisitionMethod: 'SCRAPE', eventKey: 'x', title: 'x', url: 'https://example.test', publishedAt: '2026-08-21T01:00:00Z' });
+  assert.equal(result.accepted, false);
+});
+
+test('media points alone cannot promote a B candidate to A', () => {
+  assert.equal(gradeWithMedia(81, 79, false), 'B');
+  assert.equal(gradeWithMedia(81, 80, false), 'A');
+  const daily = bars(70);
+  const common = { eventKey: 'evt-3', title: '供應鏈正面消息', publishedAt: '2026-08-21T01:00:00Z', sentiment: 'POSITIVE', impact: 'HIGH' };
+  const result = scoreCandidate({
+    strategy: 'SWING', dailyBars: daily, weeklyBars: bars(60), quoteFresh: true,
+    chipScore: 0.8, fundamentalScore: 0.8, officialNewsScore: 0.6, liquidityScore: 1, spreadPct: 0.001,
+    scoringTime: '2026-08-21T02:00:00Z', taiwanMediaItems: [
+      { ...common, source: '中央通訊社', acquisitionMethod: 'RSS', url: 'https://example.test/cna' },
+      { ...common, source: 'DIGITIMES', acquisitionMethod: 'MANUAL', url: 'https://example.test/dt' }
+    ]
+  });
+  assert.equal(result.grade, 'B');
 });
 
 test('replacement order is impossible before cancel acknowledgement', () => {

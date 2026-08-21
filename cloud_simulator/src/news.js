@@ -12,6 +12,14 @@ const HIGH = /war|invasion|sanction|tariff|export ban|emergency|default|recessio
 const NEGATIVE = /fall|drop|cut|ban|loss|risk|warning|weak|slump|layoff|probe|lawsuit|shortage/i;
 const POSITIVE = /rise|gain|growth|beat|upgrade|record|expand|order|investment|recovery|surge/i;
 
+const TAIWAN_MEDIA_SOURCES = Object.freeze({
+  '中央通訊社': { weight: 1.00, automatedMethods: ['RSS', 'LICENSED_API'], rss: 'https://feeds.feedburner.com/rsscna/finance' },
+  '經濟日報': { weight: 0.90, automatedMethods: ['LICENSED_API'] },
+  '工商時報': { weight: 0.90, automatedMethods: ['LICENSED_API'] },
+  'MoneyDJ': { weight: 0.85, automatedMethods: ['LICENSED_API'] },
+  'DIGITIMES': { weight: 0.95, automatedMethods: ['LICENSED_API'] }
+});
+
 function decodeXml(value) {
   return String(value || '')
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
@@ -80,6 +88,51 @@ function scoreOfficialEvents(events, now = new Date()) {
   return { score: Math.max(0, Math.min(1, score)), blocked: blockedReasons.length > 0, blockedReasons, reasons };
 }
 
+function validateTaiwanMediaItem(item) {
+  const source = TAIWAN_MEDIA_SOURCES[item && item.source];
+  if (!source) return { accepted: false, reason: '非核准台灣財經媒體' };
+  const method = String(item.acquisitionMethod || 'MANUAL').toUpperCase();
+  if (method !== 'MANUAL' && !source.automatedMethods.includes(method)) {
+    return { accepted: false, reason: '來源未提供可自動使用的RSS或授權介面' };
+  }
+  if (!item.title || !item.url || !item.publishedAt || !item.eventKey) {
+    return { accepted: false, reason: '缺少標題、網址、時間或事件識別碼' };
+  }
+  return { accepted: true, weight: source.weight, method };
+}
+
+function scoreTaiwanMedia(items, officialEventKeys = [], now = new Date()) {
+  const accepted = (items || []).filter(item => {
+    const check = validateTaiwanMediaItem(item);
+    return check.accepted && new Date(item.publishedAt) <= now;
+  });
+  const groups = new Map();
+  for (const item of accepted) {
+    const rows = groups.get(item.eventKey) || [];
+    if (!rows.some(row => row.source === item.source)) rows.push(item);
+    groups.set(item.eventKey, rows);
+  }
+  let modifier = 0;
+  const evidence = [];
+  for (const [eventKey, rows] of groups.entries()) {
+    const officialConfirmed = officialEventKeys.includes(eventKey);
+    const corroborated = officialConfirmed || rows.length >= 2;
+    if (!corroborated) {
+      evidence.push({ eventKey, sources: rows.map(row => row.source), scored: false, reason: '僅單一媒體，列提示不計分' });
+      continue;
+    }
+    const averageWeight = rows.reduce((sum, row) => sum + TAIWAN_MEDIA_SOURCES[row.source].weight, 0) / rows.length;
+    const sentiments = rows.map(row => String(row.sentiment || 'NEUTRAL').toUpperCase());
+    const positive = sentiments.filter(value => value === 'POSITIVE').length;
+    const negative = sentiments.filter(value => value === 'NEGATIVE').length;
+    const impact = rows.some(row => String(row.impact || '').toUpperCase() === 'HIGH') ? 1.5 : 1;
+    const delta = positive > negative ? averageWeight * impact : negative > positive ? -averageWeight * impact : 0;
+    modifier += delta;
+    evidence.push({ eventKey, sources: rows.map(row => row.source), scored: true, delta: Math.round(delta * 100) / 100 });
+  }
+  return { modifier: Math.max(-3, Math.min(3, Math.round(modifier))), evidence, acceptedCount: accepted.length };
+}
+
 async function fetchInvestingRss(urls, fetchImpl = fetch) {
   const results = await Promise.allSettled((urls || []).map(async url => {
     const response = await fetchImpl(url, { headers: { 'User-Agent': 'tw-stock-simulation-rss-reader/1.0' } });
@@ -92,4 +145,16 @@ async function fetchInvestingRss(urls, fetchImpl = fetch) {
   };
 }
 
-module.exports = { classify, deduplicateNews, fetchInvestingRss, parseRss, scoreOfficialEvents };
+async function fetchTaiwanMediaRss(sources, fetchImpl = fetch) {
+  const results = await Promise.allSettled((sources || []).map(async source => {
+    const response = await fetchImpl(source.url, { headers: { 'User-Agent': 'tw-stock-simulation-rss-reader/1.0' } });
+    if (!response.ok) throw new Error(`RSS ${response.status}: ${source.url}`);
+    return parseRss(await response.text(), source.source).map(item => ({ ...item, acquisitionMethod: source.acquisitionMethod || 'RSS', advisoryOnly: false }));
+  }));
+  return {
+    items: deduplicateNews(results.flatMap(result => result.status === 'fulfilled' ? result.value : [])),
+    errors: results.filter(result => result.status === 'rejected').map(result => String(result.reason))
+  };
+}
+
+module.exports = { TAIWAN_MEDIA_SOURCES, classify, deduplicateNews, fetchInvestingRss, fetchTaiwanMediaRss, parseRss, scoreOfficialEvents, scoreTaiwanMedia, validateTaiwanMediaItem };
