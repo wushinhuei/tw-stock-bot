@@ -734,6 +734,23 @@ td input {
   line-height: 1.55;
 }
 
+.news-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.news-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.news-card div, .news-card a { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 13px; }
+.news-card h3 { margin: 12px 0 8px; font-size: 16px; }
+.news-card p { color: var(--muted); line-height: 1.55; }
+
 @media (max-width: 980px) {
   .topbar,
   .section-title {
@@ -757,7 +774,8 @@ td input {
   .candidate-grid,
   .check-grid,
   .return-summary,
-  .rules-table {
+  .rules-table,
+  .news-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -778,7 +796,8 @@ td input {
   .return-summary,
   .status-summary,
   .status-checks,
-  .rules-table {
+  .rules-table,
+  .news-grid {
     grid-template-columns: 1fr;
   }
 

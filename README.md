@@ -1,66 +1,53 @@
-# 台股每日自動買賣模擬
+# 台股多策略雲端模擬
 
-這個專案用固定規則模擬台股每日買賣，不會自動下單。  
-前端部署在 GitHub Pages，資料與模擬邏輯由 Google Apps Script 在雲端定時執行。
+這個專案以 Google Cloud Run Job 模擬上市股票盤中零股交易，不連券商 API、不真實下單。Firestore 保存帳戶、持倉、委託、交割及消息索引；Cloud Storage 保存壓縮行情、RSS 與回測輸入；Apps Script 負責 Google Sheets 設定、報表、通知及公開 API；GitHub Pages 顯示儀表板。
 
 ## 網址
 
 - 前端網站：https://wushinhuei.github.io/tw-stock-bot/
 - Apps Script 專案：https://script.google.com/d/10V4wAflJ30eQBWCsfikj-4xPX5uKY0IgBIGeaDarqeUJoiMd5ob8O_9o/edit
 
-## 架構
+## 執行流程
 
 ```text
-Google Apps Script 每 1 分鐘觸發一次，但只有台股交易日 08:45-15:45 會真正抓資料
+Cloud Scheduler 交易日 08:20 觸發 Cloud Run Job，執行至 13:35
         ↓
-抓 TWSE MIS 即時報價、TWSE 法人/資券、Yahoo 歷史線圖
+上市普通股成交量前 50 名 → 指定產業 → 最多完整分析 30 檔
         ↓
-依大盤、族群、技術、動能、籌碼、風控規則評分
+技術 35、量價 OBV 20、籌碼 15、基本面 10、官方消息 15、執行品質 5
         ↓
-模擬買進、賣出、當沖
+A 級 80 分以上才可模擬當沖、隔日沖或波段
         ↓
-扣除手續費與交易稅後記錄損益
-        ↓
-GitHub Pages 前端讀取 Apps Script Web API
+Firestore / Storage → Apps Script 唯讀代理 → GitHub Pages
 ```
 
-網頁完整資料每 30 分鐘讀取 Apps Script 已儲存的最新快取；實際行情與背景交易由 Apps Script 觸發器在台股交易日 08:45-15:45 每分鐘更新。若背景買賣紀錄改變，網頁會立即刷新；按「更新資料」也會手動要求 Apps Script 立即重抓。Apps Script 會用台北時間與證交所休市日資料判斷是否需要執行，週末、休市日與非更新時段會直接回傳快取，避免浪費用量。模擬買進以賣一價估算，賣出與持倉估值以買一價估算。收盤後若證交所 BFT41U 盤後定價資料已發布，系統會額外執行一次盤後定價模擬，並以盤後成交價估算買進、賣出與持倉價值。
+一般買進與停利最多重新掛價 3 次；抽單確認前不得送替代單。買單立即圈存，成交列 T+2 應付款，賣款 T+2 前列應收。現金至少保留 40%，另保留權益 5% 與 5,000 元較高者。每日 -2% 停止新增部位；每週 -5% 只允許減碼和平倉。
 
-## 主要檔案
+Investing.com 僅透過允許的 RSS 保存標題、摘要、時間、分類及原文連結；內容只作國際風險提示，不進入正式 100 分、不直接觸發交易，失敗也不會中斷持倉管理。
 
-```text
-index.html
+## 主要目錄
+
+- `cloud_simulator/`：Cloud Run 多策略核心、評分、OBV、委託、交割、新聞提示與回測入口。
+- `台股策略系統/apps_script/`：設定、報表、通知及公開唯讀 API；未設定雲端網址時保留舊版回退。
+- `台股策略系統/web/`：GitHub Pages 儀表板。
+- `操作規則.md`：選股、進出場、資金與風控規則。
+
+## 本機驗證
+
+```powershell
+npm.cmd install
+npm.cmd test
+npm.cmd run check
 ```
 
-GitHub Pages 根目錄入口，導向台股策略系統網頁。
+## 雲端部署
 
-```text
-台股策略系統/web/
-```
+1. 建立 Firestore、私人 Cloud Storage bucket、Artifact Registry 與最小權限服務帳號。
+2. 修改 `cloudbuild.yaml` 的 `_GCS_BUCKET`，執行 `gcloud builds submit --config cloudbuild.yaml`。
+3. 依 `deploy/scheduler.md` 建立台北時間工作日 08:20 排程。
+4. `CANDIDATE_SNAPSHOT_URL` 可傳完整 `candidates[]`，或 `volumeRows[]` 與 `enrichmentBySymbol` 讓 Cloud Run 篩選及評分。
+5. Apps Script 的 Script Property 設 `TW_STOCK_CLOUD_DASHBOARD_URL`，建立新版 Web App 部署後驗證匿名讀取。
 
-前端網站。包含畫面、樣式、Apps Script endpoint 設定與靜態備援資料。
+回測使用 `RUN_MODE=backtest` 與 `BACKTEST_INPUT_URL`。資料須含按時間排列的 `frames[]`，不可用未來事件回填當時分數。Investing.com RSS 只從啟用後做前測對照，不列入三年正式評分。
 
-```text
-台股策略系統/apps_script/
-```
-
-Apps Script 後端。負責抓資料、計算訊號、模擬交易、儲存最新狀態。
-
-```text
-操作規則.md
-```
-
-股票選股、進出場、風控、籌碼與當沖規則。
-
-## 資料來源
-
-- TWSE MIS 即時報價
-- TWSE BFT41U 盤後定價交易
-- TWSE holidaySchedule 開休市日
-- TWSE T86 三大法人買賣超
-- TWSE MI_MARGN 融資融券
-- Yahoo Finance 歷史線圖
-
-## 注意
-
-本系統只做模擬與績效追蹤，不連券商 API、不真實下單、不保證獲利。
+本系統只做模擬與績效追蹤，不保證獲利。
