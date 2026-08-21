@@ -4,137 +4,185 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>台股策略系統</title>
-  <link rel="stylesheet" href="styles.css?v=202608211200">
+  <link rel="stylesheet" href="styles.css?v=202608211430">
 </head>
 <body>
-  <main class="shell">
-    <section class="topbar">
+  <header class="broker-header">
+    <div class="brand">
+      <span class="brand-mark">TS</span>
+      <strong>台股策略系統</strong>
+    </div>
+    <label class="search-box">
+      <span>⌕</span>
+      <input type="search" placeholder="搜尋代號或公司名稱" aria-label="搜尋代號或公司名稱">
+    </label>
+    <nav class="main-nav" aria-label="主要功能">
+      <a href="#holdings">持有證券</a>
+      <a href="#watchlist">策略觀察</a>
+      <a href="#orders">交易紀錄</a>
+      <a id="settingsLink" href="#" target="_blank" rel="noreferrer">設定表</a>
+    </nav>
+    <button id="refreshButton" class="refresh-btn" type="button" title="更新資料">⟳</button>
+  </header>
+
+  <main class="workspace">
+    <section class="page-title">
       <div>
-        <p class="eyebrow">Paper Trading · TAIEX</p>
-        <h1>台股策略系統</h1>
+        <h1>持有證券</h1>
+        <div class="tabs" role="tablist" aria-label="帳戶頁籤">
+          <a class="active" href="#holdings">持有證券</a>
+          <a href="#watchlist">投資組合</a>
+          <a href="#orders">股息再投資計劃</a>
+        </div>
       </div>
-      <div class="actions">
-        <a class="icon-link" id="settingsLink" href="#" target="_blank" rel="noreferrer" title="開啟策略設定表">設定表</a>
-        <button id="refreshButton" type="button" title="更新資料">更新資料</button>
+      <div class="page-tools">
+        <label class="small-search">
+          <span>⌕</span>
+          <input type="search" placeholder="搜尋持有證券" aria-label="搜尋持有證券">
+        </label>
+        <span class="kebab">⋮</span>
       </div>
     </section>
 
-    <section class="status-strip" aria-live="polite">
-      <div>
-        <span>資料狀態</span>
-        <strong id="sourceStatus">初始化</strong>
+    <section class="account-strip" aria-live="polite">
+      <dl>
+        <div><dt>帳戶</dt><dd>台股策略模擬</dd></div>
+        <div><dt>市場總值</dt><dd id="marketValue">--</dd></div>
+        <div><dt>今日變動</dt><dd id="dailyPnl">--</dd></div>
+        <div><dt>未實現損益總值</dt><dd id="unrealizedPnl">--</dd></div>
+      </dl>
+      <div class="live-state"><span></span> 即時</div>
+    </section>
+
+    <section class="balance-panel" id="balance">
+      <h2>帳戶結餘</h2>
+      <table class="balance-table">
+        <thead>
+          <tr><th></th><th>實時結餘</th><th>今日變動</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>現金結餘</td><td id="cash">--</td><td id="cashChange">--</td></tr>
+          <tr class="group"><td colspan="3">持有證券市值</td></tr>
+          <tr><td class="indent">持有股票市值</td><td id="stockValue">--</td><td id="stockChange">--</td></tr>
+          <tr><td class="indent">持有期權市值</td><td>NT$0</td><td>NT$0</td></tr>
+          <tr><td class="indent">賣空期權市值</td><td>NT$0</td><td>NT$0</td></tr>
+          <tr class="total"><td>帳戶總值</td><td id="equity">--</td><td id="accountChange">--</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section-panel holdings-panel" id="holdings">
+      <div class="section-head">
+        <div>
+          <h2>股票 / ETFs</h2>
+          <p id="holdingsSummary">--</p>
+        </div>
+        <span class="kebab">⋮</span>
       </div>
-      <div>
-        <span>最後更新</span>
-        <strong id="lastUpdated">--</strong>
-      </div>
-      <div>
-        <span>交易簽名</span>
-        <strong id="tradeSignature">--</strong>
+      <div class="table-wrap">
+        <table class="broker-table">
+          <thead>
+            <tr>
+              <th>代號 ↑</th>
+              <th>數量</th>
+              <th>日趨勢</th>
+              <th>價格</th>
+              <th>變更$</th>
+              <th>變更%</th>
+              <th>市值</th>
+              <th>單位成本</th>
+              <th>成本</th>
+              <th>益損$</th>
+              <th>益損%</th>
+              <th>行動</th>
+            </tr>
+          </thead>
+          <tbody id="positionsBody"></tbody>
+        </table>
       </div>
     </section>
 
-    <section class="dashboard-grid">
-      <article class="metric primary">
-        <span>總資產</span>
-        <strong id="equity">--</strong>
-        <small id="returnLine">--</small>
-      </article>
-      <article class="metric">
-        <span>現金</span>
-        <strong id="cash">--</strong>
-        <small id="cashReserve">--</small>
-      </article>
-      <article class="metric">
-        <span>今日損益</span>
-        <strong id="dailyPnl">--</strong>
-        <small id="targetLine">月目標 3% - 5%</small>
-      </article>
-      <article class="metric">
-        <span>風控</span>
-        <strong id="riskStatus">--</strong>
-        <small id="riskMessage">--</small>
-      </article>
+    <section class="section-panel watchlist-panel" id="watchlist">
+      <div class="section-head">
+        <div>
+          <h2>策略觀察清單</h2>
+          <p id="candidateCount">0 檔候選股</p>
+        </div>
+        <span id="riskStatus" class="risk-pill">--</span>
+      </div>
+      <div class="table-wrap">
+        <table class="broker-table">
+          <thead>
+            <tr>
+              <th>代號</th>
+              <th>族群</th>
+              <th>評級</th>
+              <th>價格</th>
+              <th>變更%</th>
+              <th>分數</th>
+              <th>策略說明</th>
+              <th>行動</th>
+            </tr>
+          </thead>
+          <tbody id="candidatesBody"></tbody>
+        </table>
+      </div>
     </section>
 
-    <section class="market-panel">
+    <section class="section-panel orders-panel" id="orders">
+      <div class="section-head">
+        <div>
+          <h2>今日委託 / 成交</h2>
+          <p><span id="tradeCount">0</span> 筆紀錄 · <span id="lastUpdated">--</span></p>
+        </div>
+        <span id="sourceStatus" class="source-pill">初始化</span>
+      </div>
+      <div class="table-wrap">
+        <table class="broker-table striped">
+          <thead>
+            <tr>
+              <th>更新時間</th>
+              <th>交易類別</th>
+              <th>數量</th>
+              <th>代號</th>
+              <th>訂單類別</th>
+              <th>價格</th>
+              <th>有效期</th>
+              <th>其他條件</th>
+              <th>現況</th>
+              <th>行動</th>
+            </tr>
+          </thead>
+          <tbody id="tradesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="foot-grid">
       <div>
-        <h2>市場溫度</h2>
+        <h2>市場狀態</h2>
         <p id="marketSummary">--</p>
+        <div class="market-bars" id="marketBars"></div>
       </div>
-      <div class="market-bars" id="marketBars"></div>
-    </section>
-
-    <section class="two-col">
-      <article>
-        <div class="section-head">
-          <h2>候選股</h2>
-          <span id="candidateCount">0</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>代號</th>
-                <th>族群</th>
-                <th>評級</th>
-                <th>價格</th>
-                <th>分數</th>
-                <th>原因</th>
-              </tr>
-            </thead>
-            <tbody id="candidatesBody"></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article>
-        <div class="section-head">
-          <h2>持倉</h2>
-          <span id="positionCount">0</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>代號</th>
-                <th>股數</th>
-                <th>成本</th>
-                <th>現價</th>
-                <th>損益</th>
-                <th>計畫</th>
-              </tr>
-            </thead>
-            <tbody id="positionsBody"></tbody>
-          </table>
-        </div>
-      </article>
-    </section>
-
-    <section class="two-col">
-      <article>
-        <div class="section-head">
-          <h2>交易紀錄</h2>
-          <span id="tradeCount">0</span>
-        </div>
-        <ol class="timeline" id="tradesList"></ol>
-      </article>
-      <article>
-        <div class="section-head">
-          <h2>檢討</h2>
-        </div>
-        <div class="review">
-          <p id="weeklyReport">--</p>
-          <p id="thirtyDayReport">--</p>
-        </div>
-      </article>
+      <div>
+        <h2>風控摘要</h2>
+        <p id="riskMessage">--</p>
+        <p id="returnLine">--</p>
+        <p id="cashReserve">--</p>
+        <p id="targetLine">月目標 3% - 5%</p>
+        <p class="signature">簽名 <span id="tradeSignature">--</span></p>
+      </div>
+      <div>
+        <h2>檢討</h2>
+        <p id="weeklyReport">--</p>
+        <p id="thirtyDayReport">--</p>
+      </div>
     </section>
   </main>
 
-  <script src="apps_script_config.js?v=202608211200"></script>
-  <script src="actual_data.js?v=202608211200"></script>
-  <script src="simulation_result.js?v=202608211200"></script>
-  <script src="app.js?v=202608211200"></script>
+  <script src="apps_script_config.js?v=202608211430"></script>
+  <script src="actual_data.js?v=202608211430"></script>
+  <script src="simulation_result.js?v=202608211430"></script>
+  <script src="app.js?v=202608211430"></script>
 </body>
 </html>
-

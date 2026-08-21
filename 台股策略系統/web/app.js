@@ -17,6 +17,12 @@
     tradeSignature: byId("tradeSignature"),
     equity: byId("equity"),
     cash: byId("cash"),
+    marketValue: byId("marketValue"),
+    unrealizedPnl: byId("unrealizedPnl"),
+    cashChange: byId("cashChange"),
+    stockValue: byId("stockValue"),
+    stockChange: byId("stockChange"),
+    accountChange: byId("accountChange"),
     dailyPnl: byId("dailyPnl"),
     returnLine: byId("returnLine"),
     cashReserve: byId("cashReserve"),
@@ -27,10 +33,10 @@
     marketBars: byId("marketBars"),
     candidateCount: byId("candidateCount"),
     candidatesBody: byId("candidatesBody"),
-    positionCount: byId("positionCount"),
     positionsBody: byId("positionsBody"),
+    holdingsSummary: byId("holdingsSummary"),
     tradeCount: byId("tradeCount"),
-    tradesList: byId("tradesList"),
+    tradesBody: byId("tradesBody"),
     weeklyReport: byId("weeklyReport"),
     thirtyDayReport: byId("thirtyDayReport")
   };
@@ -163,8 +169,20 @@
     els.sourceStatus.textContent = sourceLabel;
     els.lastUpdated.textContent = formatDateTime(data.asOf);
     els.tradeSignature.textContent = data.tradeSignature || "--";
+    const positions = data.positions || [];
+    const stockValue = positions.reduce((sum, row) => sum + numberOr(row.marketValue, Number(row.shares || 0) * Number(row.lastPrice || row.price || 0)), 0);
+    const unrealizedPnl = positions.reduce((sum, row) => sum + numberOr(row.pnl, 0), 0);
     els.equity.textContent = money(data.equity);
     els.cash.textContent = money(data.cash);
+    els.marketValue.textContent = money(stockValue);
+    els.unrealizedPnl.textContent = signedMoney(unrealizedPnl);
+    els.unrealizedPnl.className = unrealizedPnl >= 0 ? "good" : "bad";
+    els.cashChange.textContent = signedMoney(0);
+    els.stockValue.textContent = money(stockValue);
+    els.stockChange.textContent = signedMoney(unrealizedPnl || data.dailyPnl);
+    els.stockChange.className = (unrealizedPnl || data.dailyPnl) >= 0 ? "good" : "bad";
+    els.accountChange.textContent = signedMoney(data.dailyPnl);
+    els.accountChange.className = data.dailyPnl >= 0 ? "good" : "bad";
     els.dailyPnl.textContent = signedMoney(data.dailyPnl);
     els.dailyPnl.className = data.dailyPnl >= 0 ? "good" : "bad";
     els.returnLine.textContent = `累計 ${pct(totalReturn)}`;
@@ -174,7 +192,7 @@
     els.riskMessage.textContent = (data.risk || {}).message || "等待下一筆有效訊號。";
     renderMarket(data.market || {});
     renderCandidates(data.candidates || []);
-    renderPositions(data.positions || []);
+    renderPositions(positions, data);
     renderTrades(data.trades || []);
     els.weeklyReport.textContent = (data.reports || {}).weekly || "尚無週檢討資料。";
     els.thirtyDayReport.textContent = (data.reports || {}).thirtyDay || "尚無 30 日檢討資料。";
@@ -197,46 +215,64 @@
   }
 
   function renderCandidates(rows) {
-    els.candidateCount.textContent = rows.length;
+    els.candidateCount.textContent = `${rows.length} 檔候選股`;
     els.candidatesBody.innerHTML = rows.length ? rows.map((row) => `
       <tr>
-        <td><strong>${escapeHtml(row.symbol)}</strong><br><span>${escapeHtml(row.name)}</span></td>
+        <td><button class="row-caret" type="button" title="展開">›</button><strong class="ticker">${escapeHtml(row.symbol)}</strong><br><span>${escapeHtml(row.name)}</span></td>
         <td>${escapeHtml(row.group || "--")}</td>
         <td><span class="grade grade-${String(row.grade || "c").toLowerCase()}">${escapeHtml(row.grade || "-")}</span></td>
-        <td>${numberText(row.price)}<br><span class="${Number(row.changePct) >= 0 ? "good" : "bad"}">${pct(Number(row.changePct || 0) / 100)}</span></td>
+        <td>${numberText(row.price)}</td>
+        <td class="${Number(row.changePct) >= 0 ? "good" : "bad"}">${pct(Number(row.changePct || 0) / 100)}</td>
         <td>${numberText(row.score)}</td>
         <td>${escapeHtml(row.reason || "等待更多資料")}</td>
+        <td><button class="line-action" type="button">觀察</button></td>
       </tr>
-    `).join("") : emptyRow(6, "目前沒有符合條件的候選股。");
+    `).join("") : emptyRow(8, "目前沒有符合條件的候選股。");
   }
 
-  function renderPositions(rows) {
-    els.positionCount.textContent = rows.length;
+  function renderPositions(rows, data) {
+    const totalValue = rows.reduce((sum, row) => sum + numberOr(row.marketValue, Number(row.shares || 0) * Number(row.lastPrice || row.price || 0)), 0);
+    const totalPnl = rows.reduce((sum, row) => sum + numberOr(row.pnl, 0), 0);
+    els.holdingsSummary.textContent = `總值 ${money(totalValue)}　當日益損 ${signedMoney(data.dailyPnl)}　總益損 ${signedMoney(totalPnl)}`;
     els.positionsBody.innerHTML = rows.length ? rows.map((row) => `
       <tr>
-        <td><strong>${escapeHtml(row.symbol)}</strong><br><span>${escapeHtml(row.name)}</span></td>
+        <td><button class="row-caret" type="button" title="展開">›</button><strong class="ticker">${escapeHtml(row.symbol)}</strong><br><span>${escapeHtml(row.name)}</span></td>
         <td>${numberText(row.shares)}</td>
-        <td>${numberText(row.avgPrice)}</td>
+        <td>${sparkline(row)}</td>
         <td>${numberText(row.lastPrice)}</td>
-        <td class="${Number(row.pnl) >= 0 ? "good" : "bad"}">${signedMoney(row.pnl)}<br><span>${pct(Number(row.pnlPct || 0))}</span></td>
-        <td>${escapeHtml(row.plan || "依風控續抱或出場")}</td>
+        <td class="${Number(row.change || row.changePct || 0) >= 0 ? "good" : "bad"}">${signedNumber(row.change || 0)}</td>
+        <td class="${Number(row.changePct || 0) >= 0 ? "good" : "bad"}">${pct(Number(row.changePct || 0))}</td>
+        <td>${money(numberOr(row.marketValue, Number(row.shares || 0) * Number(row.lastPrice || 0)))}</td>
+        <td>${numberText(row.avgPrice)}</td>
+        <td>${money(Number(row.shares || 0) * Number(row.avgPrice || 0))}</td>
+        <td class="${Number(row.pnl) >= 0 ? "good" : "bad"}">${signedMoney(row.pnl)}</td>
+        <td class="${Number(row.pnlPct) >= 0 ? "good" : "bad"}">${pct(Number(row.pnlPct || 0))}</td>
+        <td><span class="kebab">⋮</span></td>
       </tr>
-    `).join("") : emptyRow(6, "目前沒有持倉。");
+    `).join("") : emptyRow(12, "目前沒有持倉，策略維持現金水位。");
   }
 
   function renderTrades(rows) {
     els.tradeCount.textContent = rows.length;
-    els.tradesList.innerHTML = rows.length ? rows.map((row) => `
-      <li>
-        <strong>${escapeHtml(row.time || "--")} · ${escapeHtml(row.action || "--")} · ${escapeHtml(row.symbol || "")} ${escapeHtml(row.name || "")}</strong>
-        <p>${numberText(row.shares)} 股 @ ${numberText(row.price)}，${escapeHtml(row.note || "")}</p>
-      </li>
-    `).join("") : "<li><strong>尚無交易</strong><p>策略未出現有效訊號時維持空手。</p></li>";
+    els.tradesBody.innerHTML = rows.length ? rows.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.time || "--")}</td>
+        <td>${tradeAction(row.action)}</td>
+        <td>${numberText(row.shares)}</td>
+        <td><strong class="ticker">${escapeHtml(row.symbol || "--")}</strong></td>
+        <td>${escapeHtml(row.orderType || "限價")}</td>
+        <td>${numberText(row.price)}</td>
+        <td>當日有效</td>
+        <td>${escapeHtml(row.condition || "無")}</td>
+        <td class="bad">已成交 @ ${numberText(row.price)}</td>
+        <td><button class="line-action" type="button">再次下單</button></td>
+      </tr>
+    `).join("") : emptyRow(10, "尚無交易紀錄。");
   }
 
   function setLoading(isLoading) {
     els.refreshButton.disabled = isLoading;
-    els.refreshButton.textContent = isLoading ? "更新中" : "更新資料";
+    els.refreshButton.textContent = isLoading ? "↻" : "⟳";
   }
 
   function byId(id) {
@@ -260,8 +296,31 @@
     return `${n >= 0 ? "+" : ""}${money(n)}`;
   }
 
+  function signedNumber(value) {
+    const n = Number(value || 0);
+    return `${n >= 0 ? "+" : ""}${numberText(n)}`;
+  }
+
   function pct(value) {
     return `${(Number(value || 0) * 100).toFixed(2)}%`;
+  }
+
+  function tradeAction(action) {
+    const value = String(action || "").toUpperCase();
+    if (value === "BUY") return "買進";
+    if (value === "SELL") return "賣出";
+    return escapeHtml(action || "--");
+  }
+
+  function sparkline(row) {
+    const seed = String(row.symbol || "0000").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    const points = Array.from({ length: 8 }, (_, index) => {
+      const wave = Math.sin((seed + index * 19) / 8) * 8;
+      const drift = Number(row.changePct || row.pnlPct || 0) * index * 7;
+      const y = Math.max(6, Math.min(30, 20 - wave - drift));
+      return `${index * 16},${y.toFixed(1)}`;
+    }).join(" ");
+    return `<svg class="spark" viewBox="0 0 112 36" aria-hidden="true"><polyline points="${points}"></polyline></svg>`;
   }
 
   function numberText(value) {
