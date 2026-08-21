@@ -1,25 +1,21 @@
-# Apps Script backend for Taiwan stock simulation
+# Apps Script
 
-This folder is the Apps Script version of the simulation backend. It is designed to replace GitHub Actions for intraday updates.
+此資料夾是 Google Apps Script 後端原始碼。部署後提供前端使用的 JSON endpoint。
 
-## Deploy
+## 部署
 
-1. Create a new Google Apps Script project.
-2. Copy `Code.gs` into the script editor.
-3. Copy `appsscript.json` into Project Settings > Show appsscript.json manifest file.
-4. Run `installRealtimeTradingTrigger()` once and authorize it.
-5. Deploy as Web app:
-   - Execute as: Me
-   - Who has access: Anyone
-6. Copy the Web app URL into `web/apps_script_config.js`.
+1. 建立或開啟 Apps Script 專案。
+2. 放入 `Code.gs` 與 `appsscript.json`。
+3. 執行 `initSettings` 一次，建立策略設定分頁。
+4. 建立 Web App deployment。
+5. 將 Web App endpoint 填入 `web/apps_script_config.js`。
 
-## Web API
+## actions
 
-- `?action=read` returns the latest stored dashboard state.
-- `?action=status` returns a lightweight trade signature so the dashboard can refresh immediately when a background trade changes.
-- `?action=refresh` fetches TWSE/Yahoo data immediately, recalculates simulation P&L, and stores the result.
-- Add `callback=...` for JSONP. The GitHub Pages dashboard uses JSONP to avoid browser CORS issues.
+- `read`
+- `refresh&force=1`
+- `status`
+- `settings`
+- `initSettings`
+- `reset`
 
-## State
-
-The script stores the latest scenario and simulation result in Script Properties. On first run it seeds state from the current GitHub raw dashboard files, so the existing 2026-08-10 simulation history is preserved.

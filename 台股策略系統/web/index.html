@@ -3,363 +3,193 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <title>台股自動模擬交易系統</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>台股策略系統</title>
+  <link rel="stylesheet" href="styles.css?v=202608211530">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">Forced Rules Simulation</p>
-      <h1>台股每日自動買賣模擬</h1>
-      <p class="hero-copy">從 2026-08-20 起以初始資金 10 萬每日模擬買賣，以零股操作為主，優先保護本金、沒條件不操作，統計扣除手續費與交易稅後的每週表現；目前只模擬，不下單。</p>
+  <header class="broker-header">
+    <div class="brand">
+      <span class="brand-mark">TS</span>
+      <strong>台股策略系統</strong>
     </div>
-    <div class="top-actions">
-      <button type="button" id="refreshDataButton" class="primary-action">更新資料</button>
-      <button type="button" id="openReturnsButton" class="primary-action secondary-action">歷史報酬率</button>
-      <button type="button" id="openRulesButton" class="primary-action secondary-action">查閱操作規則</button>
-      <span id="lastUpdatedAt" class="last-updated">最後更新：-</span>
-    </div>
+    <nav class="main-nav" aria-label="主要功能">
+      <a href="#holdings">持有證券</a>
+      <a href="#orders">交易紀錄</a>
+      <a id="settingsLink" href="#" target="_blank" rel="noreferrer">設定表</a>
+    </nav>
+    <button id="refreshButton" class="refresh-btn" type="button" title="更新資料">⟳</button>
   </header>
 
-  <main class="layout">
-    <section class="summary-grid" aria-label="模擬摘要">
-      <article class="panel metric">
-        <span>總資產</span>
-        <strong id="finalEquity">-</strong>
-        <small id="finalDate">-</small>
-      </article>
-      <article class="panel metric">
-        <span>總投報率</span>
-        <strong id="totalReturn">-</strong>
-        <small>以 10 萬初始資金計算</small>
-      </article>
-      <article class="panel metric">
-        <span>已實現損益</span>
-        <strong id="realizedPnl">-</strong>
-        <small id="tradeCount">-</small>
-      </article>
-      <article class="panel metric">
-        <span>最大回撤</span>
-        <strong id="maxDrawdown">-</strong>
-        <small>用每日總資產峰值計算</small>
-      </article>
-    </section>
-
-    <section class="panel workspace">
-      <div class="section-title">
-        <div>
-          <h2>今日強制結論</h2>
-          <p>以每日小賺、少賠、不硬做為核心；達到小利或條件不足時停止新增風險。</p>
+  <main class="workspace">
+    <section class="page-title">
+      <div>
+        <h1>持有證券</h1>
+        <div class="tabs" role="tablist" aria-label="帳戶頁籤">
+          <a class="active" href="#holdings">持有證券</a>
         </div>
       </div>
-      <div id="todayDecision" class="decision-strip"></div>
     </section>
 
-    <section class="panel scanner-panel">
-      <div class="section-title">
+    <section class="account-strip" aria-live="polite">
+      <dl>
+        <div><dt>帳戶</dt><dd>台股策略模擬</dd></div>
+        <div><dt>市場總值</dt><dd id="marketValue">--</dd></div>
+        <div><dt>今日變動</dt><dd id="dailyPnl">--</dd></div>
+        <div><dt>未實現損益總值</dt><dd id="unrealizedPnl">--</dd></div>
+      </dl>
+      <div class="live-state"><span></span> 即時</div>
+    </section>
+
+    <section class="balance-panel" id="balance">
+      <h2>帳戶結餘</h2>
+      <table class="balance-table">
+        <thead>
+          <tr><th></th><th>實時結餘</th><th>今日變動</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>現金結餘</td><td id="cash">--</td><td id="cashChange">--</td></tr>
+          <tr class="group"><td colspan="3">持有證券市值</td></tr>
+          <tr><td class="indent">持有股票市值</td><td id="stockValue">--</td><td id="stockChange">--</td></tr>
+          <tr class="total"><td>帳戶總值</td><td id="equity">--</td><td id="accountChange">--</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section-panel holdings-panel" id="holdings">
+      <div class="section-head">
         <div>
-          <h2>今日 A 級候選股</h2>
-          <p>只從成交量前 100 名，且屬 AI、電力、半導體、機器人族群的股票中挑選；A 級仍需通過執行品質、現金水位與追價風險才允許模擬買進。</p>
+          <h2>股票</h2>
+          <p id="holdingsSummary">--</p>
         </div>
+        <span class="kebab">⋮</span>
       </div>
-      <div id="aGradeCandidates" class="candidate-grid"></div>
+      <div class="table-wrap">
+        <table class="broker-table">
+          <thead>
+            <tr>
+              <th>代號 ↑</th>
+              <th>數量</th>
+              <th>日趨勢</th>
+              <th>價格</th>
+              <th>變更$</th>
+              <th>變更%</th>
+              <th>市值</th>
+              <th>單位成本</th>
+              <th>成本</th>
+              <th>益損$</th>
+              <th>益損%</th>
+            </tr>
+          </thead>
+          <tbody id="positionsBody"></tbody>
+        </table>
+      </div>
     </section>
 
-    <section class="panel holdings-panel">
-      <div class="section-title">
+    <section class="section-panel watchlist-panel" id="watchlist">
+      <div class="section-head">
         <div>
-          <h2>目前模擬持倉</h2>
-          <p>買賣依大盤濾網、A/B 分級、停損、目標價、假突破與當沖規則自動執行。</p>
+          <h2>策略觀察清單</h2>
+          <p id="candidateCount">0 檔候選股</p>
         </div>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="broker-table">
           <thead>
             <tr>
-              <th>股票</th>
-              <th>股數</th>
-              <th>成本</th>
-              <th>現價</th>
-              <th>稅費後持股估值</th>
-              <th>未實現損益</th>
+              <th>代號</th>
+              <th>族群</th>
+              <th>評級</th>
+              <th>價格</th>
+              <th>變更%</th>
+              <th>分數</th>
+              <th>策略說明</th>
+            </tr>
+          </thead>
+          <tbody id="candidatesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section-panel orders-panel" id="orders">
+      <div class="section-head">
+        <div>
+          <h2>今日委託 / 成交</h2>
+          <p><span id="tradeCount">0</span> 筆紀錄 · <span id="lastUpdated">--</span></p>
+        </div>
+        <button id="historyButton" class="line-action" type="button" aria-expanded="false">歷史交易紀錄</button>
+      </div>
+      <div class="table-wrap">
+        <table class="broker-table striped">
+          <thead>
+            <tr>
+              <th>更新時間</th>
+              <th>交易類別</th>
+              <th>數量</th>
+              <th>代號</th>
+              <th>訂單類別</th>
+              <th>價格</th>
+              <th>有效期</th>
+              <th>費稅</th>
+              <th>現況</th>
+            </tr>
+          </thead>
+          <tbody id="tradesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section-panel history-panel" id="historyPanel" hidden>
+      <div class="section-head">
+        <div>
+          <h2>歷史交易紀錄</h2>
+          <p>依月份區隔，損益已估入手續費與證交稅。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="broker-table striped">
+          <thead>
+            <tr>
+              <th>時間</th>
+              <th>交易類別</th>
+              <th>代號</th>
+              <th>數量</th>
+              <th>成交價</th>
+              <th>成交金額</th>
+              <th>費稅</th>
+              <th>損益</th>
               <th>狀態</th>
             </tr>
           </thead>
-          <tbody id="positionRows"></tbody>
+          <tbody id="historyBody"></tbody>
         </table>
       </div>
     </section>
 
-    <section class="panel simulation-panel">
-      <div class="section-title">
-        <div>
-          <h2>每日資產曲線</h2>
-          <p>自 2026-08-20 起，每個交易日自動檢查賣出、買進與當沖機會。</p>
-        </div>
+    <section class="foot-grid">
+      <div>
+        <h2>市場狀態</h2>
+        <p id="marketSummary">--</p>
+        <div class="market-bars" id="marketBars"></div>
       </div>
-      <div id="equityCurve" class="equity-curve" aria-label="每日資產曲線"></div>
-    </section>
-
-    <section class="panel simulation-panel">
-      <div class="section-title">
-        <div>
-          <h2>今日自動交易紀錄</h2>
-          <p>只顯示今天的波段買賣與當沖模擬交易；若今天沒有觸發規則，則顯示暫無交易。</p>
-        </div>
+      <div>
+        <h2>風控摘要</h2>
+        <p id="riskMessage">--</p>
+        <p id="returnLine">--</p>
+        <p id="cashReserve">--</p>
+        <p id="targetLine">月目標 3% - 5%</p>
+        <p class="signature">簽名 <span id="tradeSignature">--</span></p>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>日期</th>
-              <th>動作</th>
-              <th>股票</th>
-              <th>股數</th>
-              <th>價格</th>
-              <th>手續費</th>
-              <th>交易稅</th>
-              <th>損益</th>
-              <th>原因</th>
-            </tr>
-          </thead>
-          <tbody id="tradeRows"></tbody>
-        </table>
+      <div>
+        <h2>檢討</h2>
+        <p id="weeklyReport">--</p>
+        <p id="thirtyDayReport">--</p>
       </div>
     </section>
   </main>
 
-  <div id="returnsModal" class="rules-modal" hidden>
-    <div class="rules-backdrop" data-close-returns></div>
-    <section class="rules-dialog" role="dialog" aria-modal="true" aria-labelledby="returnsTitle">
-      <div class="rules-header">
-        <div>
-          <p class="eyebrow">Return History</p>
-          <h2 id="returnsTitle">歷史交易報酬率</h2>
-        </div>
-        <button type="button" class="icon-close" data-close-returns aria-label="關閉歷史報酬率">×</button>
-      </div>
-
-      <div class="rules-content">
-        <div class="return-summary">
-          <div>
-            <span>目前總資產</span>
-            <strong id="historyFinalEquity">-</strong>
-          </div>
-          <div>
-            <span>累計報酬率</span>
-            <strong id="historyTotalReturn">-</strong>
-          </div>
-          <div>
-            <span>最大回撤</span>
-            <strong id="historyMaxDrawdown">-</strong>
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>總資產</th>
-                <th>日損益</th>
-                <th>日報酬率</th>
-                <th>累計報酬率</th>
-                <th>回撤</th>
-                <th>大盤狀態</th>
-              </tr>
-            </thead>
-            <tbody id="historyReturnRows"></tbody>
-          </table>
-        </div>
-
-        <section class="history-section">
-          <h3>歷史交易明細</h3>
-          <div class="history-filter">
-            <label for="historyTradeDate">查詢日期</label>
-            <select id="historyTradeDate"></select>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>日期</th>
-                  <th>動作</th>
-                  <th>股票</th>
-                  <th>股數</th>
-                  <th>價格</th>
-                  <th>成交金額</th>
-                  <th>手續費</th>
-                  <th>交易稅</th>
-                  <th>損益</th>
-                  <th>原因</th>
-                </tr>
-              </thead>
-              <tbody id="historyTradeRows"></tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-    </section>
-  </div>
-
-  <div id="positionStatusModal" class="rules-modal" hidden>
-    <div class="rules-backdrop" data-close-position-status></div>
-    <section class="rules-dialog status-dialog" role="dialog" aria-modal="true" aria-labelledby="positionStatusTitle">
-      <div class="rules-header">
-        <div>
-          <p class="eyebrow">Position Status</p>
-          <h2 id="positionStatusTitle">持倉狀態說明</h2>
-        </div>
-        <button type="button" class="icon-close" data-close-position-status aria-label="關閉持倉狀態說明">×</button>
-      </div>
-      <div id="positionStatusContent" class="rules-content"></div>
-    </section>
-  </div>
-
-  <div id="rulesModal" class="rules-modal" hidden>
-    <div class="rules-backdrop" data-close-rules></div>
-    <section class="rules-dialog" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
-      <div class="rules-header">
-        <div>
-          <p class="eyebrow">Trading Rulebook</p>
-          <h2 id="rulesTitle">台股自動模擬操作規則</h2>
-        </div>
-        <button type="button" class="icon-close" data-close-rules aria-label="關閉操作規則">×</button>
-      </div>
-
-      <div class="rules-content">
-        <section>
-          <h3>核心原則</h3>
-          <ul>
-            <li>大盤優先於個股，風控優先於獲利。</li>
-            <li>每日小賺即可，沒條件不操作，週結算看總表現。</li>
-            <li>賺到的錢可納入總資產再投入，但現金水位不足、當日已達小賺或虧損擴大時停止新增風險。</li>
-            <li>系統只做模擬提醒，不真實下單。</li>
-            <li>初始資金 100,000 元，從 2026-08-20 開始，以零股操作為主。</li>
-            <li>所有損益都扣除手續費與交易稅後才列入績效。</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3>每日流程</h3>
-          <ol>
-            <li>先看加權指數是否站上 20MA 與 50MA。</li>
-            <li>再看同族群是否至少 2 到 3 檔同步轉強。</li>
-            <li>檢查個股產業、基本面、籌碼是否合格。</li>
-            <li>確認布林擠壓、W 底、VCP、均線多頭與帶量突破。</li>
-            <li>確認 MACD 零軸上、RSI 站上 50，KD 不逆勢解讀。</li>
-            <li>依 A/B/C 等級決定是否交易與部位。</li>
-            <li>開盤前檢查國際股市、費半、台指期、匯率、重大新聞與族群題材。</li>
-            <li>下單前確認限價、追價上限與抽單條件；達到日損、週損或每日小賺目標即停止新增風險。</li>
-          </ol>
-        </section>
-
-        <section>
-          <h3>大盤濾網</h3>
-          <div class="rules-table">
-            <div><strong>站上 20MA 與 50MA</strong><span>允許積極做多，A 級訊號可用標準部位。</span></div>
-            <div><strong>跌破 20MA</strong><span>只能輕倉、等回測，或只做 A 級訊號。</span></div>
-            <div><strong>跌破 50MA</strong><span>不做突破追價，只保留觀察或防守操作。</span></div>
-          </div>
-        </section>
-
-        <section>
-          <h3>A/B/C 進場分級</h3>
-          <div class="rules-table">
-            <div><strong>A 級</strong><span>全部條件共振，可用標準部位。</span></div>
-            <div><strong>B 級</strong><span>缺一項，但大盤與趨勢仍強；目前僅列入觀察，不主動買進。</span></div>
-            <div><strong>C 級</strong><span>只有技術訊號，缺產業或籌碼背書，只觀察不買。</span></div>
-          </div>
-        </section>
-
-        <section>
-          <h3>技術與動能</h3>
-          <ul>
-            <li>候選股池先限定為成交量前 100 名，並只挑 AI、電力、半導體、機器人等族群。</li>
-            <li>只有 A 級可主動波段買進或當沖；B 級與 C 級只觀察，不新增部位。</li>
-            <li>有效突破需站上魔王線、景線或前高，且成交量放大到平均量 2 倍以上。</li>
-            <li>MACD 快慢線在零軸上、柱狀圖翻紅，代表多頭動能較強。</li>
-            <li>RSI 站上 50 偏多；強勢股 RSI 大於 70 不一定立刻賣出。</li>
-            <li>布林帶擠壓只代表將有大波動，方向需用量價、均線、MACD、RSI 與籌碼確認。</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3>出場時機</h3>
-          <div class="rules-table">
-            <div><strong>停損出場</strong><span>現價跌破停損價、買進 K 棒低點或關鍵價下方時，優先賣出，不凹單。</span></div>
-            <div><strong>停利出場</strong><span>達目標價、爆量漲不動、RSI 頂背離，或收盤有效跌破 20MA 時，分批或全部停利。</span></div>
-            <div><strong>轉弱出場</strong><span>個股降為 BLOCKED、大盤跌破 50MA、籌碼與量價同步轉弱時，防守賣出。</span></div>
-          </div>
-          <ul>
-            <li>A/B 持倉若跌破停損價，下一次模擬賣出。</li>
-            <li>現價達目標價，視為停利候選並執行賣出規則。</li>
-            <li>價格未跌破停損但等級轉為 C，列為防守觀察，不再加碼。</li>
-            <li>當沖單跌回魔王線、買進 K 棒低點或價差不利時，立即模擬平倉。</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3>當沖規則</h3>
-          <ul>
-            <li>開盤前 5 分鐘不搶單，先觀察大盤方向與個股是否站穩。</li>
-            <li>優先選成交量大、流動性佳、振幅足夠的股票。</li>
-            <li>只做 A 級且價差小、量能放大、盤中波動足夠的標的。</li>
-            <li>突破魔王線需 1 分 K 實體紅棒完整越過，且成交量明顯放大。</li>
-            <li>跌破買進 K 棒低點或跌回關鍵價下方，立刻出場，不凹單。</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3>隔日沖與下單品質</h3>
-          <ul>
-            <li>隔日沖只列 A/B 級中收盤強、量價與籌碼仍支持、隔夜風險可控的候選股。</li>
-            <li>預設限價，不追高；只有 A 級、價差極小、族群同步轉強時才允許微追。</li>
-            <li>掛單後若買盤撤退、價差放大、大盤或族群轉弱，或等待逾時未成交，立即抽單。</li>
-            <li>市價或接近市價只用於極高確定性進場或停損出場，並設定最大滑價。</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3>盤後定價規則</h3>
-          <ul>
-            <li>收盤後納入證交所 BFT41U 盤後定價交易資料。</li>
-            <li>有盤後成交量與成交價時，才用盤後價估算買進、賣出與持倉價值。</li>
-            <li>同一交易日只執行一次盤後階段，避免重複買賣。</li>
-            <li>盤後不做當沖；盤後新倉最多約總資金 10%，且仍保留至少 30% 現金。</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3>風控鐵律</h3>
-          <ul>
-            <li>單筆最大損失控制在總資金 1% 到 2%。</li>
-            <li>單日累計虧損達 0.5% 時停止新增風險，達 2% 時當天停止交易。</li>
-            <li>單日已達小賺目標時，後續只管理持倉，不再硬做新交易。</li>
-            <li>單週累計虧損達 5%，下一週只允許半倉或模擬觀察。</li>
-            <li>假突破後冷卻 1 到 3 天，不再追同一條關鍵價。</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3>費用與稅務</h3>
-          <ul>
-            <li>買進與賣出都扣券商手續費。</li>
-            <li>現股賣出交易稅用 0.3%。</li>
-            <li>當沖賣出交易稅用 0.15%。</li>
-            <li>手續費未滿最低收費時，依最低收費計算。</li>
-          </ul>
-        </section>
-      </div>
-    </section>
-  </div>
-
-  <script src="apps_script_config.js?v=20260819-apps-script-v2"></script>
-  <script src="actual_data.js?v=20260810-actual"></script>
-  <script src="simulation_result.js?v=20260810-actions"></script>
-  <script src="app.js?v=20260820-refresh-timeout-safe"></script>
+  <script src="apps_script_config.js?v=202608211430"></script>
+  <script src="actual_data.js?v=202608211430"></script>
+  <script src="simulation_result.js?v=202608211430"></script>
+  <script src="app.js?v=202608211540"></script>
 </body>
 </html>
