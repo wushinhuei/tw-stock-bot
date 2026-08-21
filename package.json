@@ -1,0 +1,19 @@
+{
+  "name": "tw-stock-cloud-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Taiwan odd-lot multi-strategy cloud simulation engine",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test cloud_simulator/test/*.test.js",
+    "start": "node cloud_simulator/src/main.js",
+    "check": "node --check cloud_simulator/src/main.js && node --check cloud_simulator/src/engine.js && node --check cloud_simulator/src/scoring.js && node --check cloud_simulator/src/backtest.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/storage": "^7.16.0"
+  }
+}

@@ -1,6 +1,7 @@
 const START_DATE = '2026-08-20';
 const STATE_KEY = 'TW_STOCK_DASHBOARD_STATE_V1';
 const SETTINGS_SPREADSHEET_ID_KEY = 'TW_STOCK_SETTINGS_SPREADSHEET_ID';
+const CLOUD_DASHBOARD_URL_KEY = 'TW_STOCK_CLOUD_DASHBOARD_URL';
 const SETTINGS_SHEET_NAME = '策略設定';
 const SETTINGS_CHANGE_LOG_SHEET_NAME = '設定異動紀錄';
 const WEEKLY_REVIEW_SHEET_NAME = '週檢討報告';
@@ -12,21 +13,27 @@ const CONFIG = {
   initialCapital: 100000,
   simulationStartDate: START_DATE,
   boardLot: 1,
-  standardPositionPct: 0.25,
-  halfPositionPct: 0.15,
-  minCashReservePct: 0.3,
+  standardPositionPct: 0.10,
+  halfPositionPct: 0.05,
+  minCashReservePct: 0.4,
   cashCautionPct: 0.4,
   dailyStopLossPct: -0.02,
   dailySoftStopLossPct: -0.005,
   dailyProfitLockPct: 0.003,
   weeklyStopLossPct: -0.05,
-  dayTradeCapitalPct: 0.1,
-  overnightPositionPct: 0.12,
+  dayTradeCapitalPct: 0.15,
+  overnightPositionPct: 0.15,
+  swingCapitalPct: 0.30,
+  dailyNewCapitalPct: 0.20,
+  dailyTurnoverPct: 0.40,
+  maxSymbolPct: 0.15,
+  settlementReservePct: 0.05,
+  settlementReserveMin: 5000,
   afterMarketPositionPct: 0.1,
   maxChasePct: 0.003,
   maxMarketOrderSpreadPct: 0.002,
   maxLimitOrderSpreadPct: 0.006,
-  topVolumeLimit: 100,
+  topVolumeLimit: 50,
   maxScanCandidates: 30,
   monthlyTargetReturnMin: 0.03,
   monthlyTargetReturnMax: 0.05,
@@ -55,6 +62,12 @@ const STRATEGY_SETTINGS = [
   ['halfPositionPct', '小部位比例', 'number', CONFIG.halfPositionPct, '保守或減碼時使用'],
   ['dayTradeCapitalPct', '當沖資金比例', 'number', CONFIG.dayTradeCapitalPct, '單筆當沖資金上限'],
   ['overnightPositionPct', '隔日沖資金比例', 'number', CONFIG.overnightPositionPct, '隔日沖部位上限'],
+  ['swingCapitalPct', '波段資金比例', 'number', CONFIG.swingCapitalPct, '波段總資金上限'],
+  ['dailyNewCapitalPct', '每日新增投入上限', 'number', CONFIG.dailyNewCapitalPct, '每日最多新增 20%'],
+  ['dailyTurnoverPct', '每日周轉上限', 'number', CONFIG.dailyTurnoverPct, '買賣總周轉最高 40%'],
+  ['maxSymbolPct', '單股總持倉上限', 'number', CONFIG.maxSymbolPct, '首次 10% 加碼 5% 合計 15%'],
+  ['settlementReservePct', '交割準備金比例', 'number', CONFIG.settlementReservePct, '權益 5%'],
+  ['settlementReserveMin', '最低交割準備金', 'number', CONFIG.settlementReserveMin, '至少 5,000 元'],
   ['dailyProfitLockPct', '每日小賺停手', 'number', CONFIG.dailyProfitLockPct, '達到後停止新增風險'],
   ['dailySoftStopLossPct', '日內軟停損', 'number', CONFIG.dailySoftStopLossPct, '達到後停止新增風險'],
   ['dailyStopLossPct', '日內硬停損', 'number', CONFIG.dailyStopLossPct, '達到後進入防守'],
@@ -119,6 +132,9 @@ function doGet(e) {
   let payload;
 
   try {
+    if ((action === 'read' || action === 'status') && cloudDashboardUrl()) {
+      payload = readCloudDashboard();
+    } else
     if (action === 'status') {
       payload = readStatusPayload();
     } else if (action === 'settings') {
@@ -149,6 +165,20 @@ function doGet(e) {
   return ContentService
     .createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function cloudDashboardUrl() {
+  return String(PropertiesService.getScriptProperties().getProperty(CLOUD_DASHBOARD_URL_KEY) || '').trim();
+}
+
+function readCloudDashboard() {
+  const response = UrlFetchApp.fetch(cloudDashboardUrl(), { muteHttpExceptions: true, followRedirects: true });
+  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+    throw new Error('Cloud dashboard HTTP ' + response.getResponseCode());
+  }
+  const payload = JSON.parse(response.getContentText());
+  payload.appsScriptProxyAt = new Date().toISOString();
+  return payload;
 }
 
 function scheduledUpdate() {

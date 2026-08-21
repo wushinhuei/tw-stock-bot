@@ -511,6 +511,7 @@ function render(result) {
 
   renderTodayDecision(result, latestDay);
   renderAGradeCandidates(latestDay);
+  renderInternationalNews(latestDay.internationalNews || result.internationalNews || []);
   renderPositions(result, latestDay);
   renderTrades(result.trades, todayTaipeiDate());
   renderCurve(result.daily);
@@ -739,7 +740,7 @@ function renderAGradeCandidates(day) {
     target.innerHTML = `
       <div class="empty-candidates">
         <strong>今日尚無 A 級候選股</strong>
-        <span>系統已先過濾成交量前 ${source.topVolumeLimit || 100} 名與指定族群；未達產業、籌碼、趨勢、量價、動能全共振時，不主動買進。</span>
+        <span>系統已先過濾成交量前 ${source.topVolumeLimit || 50} 名與指定族群；未達 80 分或觸發阻擋條件時，不主動買進。</span>
       </div>
     `;
     return;
@@ -767,6 +768,8 @@ function renderAGradeCandidates(day) {
           <span>${candidate.group} · ${rank}</span>
         </div>
         <div class="candidate-price">${price(candidate.price)}</div>
+        <div class="candidate-quote"><strong>${candidate.score ?? '-'} 分</strong> · ${candidate.strategy || '策略待判定'}</div>
+        ${candidate.components ? `<div class="candidate-signals"><span>技術 ${candidate.components.technical}/35</span><span>OBV量價 ${candidate.components.volumeObv}/20</span><span>籌碼 ${candidate.components.chip}/15</span><span>基本 ${candidate.components.fundamental}/10</span><span>官方＋媒體消息 ${candidate.components.officialNews}/15</span><span>執行 ${candidate.components.liquidity}/5</span></div>` : ''}
         <div class="candidate-quote">${bidAsk}<br>${quoteTime}</div>
         <div class="candidate-signals">
           <span>${volumeRatio}</span>
@@ -785,6 +788,19 @@ function renderAGradeCandidates(day) {
       </article>
     `;
   }).join('');
+}
+
+function renderInternationalNews(items) {
+  const target = document.querySelector('#internationalNews');
+  if (!target) return;
+  target.innerHTML = (items || []).slice(0, 12).map(item => `
+    <article class="news-card">
+      <div><strong>${item.risk || '低'}影響 · ${item.sentiment || '不確定'}</strong><span>${item.category || '國際市場'}</span></div>
+      <h3>${item.title || '-'}</h3>
+      <p>${item.summary || '僅提供原文連結。'}</p>
+      <a href="${item.url}" target="_blank" rel="noopener noreferrer">${item.source || '來源'} · ${formatTaipeiDateTime(item.publishedAt)}</a>
+    </article>
+  `).join('') || '<div class="empty-candidates"><strong>目前沒有國際 RSS 提示</strong><span>消息失敗不會中斷正式選股與持倉管理。</span></div>';
 }
 
 function positionStatusReasons(candidate, position, current) {
