@@ -26,7 +26,6 @@
     returnLine: byId("returnLine"),
     cashReserve: byId("cashReserve"),
     targetLine: byId("targetLine"),
-    riskStatus: byId("riskStatus"),
     riskMessage: byId("riskMessage"),
     marketSummary: byId("marketSummary"),
     marketBars: byId("marketBars"),
@@ -186,7 +185,6 @@
     els.returnLine.textContent = `累計 ${pct(totalReturn)}`;
     els.cashReserve.textContent = `現金水位 ${pct((data.risk || {}).cashReservePct || data.cash / Math.max(data.equity, 1))}`;
     els.targetLine.textContent = `月目標 ${pct(data.monthlyTargetMinPct)} - ${pct(data.monthlyTargetMaxPct)}`;
-    els.riskStatus.textContent = riskText((data.risk || {}).status);
     els.riskMessage.textContent = (data.risk || {}).message || "等待下一筆有效訊號。";
     renderMarket(data.market || {});
     renderCandidates(data.candidates || []);
@@ -321,10 +319,6 @@
   function numberText(value) {
     const n = Number(value);
     return Number.isFinite(n) ? n.toLocaleString("zh-TW", { maximumFractionDigits: 2 }) : "--";
-  }
-
-  function riskText(status) {
-    return ({ normal: "正常", caution: "警戒", stop: "停止交易" })[status] || "觀察";
   }
 
   function formatDateTime(value) {
