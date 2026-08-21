@@ -276,7 +276,7 @@
         <td>${escapeHtml(row.orderType || "限價")}</td>
         <td>${numberText(row.price)}</td>
         <td>當日有效</td>
-        <td>費稅 ${money(cost.totalFeeAndTax)}</td>
+        <td>${feeBreakdown(cost)}</td>
         <td class="${cost.pnl >= 0 ? "good" : "bad"}">已成交 @ ${numberText(row.price)}｜損益 ${signedMoney(cost.pnl)}</td>
       </tr>
     `;
@@ -307,7 +307,7 @@
           <td>${numberText(row.shares)}</td>
           <td>${numberText(row.price)}</td>
           <td>${money(cost.grossAmount)}</td>
-          <td>${money(cost.totalFeeAndTax)}</td>
+          <td>${feeBreakdown(cost)}</td>
           <td class="${cost.pnl >= 0 ? "good" : "bad"}">${signedMoney(cost.pnl)}</td>
           <td>${escapeHtml(row.status || `已成交 @ ${numberText(row.price)}`)}</td>
         </tr>`;
@@ -385,24 +385,42 @@
   function tradeCost(row) {
     const grossAmount = Number(row.shares || 0) * Number(row.price || 0);
     const action = String(row.action || "").toUpperCase();
-    const fee = commission(grossAmount);
+    const feeInfo = commissionInfo(grossAmount);
+    const fee = feeInfo.amount;
     const tax = action === "SELL" ? stockTransactionTax(grossAmount) : 0;
     const explicitPnl = Number(row.pnl ?? row.realizedPnl);
     const pnl = Number.isFinite(explicitPnl) && action === "SELL"
       ? explicitPnl - fee - tax
       : -(fee + tax);
-    return { grossAmount, totalFeeAndTax: fee + tax, pnl };
+    return { grossAmount, fee, tax, totalFeeAndTax: fee + tax, pnl, feeReason: feeInfo.reason };
   }
 
   function commission(amount) {
+    return commissionInfo(amount).amount;
+  }
+
+  function commissionInfo(amount) {
     const gross = Math.abs(Number(amount || 0));
-    if (!gross) return 0;
-    return Math.max(feeConfig.minimumCommission, Math.round(gross * feeConfig.commissionRate));
+    if (!gross) return { amount: 0, rawFee: 0, reason: "無成交金額" };
+    const rawFee = gross * feeConfig.commissionRate;
+    const roundedFee = Math.round(rawFee);
+    const amountDue = Math.max(feeConfig.minimumCommission, roundedFee);
+    const reason = amountDue === feeConfig.minimumCommission
+      ? `成交金額 ${money(gross)} × 0.1425% = ${money(rawFee)}，低於最低手續費 ${money(feeConfig.minimumCommission)}，所以以 ${money(feeConfig.minimumCommission)} 計`
+      : `成交金額 ${money(gross)} × 0.1425% = ${money(rawFee)}，四捨五入為 ${money(amountDue)}`;
+    return { amount: amountDue, rawFee, reason };
   }
 
   function stockTransactionTax(amount) {
     const gross = Math.abs(Number(amount || 0));
     return gross ? Math.round(gross * feeConfig.stockTransactionTaxRate) : 0;
+  }
+
+  function feeBreakdown(cost) {
+    const taxLine = cost.tax
+      ? `<small>證交稅 ${money(cost.tax)}，賣出成交金額 × 0.3%</small>`
+      : "";
+    return `<strong>費稅 ${money(cost.totalFeeAndTax)}</strong><small>${escapeHtml(cost.feeReason)}</small>${taxLine}`;
   }
 
   function money(value) {
