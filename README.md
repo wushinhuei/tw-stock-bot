@@ -10,7 +10,7 @@
 ## 執行流程
 
 ```text
-Cloud Scheduler 交易日 08:20 觸發 Cloud Run Job，執行至 13:35
+Cloud Scheduler 每 4 分鐘觸發短任務；交易日約 08:52 至 13:20 執行
         ↓
 上市普通股成交量前 50 名 → 指定產業 → 最多完整分析 30 檔
         ↓
@@ -46,7 +46,7 @@ npm.cmd run check
 
 1. 建立 Firestore、私人 Cloud Storage bucket、Artifact Registry 與最小權限服務帳號。
 2. 修改 `cloudbuild.yaml` 的 `_GCS_BUCKET`，執行 `gcloud builds submit --config cloudbuild.yaml`。
-3. 依 `deploy/scheduler.md` 建立台北時間工作日 08:20 排程。
+3. 依 `deploy/scheduler.md` 建立台北時間工作日每 4 分鐘觸發的排程；程式只接受 08:50 至 13:20，實際第一個 tick 約為 08:52。
 4. `CANDIDATE_SNAPSHOT_URL` 可傳完整 `candidates[]`，或 `volumeRows[]` 與 `enrichmentBySymbol` 讓 Cloud Run 篩選及評分。
 5. Apps Script 的 Script Property 設 `TW_STOCK_CLOUD_DASHBOARD_URL`，建立新版 Web App 部署後驗證匿名讀取。
 

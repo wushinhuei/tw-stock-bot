@@ -12,12 +12,18 @@ steps:
       - tw-stock-simulator
       - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA
       - --region=${_REGION}
-      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},RUN_MODE=session
-      - --max-retries=1
-      - --task-timeout=6h
+      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
+      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},RUN_MODE=tick,CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL}
+      - --tasks=1
+      - --max-retries=0
+      - --task-timeout=55s
+      - --cpu=1
+      - --memory=512Mi
 substitutions:
   _REGION: asia-east1
   _REPOSITORY: tw-stock
-  _GCS_BUCKET: replace-with-private-bucket
+  _GCS_BUCKET: project-aef205b5-5c27-4084-94c-tw-stock-data
+  _RUNTIME_SERVICE_ACCOUNT: tw-stock-runtime@project-aef205b5-5c27-4084-94c.iam.gserviceaccount.com
+  _CANDIDATE_SNAPSHOT_URL: https://script.google.com/macros/s/AKfycbyULTo0Hn09Z88rdmaw1VQVyA2xCWH0PiAz43u_3Bo47b5t5JlkDCy7uWOUjRBQXHL-/exec
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA'

@@ -13,6 +13,7 @@ const { gradeWithMedia, scoreCandidate } = require('../src/scoring');
 const { MemoryRepository } = require('../src/repository');
 const { buildUniverse } = require('../src/scanner');
 const { adaptCandidatePayload } = require('../src/candidate_adapter');
+const { runTick, tickDecision } = require('../src/main');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -224,4 +225,22 @@ test('profitable OBV-confirmed swing position permits only one 5% add-on', () =>
   engine.processCandidates([candidate], { ...context, signalTimestamp: '2026-08-21T02:01:00.000Z' });
   assert.equal(engine.account.orders.length, 1);
   assert.match(engine.account.orders[0].reason, /一次策略加碼/);
+});
+
+test('short tick accepts only weekdays from 08:50 through 13:20 Taipei time', () => {
+  assert.equal(tickDecision(new Date('2026-08-21T00:49:00Z')).allowed, false);
+  assert.equal(tickDecision(new Date('2026-08-21T00:50:00Z')).allowed, true);
+  assert.equal(tickDecision(new Date('2026-08-21T05:20:00Z')).allowed, true);
+  assert.equal(tickDecision(new Date('2026-08-21T05:21:00Z')).allowed, false);
+  assert.equal(tickDecision(new Date('2026-08-22T02:00:00Z')).reason, 'NON_TRADING_DAY');
+});
+
+test('out-of-window tick exits without reading or writing repository', async () => {
+  const repository = {
+    loadState() { throw new Error('must not load'); },
+    saveState() { throw new Error('must not save'); }
+  };
+  const result = await runTick({ now: new Date('2026-08-21T00:40:00Z'), repository });
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, 'OUTSIDE_SESSION');
 });
