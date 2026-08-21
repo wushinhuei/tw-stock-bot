@@ -12,6 +12,7 @@ const { entryDecision, exitDecision } = require('../src/strategies');
 const { gradeWithMedia, scoreCandidate } = require('../src/scoring');
 const { MemoryRepository } = require('../src/repository');
 const { buildUniverse } = require('../src/scanner');
+const { adaptCandidatePayload } = require('../src/candidate_adapter');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -42,6 +43,21 @@ test('scanner uses only TWSE common stocks, top 50 and target industries', () =>
   assert.ok(result.length <= 30);
   assert.ok(result.every(row => row.market === 'TWSE' && row.securityType === 'COMMON_STOCK' && row.group === '半導體'));
   assert.ok(result.every(row => Number(row.symbol) < 1050));
+});
+
+test('Apps Script scenario adapter enforces top 50 and creates 100-point components', () => {
+  const candidate = rank => ({
+    symbol: String(2300 + rank), name: '測試股', group: '半導體', price: 100, bidPrice: 99.9, askPrice: 100,
+    grade: 'A', dayTradeOk: false, overnightOk: false, industryOk: true, fundamentalOk: true,
+    chipOk: true, trendOk: true, volumePriceOk: true, momentumOk: true,
+    executionPlan: { spreadPct: 0.001 }, metrics: { volumeRank: rank, volumeRatio: 1.6, ma20: 95, ma50: 90, latestQuoteTime: '2026-08-21T03:52:00Z' }
+  });
+  const result = adaptCandidatePayload({ generatedAt: '2026-08-21T03:52:52Z', scenario: [{ date: '2026-08-21', candidates: [candidate(5), candidate(55)] }] }, { time: '11:52' });
+  assert.equal(result.mode, 'APPS_SCRIPT_SCENARIO');
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].metrics.volumeRank, 5);
+  assert.equal(Object.values(result.candidates[0].components).reduce((a, b) => a + b, 0), result.candidates[0].score);
+  assert.equal(result.candidates[0].strategy, 'SWING');
 });
 
 test('stale quote and official risk hard-block an otherwise strong candidate', () => {

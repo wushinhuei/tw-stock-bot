@@ -5,6 +5,7 @@ const { SimulationEngine, taipeiDate, taipeiTime } = require('./engine');
 const { GoogleRepository, MemoryRepository } = require('./repository');
 const { fetchQuotes } = require('./twse');
 const { buildUniverse } = require('./scanner');
+const { adaptCandidatePayload } = require('./candidate_adapter');
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function compactDate(date) { return date.replace(/-/g, ''); }
@@ -26,7 +27,7 @@ async function loadCandidates() {
   if (!response.ok) throw new Error(`Candidate snapshot HTTP ${response.status}`);
   const payload = await response.json();
   if (Array.isArray(payload.volumeRows)) return buildUniverse(payload.volumeRows, payload.enrichmentBySymbol || {});
-  return (payload.candidates || []).slice(0, CONFIG.maxCandidates);
+  return adaptCandidatePayload(payload, { time: taipeiTime() }).candidates;
 }
 
 async function runSession() {
