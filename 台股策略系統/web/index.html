@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>台股策略系統</title>
-  <link rel="stylesheet" href="styles.css?v=202608211520">
+  <link rel="stylesheet" href="styles.css?v=202608211530">
 </head>
 <body>
   <header class="broker-header">
@@ -120,6 +120,7 @@
           <h2>今日委託 / 成交</h2>
           <p><span id="tradeCount">0</span> 筆紀錄 · <span id="lastUpdated">--</span></p>
         </div>
+        <button id="historyButton" class="line-action" type="button" aria-expanded="false">歷史交易紀錄</button>
       </div>
       <div class="table-wrap">
         <table class="broker-table striped">
@@ -132,11 +133,38 @@
               <th>訂單類別</th>
               <th>價格</th>
               <th>有效期</th>
-              <th>其他條件</th>
+              <th>費稅</th>
               <th>現況</th>
             </tr>
           </thead>
           <tbody id="tradesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section-panel history-panel" id="historyPanel" hidden>
+      <div class="section-head">
+        <div>
+          <h2>歷史交易紀錄</h2>
+          <p>依月份區隔，損益已估入手續費與證交稅。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="broker-table striped">
+          <thead>
+            <tr>
+              <th>時間</th>
+              <th>交易類別</th>
+              <th>代號</th>
+              <th>數量</th>
+              <th>成交價</th>
+              <th>成交金額</th>
+              <th>費稅</th>
+              <th>損益</th>
+              <th>狀態</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
         </table>
       </div>
     </section>
@@ -166,6 +194,6 @@
   <script src="apps_script_config.js?v=202608211430"></script>
   <script src="actual_data.js?v=202608211430"></script>
   <script src="simulation_result.js?v=202608211430"></script>
-  <script src="app.js?v=202608211510"></script>
+  <script src="app.js?v=202608211530"></script>
 </body>
 </html>

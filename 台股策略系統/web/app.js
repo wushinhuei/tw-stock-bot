@@ -2,6 +2,11 @@
   const config = window.TW_STOCK_BOT_CONFIG || {};
   const fallbackMarket = window.TW_STOCK_ACTUAL_DATA || {};
   const fallbackSimulation = window.TW_STOCK_SIMULATION_RESULT || {};
+  const feeConfig = {
+    commissionRate: 0.001425,
+    stockTransactionTaxRate: 0.003,
+    minimumCommission: 20
+  };
   const state = {
     data: mergePayload(fallbackMarket, fallbackSimulation),
     tradeSignature: fallbackSimulation.tradeSignature || "",
@@ -12,6 +17,9 @@
   const els = {
     refreshButton: byId("refreshButton"),
     settingsLink: byId("settingsLink"),
+    historyButton: byId("historyButton"),
+    historyPanel: byId("historyPanel"),
+    historyBody: byId("historyBody"),
     lastUpdated: byId("lastUpdated"),
     tradeSignature: byId("tradeSignature"),
     equity: byId("equity"),
@@ -46,6 +54,7 @@
       els.settingsLink.href = config.settingsSheetUrl;
     }
     els.refreshButton.addEventListener("click", () => refreshData(true));
+    els.historyButton.addEventListener("click", toggleHistory);
     render(state.data);
     refreshData(false);
     state.refreshTimer = setInterval(() => refreshData(false), config.refreshIntervalMs || 1800000);
@@ -163,33 +172,39 @@
 
   function render(data) {
     const initial = numberOr(data.initialCapital, 100000);
-    const totalReturn = initial ? (data.equity - initial) / initial : 0;
     els.lastUpdated.textContent = formatDateTime(data.asOf);
     els.tradeSignature.textContent = data.tradeSignature || "--";
     const positions = data.positions || [];
-    const stockValue = positions.reduce((sum, row) => sum + numberOr(row.marketValue, Number(row.shares || 0) * Number(row.lastPrice || row.price || 0)), 0);
-    const unrealizedPnl = positions.reduce((sum, row) => sum + numberOr(row.pnl, 0), 0);
-    els.equity.textContent = money(data.equity);
-    els.cash.textContent = money(data.cash);
+    const positionCosts = summarizePositionCosts(positions);
+    const adjustedCash = Number(data.cash || 0) - positionCosts.buyFees;
+    const adjustedEquity = adjustedCash + positionCosts.netMarketValue;
+    const adjustedDailyPnl = adjustedEquity - initial;
+    const totalReturn = initial ? adjustedDailyPnl / initial : 0;
+    els.equity.textContent = money(adjustedEquity);
+    els.cash.textContent = money(adjustedCash);
+    els.cashChange.textContent = signedMoney(-positionCosts.buyFees);
+    els.cashChange.className = positionCosts.buyFees > 0 ? "bad" : "good";
+    const stockValue = positionCosts.marketValue;
+    const unrealizedPnl = positionCosts.pnl;
     els.marketValue.textContent = money(stockValue);
     els.unrealizedPnl.textContent = signedMoney(unrealizedPnl);
     els.unrealizedPnl.className = unrealizedPnl >= 0 ? "good" : "bad";
-    els.cashChange.textContent = signedMoney(0);
     els.stockValue.textContent = money(stockValue);
-    els.stockChange.textContent = signedMoney(unrealizedPnl || data.dailyPnl);
-    els.stockChange.className = (unrealizedPnl || data.dailyPnl) >= 0 ? "good" : "bad";
-    els.accountChange.textContent = signedMoney(data.dailyPnl);
-    els.accountChange.className = data.dailyPnl >= 0 ? "good" : "bad";
-    els.dailyPnl.textContent = signedMoney(data.dailyPnl);
-    els.dailyPnl.className = data.dailyPnl >= 0 ? "good" : "bad";
+    els.stockChange.textContent = signedMoney(unrealizedPnl);
+    els.stockChange.className = unrealizedPnl >= 0 ? "good" : "bad";
+    els.accountChange.textContent = signedMoney(adjustedDailyPnl);
+    els.accountChange.className = adjustedDailyPnl >= 0 ? "good" : "bad";
+    els.dailyPnl.textContent = signedMoney(adjustedDailyPnl);
+    els.dailyPnl.className = adjustedDailyPnl >= 0 ? "good" : "bad";
     els.returnLine.textContent = `累計 ${pct(totalReturn)}`;
-    els.cashReserve.textContent = `現金水位 ${pct((data.risk || {}).cashReservePct || data.cash / Math.max(data.equity, 1))}`;
+    els.cashReserve.textContent = `現金水位 ${pct((data.risk || {}).cashReservePct || adjustedCash / Math.max(adjustedEquity, 1))}`;
     els.targetLine.textContent = `月目標 ${pct(data.monthlyTargetMinPct)} - ${pct(data.monthlyTargetMaxPct)}`;
     els.riskMessage.textContent = (data.risk || {}).message || "等待下一筆有效訊號。";
     renderMarket(data.market || {});
     renderCandidates(data.candidates || []);
     renderPositions(positions, data);
     renderTrades(data.trades || []);
+    renderHistory(data.trades || []);
     els.weeklyReport.textContent = (data.reports || {}).weekly || "尚無週檢討資料。";
     els.thirtyDayReport.textContent = (data.reports || {}).thirtyDay || "尚無 30 日檢討資料。";
   }
@@ -226,10 +241,11 @@
   }
 
   function renderPositions(rows, data) {
-    const totalValue = rows.reduce((sum, row) => sum + numberOr(row.marketValue, Number(row.shares || 0) * Number(row.lastPrice || row.price || 0)), 0);
-    const totalPnl = rows.reduce((sum, row) => sum + numberOr(row.pnl, 0), 0);
-    els.holdingsSummary.textContent = `總值 ${money(totalValue)}　當日益損 ${signedMoney(data.dailyPnl)}　總益損 ${signedMoney(totalPnl)}`;
-    els.positionsBody.innerHTML = rows.length ? rows.map((row) => `
+    const costs = summarizePositionCosts(rows);
+    els.holdingsSummary.textContent = `總值 ${money(costs.marketValue)}　預估費稅 ${money(costs.totalFeesAndTax)}　總益損 ${signedMoney(costs.pnl)}`;
+    els.positionsBody.innerHTML = rows.length ? rows.map((row) => {
+      const cost = positionCost(row);
+      return `
       <tr>
         <td><button class="row-caret" type="button" title="展開">›</button><strong class="ticker">${escapeHtml(row.symbol)}</strong><br><span>${escapeHtml(row.name)}</span></td>
         <td>${numberText(row.shares)}</td>
@@ -237,18 +253,21 @@
         <td>${numberText(row.lastPrice)}</td>
         <td class="${Number(row.change || row.changePct || 0) >= 0 ? "good" : "bad"}">${signedNumber(row.change || 0)}</td>
         <td class="${Number(row.changePct || 0) >= 0 ? "good" : "bad"}">${pct(Number(row.changePct || 0))}</td>
-        <td>${money(numberOr(row.marketValue, Number(row.shares || 0) * Number(row.lastPrice || 0)))}</td>
-        <td>${numberText(row.avgPrice)}</td>
-        <td>${money(Number(row.shares || 0) * Number(row.avgPrice || 0))}</td>
-        <td class="${Number(row.pnl) >= 0 ? "good" : "bad"}">${signedMoney(row.pnl)}</td>
-        <td class="${Number(row.pnlPct) >= 0 ? "good" : "bad"}">${pct(Number(row.pnlPct || 0))}</td>
+        <td>${money(cost.marketValue)}</td>
+        <td>${numberText(cost.unitCost)}</td>
+        <td>${money(cost.costBasis)}</td>
+        <td class="${cost.pnl >= 0 ? "good" : "bad"}">${signedMoney(cost.pnl)}</td>
+        <td class="${cost.pnlPct >= 0 ? "good" : "bad"}">${pct(cost.pnlPct)}</td>
       </tr>
-    `).join("") : emptyRow(11, "目前沒有持倉，策略維持現金水位。");
+    `;
+    }).join("") : emptyRow(11, "目前沒有持倉，策略維持現金水位。");
   }
 
   function renderTrades(rows) {
     els.tradeCount.textContent = rows.length;
-    els.tradesBody.innerHTML = rows.length ? rows.map((row) => `
+    els.tradesBody.innerHTML = rows.length ? rows.map((row) => {
+      const cost = tradeCost(row);
+      return `
       <tr>
         <td>${escapeHtml(row.time || "--")}</td>
         <td>${tradeAction(row.action)}</td>
@@ -257,10 +276,55 @@
         <td>${escapeHtml(row.orderType || "限價")}</td>
         <td>${numberText(row.price)}</td>
         <td>當日有效</td>
-        <td>${escapeHtml(row.condition || "無")}</td>
-        <td class="bad">已成交 @ ${numberText(row.price)}</td>
+        <td>費稅 ${money(cost.totalFeeAndTax)}</td>
+        <td class="${cost.pnl >= 0 ? "good" : "bad"}">已成交 @ ${numberText(row.price)}｜損益 ${signedMoney(cost.pnl)}</td>
       </tr>
-    `).join("") : emptyRow(9, "尚無交易紀錄。");
+    `;
+    }).join("") : emptyRow(9, "尚無交易紀錄。");
+  }
+
+  function renderHistory(rows) {
+    if (!els.historyBody) return;
+    if (!rows.length) {
+      els.historyBody.innerHTML = emptyRow(9, "尚無歷史交易紀錄。");
+      return;
+    }
+    const ordered = [...rows].sort((a, b) => parseDate(b.time) - parseDate(a.time));
+    let currentMonth = "";
+    els.historyBody.innerHTML = ordered.map((row) => {
+      const date = parseDate(row.time);
+      const month = monthLabel(date, row.time);
+      const cost = tradeCost(row);
+      const divider = month !== currentMonth
+        ? `<tr class="month-row"><td colspan="9">${escapeHtml(month)}</td></tr>`
+        : "";
+      currentMonth = month;
+      return `${divider}
+        <tr>
+          <td>${escapeHtml(formatTradeTime(row.time))}</td>
+          <td>${tradeAction(row.action)}</td>
+          <td><strong class="ticker">${escapeHtml(row.symbol || "--")}</strong></td>
+          <td>${numberText(row.shares)}</td>
+          <td>${numberText(row.price)}</td>
+          <td>${money(cost.grossAmount)}</td>
+          <td>${money(cost.totalFeeAndTax)}</td>
+          <td class="${cost.pnl >= 0 ? "good" : "bad"}">${signedMoney(cost.pnl)}</td>
+          <td>${escapeHtml(row.status || `已成交 @ ${numberText(row.price)}`)}</td>
+        </tr>`;
+    }).join("");
+  }
+
+  function toggleHistory() {
+    const isHidden = els.historyPanel.hasAttribute("hidden");
+    if (isHidden) {
+      els.historyPanel.removeAttribute("hidden");
+      els.historyButton.setAttribute("aria-expanded", "true");
+      els.historyButton.textContent = "隱藏歷史交易";
+    } else {
+      els.historyPanel.setAttribute("hidden", "");
+      els.historyButton.setAttribute("aria-expanded", "false");
+      els.historyButton.textContent = "歷史交易紀錄";
+    }
   }
 
   function setLoading(isLoading) {
@@ -278,6 +342,67 @@
       if (Number.isFinite(n)) return n;
     }
     return 0;
+  }
+
+  function summarizePositionCosts(rows) {
+    return rows.reduce((summary, row) => {
+      const cost = positionCost(row);
+      summary.marketValue += cost.marketValue;
+      summary.netMarketValue += cost.netMarketValue;
+      summary.costBasis += cost.costBasis;
+      summary.buyFees += cost.buyFee;
+      summary.totalFeesAndTax += cost.buyFee + cost.sellFee + cost.sellTax;
+      summary.pnl += cost.pnl;
+      return summary;
+    }, { marketValue: 0, netMarketValue: 0, costBasis: 0, buyFees: 0, totalFeesAndTax: 0, pnl: 0 });
+  }
+
+  function positionCost(row) {
+    const shares = Number(row.shares || 0);
+    const avgPrice = Number(row.avgPrice || row.price || 0);
+    const lastPrice = Number(row.lastPrice || row.price || avgPrice || 0);
+    const buyGross = shares * avgPrice;
+    const marketValue = numberOr(row.marketValue, shares * lastPrice);
+    const buyFee = commission(buyGross);
+    const sellFee = commission(marketValue);
+    const sellTax = stockTransactionTax(marketValue);
+    const costBasis = buyGross + buyFee;
+    const netMarketValue = marketValue - sellFee - sellTax;
+    const pnl = netMarketValue - costBasis;
+    return {
+      marketValue,
+      netMarketValue,
+      buyFee,
+      sellFee,
+      sellTax,
+      costBasis,
+      unitCost: shares ? costBasis / shares : 0,
+      pnl,
+      pnlPct: costBasis ? pnl / costBasis : 0
+    };
+  }
+
+  function tradeCost(row) {
+    const grossAmount = Number(row.shares || 0) * Number(row.price || 0);
+    const action = String(row.action || "").toUpperCase();
+    const fee = commission(grossAmount);
+    const tax = action === "SELL" ? stockTransactionTax(grossAmount) : 0;
+    const explicitPnl = Number(row.pnl ?? row.realizedPnl);
+    const pnl = Number.isFinite(explicitPnl) && action === "SELL"
+      ? explicitPnl - fee - tax
+      : -(fee + tax);
+    return { grossAmount, totalFeeAndTax: fee + tax, pnl };
+  }
+
+  function commission(amount) {
+    const gross = Math.abs(Number(amount || 0));
+    if (!gross) return 0;
+    return Math.max(feeConfig.minimumCommission, Math.round(gross * feeConfig.commissionRate));
+  }
+
+  function stockTransactionTax(amount) {
+    const gross = Math.abs(Number(amount || 0));
+    return gross ? Math.round(gross * feeConfig.stockTransactionTaxRate) : 0;
   }
 
   function money(value) {
@@ -325,6 +450,26 @@
     const date = value ? new Date(value) : new Date();
     if (Number.isNaN(date.getTime())) return String(value || "--");
     return date.toLocaleString("zh-TW", { hour12: false });
+  }
+
+  function parseDate(value) {
+    const date = value ? new Date(value) : new Date(0);
+    return Number.isNaN(date.getTime()) ? new Date(0) : date;
+  }
+
+  function monthLabel(date, fallback) {
+    if (!date || date.getTime() === 0) {
+      const text = String(fallback || "");
+      const match = text.match(/(\d{4})[-/](\d{1,2})/);
+      return match ? `${match[1]}-${match[2].padStart(2, "0")}` : "未分類月份";
+    }
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function formatTradeTime(value) {
+    const date = parseDate(value);
+    if (date.getTime() === 0) return String(value || "--");
+    return date.toLocaleString("zh-TW", { hour12: false, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
   function escapeHtml(value) {
