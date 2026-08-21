@@ -1,5 +1,5 @@
 window.TW_STOCK_BOT_CONFIG = {
-  endpoint: "https://script.google.com/macros/s/AKfycbyNOSX3fnzqfruHoU3G70AuxYBMiI8igmGkGLBCngC65wznX3X93n_ap9tfbLRaRvee/exec",
+  endpoint: "https://script.google.com/macros/s/AKfycbyULTo0Hn09Z88rdmaw1VQVyA2xCWH0PiAz43u_3Bo47b5t5JlkDCy7uWOUjRBQXHL-/exec",
   refreshIntervalMs: 30 * 60 * 1000,
   statusIntervalMs: 60 * 1000,
   requestTimeoutMs: 75 * 1000,
