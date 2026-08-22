@@ -12,6 +12,8 @@
 
 ```text
 Cloud Scheduler 每 5 分鐘觸發短任務；交易日 08:50 至 13:20 執行，證交所休市日快速退出
+
+每月 1 日另將上月逐次行情壓縮為單一 `monthly/YYYY-MM.jsonl.gz`，再由 Apps Script 複製到 Google Drive；逐次行情保留 90 天、月封存保留 3 年，設定方式見 `deploy/archive-and-cleanup.md`。
         ↓
 上市普通股成交量前 50 名 → 指定產業 → 最多完整分析 30 檔
         ↓

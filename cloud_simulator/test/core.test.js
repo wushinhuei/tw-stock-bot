@@ -16,6 +16,7 @@ const { adaptCandidatePayload } = require('../src/candidate_adapter');
 const { runTick, tickDecision } = require('../src/main');
 const { createDashboardServer } = require('../src/api');
 const { closedDatesFromSchedule, rocCompactToYmd } = require('../src/trading_calendar');
+const { createMonthlyArchive, previousTaipeiMonth } = require('../src/monthly_archive');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -271,6 +272,29 @@ test('scheduled tick exits before repository access on a TWSE closed weekday', a
   assert.equal(result.skipped, true);
   assert.equal(result.reason, 'TWSE_MARKET_CLOSED');
   assert.equal(restored, false);
+});
+
+test('monthly archive selects previous Taipei month and writes one gzip object', async () => {
+  assert.equal(previousTaipeiMonth(new Date('2026-08-01T00:30:00Z')), '2026-07');
+  const saved = [];
+  const bucket = {
+    async getFiles({ prefix }) {
+      assert.equal(prefix, 'raw/2026-07-');
+      return [[
+        { name: 'raw/2026-07-02/b.json', download: async () => [Buffer.from('{"b":2}')] },
+        { name: 'raw/2026-07-01/a.json', download: async () => [Buffer.from('{"a":1}')] }
+      ]];
+    },
+    file(name) {
+      return { save: async (body, options) => saved.push({ name, body, options }) };
+    }
+  };
+  const result = await createMonthlyArchive({ bucket, month: '2026-07' });
+  assert.equal(result.count, 2);
+  assert.equal(result.destination, 'monthly/2026-07.jsonl.gz');
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].options.metadata.metadata.snapshotCount, '2');
+  assert.ok(saved[0].body.length > 0);
 });
 
 test('dashboard API exposes only read-only dashboard and health routes', async t => {

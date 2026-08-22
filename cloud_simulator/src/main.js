@@ -142,14 +142,25 @@ async function main() {
   } else if (mode === 'api') {
     require('./api').startDashboardApi();
     return;
+  } else if (mode === 'monthly-archive') {
+    if (!process.env.GCS_BUCKET) throw new Error('GCS_BUCKET is required for monthly archive');
+    const { Storage } = require('@google-cloud/storage');
+    const { createMonthlyArchive } = require('./monthly_archive');
+    result = await createMonthlyArchive({
+      bucket: new Storage().bucket(process.env.GCS_BUCKET),
+      month: process.env.ARCHIVE_MONTH || undefined
+    });
   } else {
     throw new Error(`Unsupported RUN_MODE: ${mode}`);
   }
   console.log(JSON.stringify({
-    event: result.skipped ? 'tick-skipped' : 'run-complete',
+    event: mode === 'monthly-archive' ? 'monthly-archive-complete' : (result.skipped ? 'tick-skipped' : 'run-complete'),
     generatedAt: result.generatedAt,
     reason: result.reason,
-    equity: result.simulation && result.simulation.finalEquity
+    equity: result.simulation && result.simulation.finalEquity,
+    month: result.month,
+    destination: result.destination,
+    count: result.count
   }));
 }
 

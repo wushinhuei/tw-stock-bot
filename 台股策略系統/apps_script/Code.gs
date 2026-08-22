@@ -2,6 +2,8 @@ const START_DATE = '2026-08-20';
 const STATE_KEY = 'TW_STOCK_DASHBOARD_STATE_V1';
 const SETTINGS_SPREADSHEET_ID_KEY = 'TW_STOCK_SETTINGS_SPREADSHEET_ID';
 const CLOUD_DASHBOARD_URL_KEY = 'TW_STOCK_CLOUD_DASHBOARD_URL';
+const CLOUD_ARCHIVE_BUCKET_KEY = 'TW_STOCK_ARCHIVE_BUCKET';
+const DRIVE_ARCHIVE_FOLDER_ID_KEY = 'TW_STOCK_DRIVE_ARCHIVE_FOLDER_ID';
 const SETTINGS_SHEET_NAME = '策略設定';
 const SETTINGS_CHANGE_LOG_SHEET_NAME = '設定異動紀錄';
 const WEEKLY_REVIEW_SHEET_NAME = '週檢討報告';
@@ -190,6 +192,60 @@ function readCloudDashboard() {
 
 function scheduledUpdate() {
   return refreshDashboard();
+}
+
+function configureMonthlyArchive() {
+  const properties = PropertiesService.getScriptProperties();
+  if (!properties.getProperty(CLOUD_ARCHIVE_BUCKET_KEY)) {
+    properties.setProperty(CLOUD_ARCHIVE_BUCKET_KEY, 'project-aef205b5-5c27-4084-94c-tw-stock-data');
+  }
+  let folderId = properties.getProperty(DRIVE_ARCHIVE_FOLDER_ID_KEY);
+  if (!folderId) {
+    folderId = DriveApp.createFolder('台股策略系統月封存').getId();
+    properties.setProperty(DRIVE_ARCHIVE_FOLDER_ID_KEY, folderId);
+  }
+  installMonthlyArchiveTrigger();
+  return { ok: true, bucket: properties.getProperty(CLOUD_ARCHIVE_BUCKET_KEY), folderId: folderId };
+}
+
+function installMonthlyArchiveTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'archivePreviousMonthToDrive') ScriptApp.deleteTrigger(trigger);
+  });
+  ScriptApp.newTrigger('archivePreviousMonthToDrive').timeBased().onMonthDay(1).atHour(3).create();
+}
+
+function archivePreviousMonthToDrive() {
+  const properties = PropertiesService.getScriptProperties();
+  const bucket = String(properties.getProperty(CLOUD_ARCHIVE_BUCKET_KEY) || '').trim();
+  const folderId = String(properties.getProperty(DRIVE_ARCHIVE_FOLDER_ID_KEY) || '').trim();
+  if (!bucket || !folderId) throw new Error('請先執行 configureMonthlyArchive');
+
+  const now = new Date();
+  const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const month = Utilities.formatDate(previousMonth, Session.getScriptTimeZone(), 'yyyy-MM');
+  const objectName = 'monthly/' + month + '.jsonl.gz';
+  const fileName = 'tw-stock-' + month + '.jsonl.gz';
+  const folder = DriveApp.getFolderById(folderId);
+  if (folder.getFilesByName(fileName).hasNext()) {
+    return { ok: true, skipped: true, reason: 'ALREADY_ARCHIVED', month: month, fileName: fileName };
+  }
+
+  const url = 'https://storage.googleapis.com/download/storage/v1/b/' +
+    encodeURIComponent(bucket) + '/o/' + encodeURIComponent(objectName) + '?alt=media';
+  const response = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() === 404) {
+    throw new Error('尚未產生月封存檔：' + objectName);
+  }
+  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+    throw new Error('下載月封存失敗 HTTP ' + response.getResponseCode());
+  }
+  const file = folder.createFile(response.getBlob().setName(fileName));
+  properties.setProperty('TW_STOCK_LAST_DRIVE_ARCHIVE', month + '|' + file.getId() + '|' + new Date().toISOString());
+  return { ok: true, skipped: false, month: month, fileId: file.getId(), fileName: fileName };
 }
 
 function installRealtimeTradingTrigger() {
