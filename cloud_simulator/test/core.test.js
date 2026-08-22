@@ -14,6 +14,7 @@ const { MemoryRepository } = require('../src/repository');
 const { buildUniverse } = require('../src/scanner');
 const { adaptCandidatePayload } = require('../src/candidate_adapter');
 const { runTick, tickDecision } = require('../src/main');
+const { createDashboardServer } = require('../src/api');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -243,4 +244,28 @@ test('out-of-window tick exits without reading or writing repository', async () 
   const result = await runTick({ now: new Date('2026-08-21T00:40:00Z'), repository });
   assert.equal(result.skipped, true);
   assert.equal(result.reason, 'OUTSIDE_SESSION');
+});
+
+test('dashboard API exposes only read-only dashboard and health routes', async t => {
+  const server = createDashboardServer({
+    readDashboard: async () => ({ ok: true, source: 'test', scenario: [], simulation: {} })
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const port = server.address().port;
+  const dashboard = await fetch(`http://127.0.0.1:${port}/dashboard`);
+  assert.equal(dashboard.status, 200);
+  assert.equal((await dashboard.json()).source, 'test');
+  assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 200);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/raw/quotes`)).status, 404);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/dashboard`, { method: 'POST' })).status, 405);
+});
+
+test('dashboard API returns 503 until first cloud dashboard is available', async t => {
+  const server = createDashboardServer({ readDashboard: async () => { throw new Error('missing'); } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/dashboard`);
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, 'DASHBOARD_NOT_READY');
 });

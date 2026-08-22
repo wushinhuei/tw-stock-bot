@@ -133,7 +133,14 @@ function doGet(e) {
 
   try {
     if ((action === 'read' || action === 'status') && cloudDashboardUrl()) {
-      payload = readCloudDashboard();
+      try {
+        payload = readCloudDashboard();
+      } catch (cloudError) {
+        console.warn('Cloud dashboard fallback: ' + String(cloudError));
+        payload = action === 'status' ? readStatusPayload() : readOrSeedPayload();
+        payload.cloudDashboardFallback = true;
+        payload.cloudDashboardError = String(cloudError);
+      }
     } else
     if (action === 'status') {
       payload = readStatusPayload();

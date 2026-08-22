@@ -124,6 +124,9 @@ async function main() {
     result = await runTick();
   } else if (mode === 'session') {
     result = await runSession();
+  } else if (mode === 'api') {
+    require('./api').startDashboardApi();
+    return;
   } else {
     throw new Error(`Unsupported RUN_MODE: ${mode}`);
   }

@@ -1037,6 +1037,38 @@ function appsScriptEndpoint() {
   return /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(endpoint) ? endpoint : '';
 }
 
+function cloudDashboardEndpoint() {
+  const endpoint = String(window.CLOUD_DASHBOARD_ENDPOINT || '').trim();
+  return /^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.run\.app\/dashboard$/.test(endpoint) ? endpoint : '';
+}
+
+async function loadCloudDashboardPayload() {
+  const endpoint = cloudDashboardEndpoint();
+  if (!endpoint) return false;
+  const url = new URL(endpoint);
+  url.searchParams.set('t', Date.now());
+  const response = await fetch(url.toString(), { cache: 'no-store' });
+  if (!response.ok) throw new Error(`Cloud dashboard HTTP ${response.status}`);
+  const payload = await response.json();
+  if (!payload || payload.ok === false || !Array.isArray(payload.scenario) || !payload.simulation) {
+    throw new Error(payload && payload.error ? payload.error : 'Invalid Cloud dashboard payload');
+  }
+  window.ACTUAL_SCENARIO = payload.scenario;
+  window.PRECOMPUTED_SIMULATION = payload.simulation;
+  return true;
+}
+
+async function loadCloudDashboardStatus() {
+  const endpoint = cloudDashboardEndpoint();
+  if (!endpoint) return null;
+  const url = new URL(endpoint);
+  url.searchParams.set('t', Date.now());
+  const response = await fetch(url.toString(), { cache: 'no-store' });
+  if (!response.ok) throw new Error(`Cloud dashboard HTTP ${response.status}`);
+  const payload = await response.json();
+  return payload && payload.ok !== false ? payload : null;
+}
+
 function appsScriptUrl(action, options = {}) {
   const url = new URL(appsScriptEndpoint());
   url.searchParams.set('action', action);
@@ -1155,13 +1187,17 @@ async function refreshData(options = {}) {
   if (lastUpdatedLabel) lastUpdatedLabel.textContent = '最後更新：更新中...';
 
   try {
-    const loadedFromAppsScript = await loadAppsScriptPayload(force ? 'refresh' : 'read', {
+    const loadedFromCloud = force ? false : await loadCloudDashboardPayload().catch(error => {
+      console.warn(error);
+      return false;
+    });
+    const loadedFromAppsScript = loadedFromCloud ? false : await loadAppsScriptPayload(force ? 'refresh' : 'read', {
       force: Boolean(options.force),
     }).catch(error => {
       console.warn(error);
       return false;
     });
-    if (!loadedFromAppsScript) await loadStaticPayload();
+    if (!loadedFromCloud && !loadedFromAppsScript) await loadStaticPayload();
     scenario = window.ACTUAL_SCENARIO;
     const result = currentSimulation();
     activeTradeSignature = resultTradeSignature(result);
@@ -1206,7 +1242,11 @@ function scheduleTradeWatch() {
 
 async function checkTradeUpdate() {
   if (refreshInFlight) return;
-  const status = await loadAppsScriptStatus().catch(error => {
+  const cloudStatus = await loadCloudDashboardStatus().catch(error => {
+    console.warn(error);
+    return null;
+  });
+  const status = cloudStatus || await loadAppsScriptStatus().catch(error => {
     console.warn(error);
     return null;
   });
