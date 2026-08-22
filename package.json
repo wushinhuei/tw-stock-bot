@@ -8,7 +8,7 @@
     "test": "node --test cloud_simulator/test/*.test.js audio-loop/test/*.test.mjs",
     "start": "node cloud_simulator/src/main.js",
     "smoke:live": "node cloud_simulator/scripts/live_smoke.js",
-    "check": "node --check cloud_simulator/src/main.js && node --check cloud_simulator/src/api.js && node --check cloud_simulator/src/engine.js && node --check cloud_simulator/src/scoring.js && node --check cloud_simulator/src/candidate_adapter.js && node --check cloud_simulator/src/backtest.js && node --check audio-loop/core.mjs && node --check audio-loop/app.mjs"
+    "check": "node --check cloud_simulator/src/main.js && node --check cloud_simulator/src/api.js && node --check cloud_simulator/src/engine.js && node --check cloud_simulator/src/scoring.js && node --check cloud_simulator/src/candidate_adapter.js && node --check cloud_simulator/src/backtest.js && node --check cloud_simulator/src/trading_calendar.js && node --check audio-loop/core.mjs && node --check audio-loop/app.mjs"
   },
   "engines": {
     "node": ">=20"

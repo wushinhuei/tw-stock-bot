@@ -6,6 +6,7 @@ const { GoogleRepository, MemoryRepository } = require('./repository');
 const { fetchQuotes } = require('./twse');
 const { buildUniverse } = require('./scanner');
 const { adaptCandidatePayload } = require('./candidate_adapter');
+const { isTwseTradingDay } = require('./trading_calendar');
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function compactDate(date) { return date.replace(/-/g, ''); }
@@ -48,6 +49,10 @@ async function loadCandidates() {
 }
 
 async function runSession() {
+  const sessionNow = new Date();
+  if (!isWeekday(sessionNow) || !await isTwseTradingDay(sessionNow, { ymd: taipeiDate(sessionNow) })) {
+    return { skipped: true, reason: 'NON_TRADING_DAY', generatedAt: sessionNow.toISOString(), time: taipeiTime(sessionNow) };
+  }
   const repository = repositoryFromEnvironment();
   const engine = new SimulationEngine({ config: CONFIG, repository });
   await engine.restore();
@@ -85,13 +90,23 @@ async function runTick(options = {}) {
     return { skipped: true, reason: decision.reason, generatedAt: now.toISOString(), time: decision.time };
   }
 
+  const tradingDay = options.isTradingDay
+    ? await options.isTradingDay(now)
+    : await isTwseTradingDay(now, { ymd: taipeiDate(now) }).catch(error => {
+      console.warn(JSON.stringify({ event: 'trading-calendar-warning', error: String(error) }));
+      return true;
+    });
+  if (!tradingDay) {
+    return { skipped: true, reason: 'TWSE_MARKET_CLOSED', generatedAt: now.toISOString(), time: decision.time };
+  }
+
   const repository = options.repository || repositoryFromEnvironment();
   const engine = options.engine || new SimulationEngine({ config: CONFIG, repository });
   await engine.restore();
   let candidates = options.candidates || await loadCandidates();
 
   // RSS is advisory-only and comparatively slow. Refresh on ten-minute boundaries;
-  // quotes, positions and orders are still evaluated on every four-minute tick.
+  // quotes, positions and orders are still evaluated on every five-minute tick.
   const minute = Number(decision.time.slice(3, 5));
   if (minute % 10 === 0) {
     const news = await engine.refreshNews().catch(error => ({ items: [], errors: [String(error)] }));

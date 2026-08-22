@@ -5,7 +5,7 @@ const CONFIG = Object.freeze({
   initialCapital: 100000,
   topVolumeLimit: 50,
   maxCandidates: 30,
-  schedulerIntervalMinutes: 4,
+  schedulerIntervalMinutes: 5,
   rssPollMs: 15 * 60 * 1000,
   sessionStart: '08:50',
   tradingStart: '09:10',

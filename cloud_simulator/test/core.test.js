@@ -15,6 +15,7 @@ const { buildUniverse } = require('../src/scanner');
 const { adaptCandidatePayload } = require('../src/candidate_adapter');
 const { runTick, tickDecision } = require('../src/main');
 const { createDashboardServer } = require('../src/api');
+const { closedDatesFromSchedule, rocCompactToYmd } = require('../src/trading_calendar');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -244,6 +245,32 @@ test('out-of-window tick exits without reading or writing repository', async () 
   const result = await runTick({ now: new Date('2026-08-21T00:40:00Z'), repository });
   assert.equal(result.skipped, true);
   assert.equal(result.reason, 'OUTSIDE_SESSION');
+});
+
+test('TWSE holiday schedule excludes closed dates but keeps start and last trading days', () => {
+  const closed = closedDatesFromSchedule([
+    { Name: '國曆新年開始交易日', Date: '1150102' },
+    { Name: '農曆春節前最後交易日', Date: '1150211' },
+    { Name: '市場無交易，僅辦理結算交割作業', Date: '1150212' },
+    { Name: '和平紀念日', Date: '1150227' }
+  ]);
+  assert.equal(rocCompactToYmd('1150212'), '2026-02-12');
+  assert.equal(closed.has('2026-01-02'), false);
+  assert.equal(closed.has('2026-02-11'), false);
+  assert.equal(closed.has('2026-02-12'), true);
+  assert.equal(closed.has('2026-02-27'), true);
+});
+
+test('scheduled tick exits before repository access on a TWSE closed weekday', async () => {
+  let restored = false;
+  const result = await runTick({
+    now: new Date('2026-02-12T01:10:00Z'),
+    isTradingDay: async () => false,
+    repository: { loadState: async () => { restored = true; return null; } }
+  });
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, 'TWSE_MARKET_CLOSED');
+  assert.equal(restored, false);
 });
 
 test('dashboard API exposes only read-only dashboard and health routes', async t => {
