@@ -1,10 +1,2 @@
-window.TW_STOCK_BOT_CONFIG = {
-  endpoint: "https://script.google.com/macros/s/AKfycbyULTo0Hn09Z88rdmaw1VQVyA2xCWH0PiAz43u_3Bo47b5t5JlkDCy7uWOUjRBQXHL-/exec",
-  cloudDashboardEndpoint: "https://tw-stock-dashboard-api-702657072551.asia-east1.run.app/dashboard",
-  refreshIntervalMs: 30 * 60 * 1000,
-  statusIntervalMs: 60 * 1000,
-  requestTimeoutMs: 75 * 1000,
-  simulationStartDate: "2026-08-20",
-  initialCapital: 100000,
-  settingsSheetUrl: "https://docs.google.com/spreadsheets/d/1TLouSeqNnj6K0xgl9-euBtLOEoj-hSHgJuZMtWQgopA/edit"
-};
+window.APPS_SCRIPT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyULTo0Hn09Z88rdmaw1VQVyA2xCWH0PiAz43u_3Bo47b5t5JlkDCy7uWOUjRBQXHL-/exec';
+window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.asia-east1.run.app/dashboard';
