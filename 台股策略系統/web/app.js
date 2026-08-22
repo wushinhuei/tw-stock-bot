@@ -64,8 +64,9 @@
   async function refreshData(force) {
     setLoading(true);
     try {
-      const action = force ? "refresh" : "read";
-      const payload = await requestAppsScript(action, force ? { force: "1" } : {});
+      const payload = force
+        ? await requestAppsScript("refresh", { force: "1" })
+        : await requestCloudDashboard().catch(() => requestAppsScript("read"));
       const next = normalizePayload(payload);
       state.data = next;
       state.tradeSignature = next.tradeSignature || state.tradeSignature;
@@ -80,7 +81,7 @@
 
   async function checkStatus() {
     try {
-      const status = await requestAppsScript("status");
+      const status = await requestCloudDashboard().catch(() => requestAppsScript("status"));
       const nextSignature = status.tradeSignature || status.signature || "";
       if (nextSignature && nextSignature !== state.tradeSignature) {
         state.tradeSignature = nextSignature;
@@ -89,6 +90,23 @@
     } catch (error) {
       console.warn("status failed", error);
     }
+  }
+
+  function requestCloudDashboard() {
+    if (!config.cloudDashboardEndpoint) {
+      return Promise.reject(new Error("Missing Cloud dashboard endpoint"));
+    }
+    const glue = config.cloudDashboardEndpoint.includes("?") ? "&" : "?";
+    const url = `${config.cloudDashboardEndpoint}${glue}t=${Date.now()}`;
+    return fetchWithTimeout(url, Math.min(config.requestTimeoutMs || 75000, 15000))
+      .then((response) => {
+        if (!response.ok) throw new Error(`Cloud dashboard HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => {
+        if (payload && payload.ok === false) throw new Error(payload.error || "Cloud dashboard error");
+        return payload;
+      });
   }
 
   function requestAppsScript(action, params) {
