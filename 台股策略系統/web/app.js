@@ -732,15 +732,28 @@ function renderAGradeCandidates(day) {
   const target = document.querySelector('#aGradeCandidates');
   if (!target || !day) return;
   const source = day.source?.universe || {};
+  const today = todayTaipeiDate();
+  const dataDate = String(day.date || '');
+  const hasCurrentTradingData = dataDate === today;
   const aGrades = (day.candidates || [])
-    .filter(candidate => candidate.grade === 'A' && !candidate.heldSupplement)
+    .filter(candidate => (
+      hasCurrentTradingData &&
+      candidate.grade === 'A' &&
+      Number.isFinite(Number(candidate.score)) &&
+      Number(candidate.score) >= 80 &&
+      candidate.executionPlan?.allowEntry === true &&
+      !candidate.heldSupplement
+    ))
     .sort((a, b) => (a.metrics?.volumeRank || 999) - (b.metrics?.volumeRank || 999));
 
   if (!aGrades.length) {
+    const dateMessage = hasCurrentTradingData
+      ? '今日資料已完成檢查，但沒有同時達到 80 分且允許進場的標的。'
+      : `今日非交易日或當日資料尚未產生；目前最近資料日為 ${dataDate || '尚無資料'}。`;
     target.innerHTML = `
       <div class="empty-candidates">
         <strong>今日尚無 A 級候選股</strong>
-        <span>系統已先過濾成交量前 ${source.topVolumeLimit || 50} 名與指定族群；未達 80 分或觸發阻擋條件時，不主動買進。</span>
+        <span>${dateMessage} 系統已先過濾成交量前 ${source.topVolumeLimit || 50} 名與指定族群；無完整評分、未達 80 分或交易計畫不允許進場時，不列為 A 級候選。</span>
       </div>
     `;
     return;
