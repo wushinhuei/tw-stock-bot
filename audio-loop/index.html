@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="上傳常見音訊格式，選取片段無縫重複播放並輸出 MP3。">
   <meta name="theme-color" content="#f5efe5">
+  <script>
+    if (window.location.protocol === "file:") {
+      window.location.replace("https://wushinhuei.github.io/tw-stock-bot/audio-loop/?source=local-file");
+    }
+  </script>
   <title>無縫循環播放室</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -29,7 +34,7 @@
         <input id="audio-file" type="file" accept="audio/*,.m4a,.aac,.flac,.oga">
         <span class="upload-mark" aria-hidden="true">＋</span>
         <span class="drop-title">點一下選擇，或將音檔拖到這裡</span>
-        <span class="drop-note">檔案不會離開這個瀏覽器</span>
+        <span class="drop-note">請使用 HTTPS 網頁操作，檔案不會離開瀏覽器</span>
       </label>
 
       <div class="file-card" id="file-card" hidden>
