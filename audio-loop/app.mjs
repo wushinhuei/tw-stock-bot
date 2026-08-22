@@ -4,11 +4,19 @@ import {
   formatTime,
   parseTime,
   getCrossfadeSeconds,
-  hasMp3Signature,
+  getFileExtension,
+  isSupportedAudioFile,
+  estimateMp3Bytes,
+  buildLoopUnitFilter,
+  makeOutputFilename,
   validateSelection,
   getPlaybackSeconds,
   scheduleWindow,
 } from "./core.mjs";
+import { FFmpeg } from "./vendor/ffmpeg/index.js";
+import { fetchFile, toBlobURL } from "./vendor/util/index.js";
+
+const FFMPEG_CORE_BASE = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
@@ -19,12 +27,18 @@ const elements = {
   hours: $("#hours"), minutes: $("#minutes"), seconds: $("#seconds"),
   play: $("#play"), playLabel: $("#play-label"), status: $("#status"), remaining: $("#remaining"),
   progress: $("#progress-bar"), message: $("#message"),
+  export: $("#export"), exportLabel: $("#export-label"), exportEstimate: $("#export-estimate"),
+  exportProgress: $("#export-progress"), exportProgressBar: $("#export-progress-bar"),
 };
 
 let audioContext;
 let audioBuffer;
+let sourceFile;
 let activeSession;
 let waveformPeaks = [];
+let ffmpeg;
+let ffmpegLoading;
+let exportPhase = { base: 0, size: 0 };
 
 function setMessage(text = "") { elements.message.textContent = text; }
 
@@ -33,15 +47,11 @@ function ensureContext() {
   return audioContext;
 }
 
-function isMp3(file) {
-  return Boolean(file && /\.mp3$/i.test(file.name));
-}
-
 async function loadFile(file) {
   stopPlayback();
   setMessage("");
-  if (!isMp3(file)) {
-    setMessage("請選擇 MP3 格式的音檔（副檔名需為 .mp3）。");
+  if (!isSupportedAudioFile(file)) {
+    setMessage("請選擇常見音訊格式，例如 MP3、WAV、M4A、AAC、OGG、FLAC 或 WebM。");
     elements.file.value = "";
     return;
   }
@@ -49,10 +59,10 @@ async function loadFile(file) {
   elements.drop.querySelector(".drop-title").textContent = "正在讀取音檔…";
   try {
     const data = await file.arrayBuffer();
-    if (!hasMp3Signature(data)) throw new Error("檔案內容不是有效的 MP3，請重新選擇。");
     audioBuffer = await ensureContext().decodeAudioData(data.slice(0));
     if (audioBuffer.duration < MIN_SEGMENT_SECONDS) throw new Error(`音檔長度必須至少 ${MIN_SEGMENT_SECONDS} 秒。`);
     waveformPeaks = makePeaks(audioBuffer, 720);
+    sourceFile = file;
     elements.fileName.textContent = file.name;
     elements.fileMeta.textContent = `${formatBytes(file.size)} · ${formatTime(audioBuffer.duration)}`;
     elements.startRange.max = audioBuffer.duration;
@@ -65,9 +75,10 @@ async function loadFile(file) {
     updateSelection("load");
   } catch (error) {
     audioBuffer = null;
-    setMessage(error.message || "這個 MP3 無法讀取，請換一個檔案再試。");
+    sourceFile = null;
+    setMessage(error.message || "瀏覽器無法讀取這個音訊格式，請換一個檔案再試。");
   } finally {
-    elements.drop.querySelector(".drop-title").textContent = "點一下選擇，或將 MP3 拖到這裡";
+    elements.drop.querySelector(".drop-title").textContent = "點一下選擇，或將音檔拖到這裡";
   }
 }
 
@@ -186,7 +197,7 @@ function fillSchedule(session) {
 
 async function startPlayback() {
   try {
-    if (!audioBuffer) throw new Error("請先選擇 MP3 音檔。");
+    if (!audioBuffer) throw new Error("請先選擇音檔。");
     const selection = validateSelection(elements.startRange.value, elements.endRange.value, audioBuffer.duration);
     const totalSeconds = getPlaybackSeconds(elements.hours.value, elements.minutes.value, elements.seconds.value);
     const context = ensureContext();
@@ -247,6 +258,130 @@ function stopPlayback(completed = false) {
   }
 }
 
+function setExportProgress(percent, label) {
+  const safePercent = clamp(percent, 0, 100);
+  elements.exportProgress.hidden = false;
+  elements.exportProgressBar.style.width = `${safePercent}%`;
+  if (label) elements.exportLabel.textContent = label;
+}
+
+function updateExportEstimate() {
+  try {
+    const total = getPlaybackSeconds(elements.hours.value, elements.minutes.value, elements.seconds.value);
+    elements.exportEstimate.textContent = `預估檔案大小約 ${formatBytes(estimateMp3Bytes(total))}`;
+  } catch {
+    elements.exportEstimate.textContent = "請先設定有效的播放時間";
+  }
+}
+
+function setExportBusy(isBusy) {
+  elements.export.disabled = isBusy;
+  elements.export.classList.toggle("is-working", isBusy);
+  [
+    elements.file, elements.replace, elements.play, elements.startRange, elements.endRange,
+    elements.startTime, elements.endTime, elements.hours, elements.minutes, elements.seconds,
+  ].forEach((control) => { control.disabled = isBusy; });
+}
+
+async function ensureFfmpeg() {
+  if (ffmpeg?.loaded) return ffmpeg;
+  if (ffmpegLoading) return ffmpegLoading;
+
+  ffmpeg = new FFmpeg();
+  ffmpeg.on("progress", ({ progress }) => {
+    const normalized = clamp(progress, 0, 1);
+    setExportProgress(exportPhase.base + normalized * exportPhase.size);
+  });
+  ffmpegLoading = (async () => {
+    setExportProgress(3, "載入轉檔元件…");
+    const [coreURL, wasmURL] = await Promise.all([
+      toBlobURL(`${FFMPEG_CORE_BASE}/ffmpeg-core.js`, "text/javascript"),
+      toBlobURL(`${FFMPEG_CORE_BASE}/ffmpeg-core.wasm`, "application/wasm"),
+    ]);
+    await ffmpeg.load({ coreURL, wasmURL });
+    setExportProgress(12, "準備音檔…");
+    return ffmpeg;
+  })();
+
+  try {
+    return await ffmpegLoading;
+  } catch (error) {
+    ffmpeg?.terminate();
+    ffmpeg = null;
+    throw error;
+  } finally {
+    ffmpegLoading = null;
+  }
+}
+
+async function exportMp3() {
+  const filesToDelete = [];
+  stopPlayback();
+  setMessage("");
+  setExportBusy(true);
+
+  try {
+    if (!sourceFile || !audioBuffer) throw new Error("請先選擇音檔。");
+    const selection = validateSelection(elements.startRange.value, elements.endRange.value, audioBuffer.duration);
+    const totalSeconds = getPlaybackSeconds(elements.hours.value, elements.minutes.value, elements.seconds.value);
+    const crossfade = getCrossfadeSeconds(selection.duration);
+    const engine = await ensureFfmpeg();
+    const jobId = Date.now().toString(36);
+    const inputExtension = getFileExtension(sourceFile.name) || "audio";
+    const inputPath = `input-${jobId}.${inputExtension}`;
+    const cyclePath = `cycle-${jobId}.wav`;
+    const outputPath = `output-${jobId}.mp3`;
+    filesToDelete.push(inputPath, cyclePath, outputPath);
+
+    await engine.writeFile(inputPath, await fetchFile(sourceFile));
+    exportPhase = { base: 15, size: 30 };
+    setExportProgress(15, "製作無縫循環片段…");
+    const cycleResult = await engine.exec([
+      "-i", inputPath,
+      "-filter_complex", buildLoopUnitFilter({ ...selection, crossfade }),
+      "-map", "[loop]", "-vn", "-ar", "44100", "-ac", "2",
+      "-c:a", "pcm_s16le", cyclePath,
+    ]);
+    if (cycleResult !== 0) throw new Error("無縫片段製作失敗，請換一個音檔再試。");
+
+    const tail = Math.min(.08, totalSeconds / 3);
+    const fadeStart = Math.max(0, totalSeconds - tail);
+    exportPhase = { base: 45, size: 52 };
+    setExportProgress(45, "轉換為 MP3…");
+    const encodeResult = await engine.exec([
+      "-stream_loop", "-1", "-i", cyclePath,
+      "-t", totalSeconds.toFixed(3),
+      "-af", `afade=t=out:st=${fadeStart.toFixed(3)}:d=${tail.toFixed(3)}`,
+      "-c:a", "libmp3lame", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+      outputPath,
+    ]);
+    if (encodeResult !== 0) throw new Error("MP3 轉檔失敗，請縮短播放時間後再試。");
+
+    const data = await engine.readFile(outputPath);
+    const blob = new Blob([data.buffer], { type: "audio/mpeg" });
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = makeOutputFilename(sourceFile.name);
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+    setExportProgress(100, "MP3 已下載");
+    setMessage(`完成：${anchor.download}（${formatBytes(blob.size)}）`);
+  } catch (error) {
+    elements.exportProgress.hidden = true;
+    elements.exportProgressBar.style.width = "0%";
+    setMessage(error.message || "轉檔失敗，請稍後再試。");
+  } finally {
+    if (ffmpeg?.loaded) {
+      await Promise.all(filesToDelete.map((path) => ffmpeg.deleteFile(path).catch(() => {})));
+    }
+    setExportBusy(false);
+    if (elements.exportLabel.textContent !== "MP3 已下載") elements.exportLabel.textContent = "產生並下載 MP3";
+  }
+}
+
 function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -259,7 +394,11 @@ elements.endRange.addEventListener("input", () => updateSelection("end"));
 elements.startTime.addEventListener("change", () => updateSelection("start-time"));
 elements.endTime.addEventListener("change", () => updateSelection("end-time"));
 elements.play.addEventListener("click", () => activeSession ? stopPlayback() : startPlayback());
-[elements.hours, elements.minutes, elements.seconds].forEach((input) => input.addEventListener("change", () => stopPlayback()));
+elements.export.addEventListener("click", exportMp3);
+[elements.hours, elements.minutes, elements.seconds].forEach((input) => input.addEventListener("change", () => {
+  stopPlayback();
+  updateExportEstimate();
+}));
 
 for (const eventName of ["dragenter", "dragover"]) {
   elements.drop.addEventListener(eventName, (event) => { event.preventDefault(); elements.drop.classList.add("is-over"); });
@@ -272,3 +411,4 @@ window.addEventListener("resize", drawWaveform);
 window.addEventListener("beforeunload", () => stopPlayback());
 
 stopPlayback();
+updateExportEstimate();

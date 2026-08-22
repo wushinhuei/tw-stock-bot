@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="在瀏覽器內選取 MP3 片段並以交叉淡化方式無縫重複播放。">
+  <meta name="description" content="上傳常見音訊格式，選取片段無縫重複播放並輸出 MP3。">
   <meta name="theme-color" content="#f5efe5">
   <title>無縫循環播放室</title>
   <link rel="stylesheet" href="styles.css">
@@ -11,24 +11,24 @@
 <body>
   <main class="shell">
     <header class="hero">
-      <p class="eyebrow">MP3 LOOP STUDIO</p>
+      <p class="eyebrow">AUDIO LOOP STUDIO</p>
       <h1>讓喜歡的片段，<br><em>自然地一直播放。</em></h1>
-      <p class="intro">選一首 MP3、框出要重複的段落，再決定想聽多久。音訊只在你的裝置內處理，不會上傳。</p>
+      <p class="intro">選一個音檔、框出要重複的段落，再決定想聽多久。完成後統一輸出 MP3，音訊不會上傳。</p>
     </header>
 
     <section class="studio" aria-labelledby="studio-title">
       <div class="step-heading">
         <span>01</span>
         <div>
-          <h2 id="studio-title">選擇 MP3 音檔</h2>
-          <p>支援副檔名 .mp3 的音檔</p>
+          <h2 id="studio-title">選擇音檔</h2>
+          <p>支援 MP3、WAV、M4A、AAC、OGG、FLAC 與 WebM</p>
         </div>
       </div>
 
       <label class="drop-zone" id="drop-zone" for="audio-file">
-        <input id="audio-file" type="file" accept="audio/mpeg,.mp3">
+        <input id="audio-file" type="file" accept="audio/*,.m4a,.aac,.flac,.oga">
         <span class="upload-mark" aria-hidden="true">＋</span>
-        <span class="drop-title">點一下選擇，或將 MP3 拖到這裡</span>
+        <span class="drop-title">點一下選擇，或將音檔拖到這裡</span>
         <span class="drop-note">檔案不會離開這個瀏覽器</span>
       </label>
 
@@ -102,13 +102,26 @@
           </button>
           <p class="seamless-note"><span aria-hidden="true">≈</span> 系統會自動交叉淡化循環接點，讓轉場更自然</p>
         </div>
+
+        <div class="export-panel">
+          <div class="export-copy">
+            <strong>輸出 MP3</strong>
+            <span id="export-estimate">預估檔案大小約 41 MB</span>
+          </div>
+          <div class="export-progress" id="export-progress" hidden aria-hidden="true"><div id="export-progress-bar"></div></div>
+          <button class="export-button" id="export" type="button">
+            <span aria-hidden="true">↓</span>
+            <span id="export-label">產生並下載 MP3</span>
+          </button>
+          <p class="export-note">第一次轉檔會載入約 31 MB 的轉檔元件；音檔越長，處理時間越久。</p>
+        </div>
       </div>
 
       <p class="message" id="message" role="status" aria-live="polite"></p>
     </section>
   </main>
 
-  <footer>所有處理皆在本機完成 · 建議使用最新版 Chrome、Edge 或 Safari</footer>
+  <footer>所有處理皆在本機完成 · 輸出為 MP3 192 kbps · Powered by FFmpeg.wasm</footer>
   <script type="module" src="app.mjs"></script>
 </body>
 </html>

@@ -4,7 +4,11 @@ import {
   formatTime,
   parseTime,
   getCrossfadeSeconds,
-  hasMp3Signature,
+  getFileExtension,
+  isSupportedAudioFile,
+  estimateMp3Bytes,
+  buildLoopUnitFilter,
+  makeOutputFilename,
   validateSelection,
   getPlaybackSeconds,
   scheduleWindow,
@@ -36,10 +40,24 @@ test("crossfade is automatic and capped at three seconds", () => {
   assert.ok(Math.abs(getCrossfadeSeconds(5) - .9) < Number.EPSILON);
 });
 
-test("MP3 validation accepts ID3 and MPEG frame headers", () => {
-  assert.equal(hasMp3Signature(Uint8Array.from([0x49, 0x44, 0x33]).buffer), true);
-  assert.equal(hasMp3Signature(Uint8Array.from([0xff, 0xfb, 0x90]).buffer), true);
-  assert.equal(hasMp3Signature(Uint8Array.from([0x52, 0x49, 0x46]).buffer), false);
+test("common audio uploads are accepted without requiring MP3", () => {
+  assert.equal(isSupportedAudioFile({ name: "voice.wav", type: "audio/wav" }), true);
+  assert.equal(isSupportedAudioFile({ name: "voice.m4a", type: "" }), true);
+  assert.equal(isSupportedAudioFile({ name: "voice.bin", type: "audio/custom" }), true);
+  assert.equal(isSupportedAudioFile({ name: "notes.txt", type: "text/plain" }), false);
+  assert.equal(getFileExtension("VOICE.FLAC"), "flac");
+});
+
+test("MP3 output helpers create a safe name and bitrate estimate", () => {
+  assert.equal(makeOutputFilename("練習:版本.wav"), "練習-版本_seamless_loop.mp3");
+  assert.equal(makeOutputFilename("recording"), "recording_seamless_loop.mp3");
+  assert.equal(estimateMp3Bytes(1800), 43_200_000);
+});
+
+test("FFmpeg filter trims the selection and applies triangular crossfade", () => {
+  const filter = buildLoopUnitFilter({ start: 4.2, end: 15.5, crossfade: 2 });
+  assert.match(filter, /atrim=start=4\.200:end=15\.500/);
+  assert.match(filter, /acrossfade=d=2\.000:c1=tri:c2=tri\[loop\]$/);
 });
 
 test("scheduler overlaps adjacent segments and stops at session end", () => {

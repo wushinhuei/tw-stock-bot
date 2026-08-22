@@ -5,7 +5,7 @@
 ## 網址
 
 - 前端網站：https://wushinhuei.github.io/tw-stock-bot/
-- MP3 無縫循環播放室：https://wushinhuei.github.io/tw-stock-bot/audio-loop/
+- 音訊無縫循環與 MP3 輸出：https://wushinhuei.github.io/tw-stock-bot/audio-loop/
 - Apps Script 專案：https://script.google.com/d/10V4wAflJ30eQBWCsfikj-4xPX5uKY0IgBIGeaDarqeUJoiMd5ob8O_9o/edit
 
 ## 執行流程

@@ -14,6 +14,9 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@ffmpeg/core": "0.12.10",
+    "@ffmpeg/ffmpeg": "0.12.15",
+    "@ffmpeg/util": "0.12.2",
     "@google-cloud/firestore": "^7.11.0",
     "@google-cloud/storage": "^7.16.0"
   }
