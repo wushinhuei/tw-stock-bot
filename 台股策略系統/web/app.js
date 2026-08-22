@@ -568,13 +568,18 @@ function renderHistoryReturns(result) {
   }).join('') || '<tr><td colspan="7">尚無歷史交易資料</td></tr>';
 
   const historyTradeDate = document.querySelector('#historyTradeDate');
-  const tradeDates = uniqueTradeDates(trades);
+  const historyDates = uniqueHistoryDates(daily, trades);
   if (historyTradeDate) {
     const previousValue = historyTradeDate.value;
-    const selectedDate = tradeDates.includes(previousValue) ? previousValue : tradeDates[0] || '';
-    historyTradeDate.innerHTML = tradeDates.map(date => `<option value="${date}">${date}</option>`).join('');
+    const selectedDate = historyDates.includes(previousValue) ? previousValue : historyDates[0] || '';
+    historyTradeDate.disabled = historyDates.length === 0;
+    historyTradeDate.innerHTML = historyDates.length
+      ? historyDates.map(date => `<option value="${date}">${date}</option>`).join('')
+      : '<option value="">尚無可查詢日期</option>';
     historyTradeDate.value = selectedDate;
-    historyTradeDate.onchange = () => renderHistoryTradeRows(trades, historyTradeDate.value);
+    historyTradeDate.onchange = historyDates.length
+      ? () => renderHistoryTradeRows(trades, historyTradeDate.value)
+      : null;
     renderHistoryTradeRows(trades, selectedDate);
   }
 }
@@ -851,8 +856,12 @@ function renderTrades(trades, currentDate) {
   `).join('') || '<tr><td colspan="9">今日暫無交易。</td></tr>';
 }
 
-function uniqueTradeDates(trades) {
-  return [...new Set(trades.map(trade => trade.date).filter(Boolean))].sort().reverse();
+function uniqueHistoryDates(daily, trades) {
+  return [...new Set(
+    daily.map(day => day.date)
+      .concat(trades.map(trade => trade.date))
+      .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')))
+  )].sort().reverse();
 }
 
 function actionBadgeClass(action) {
