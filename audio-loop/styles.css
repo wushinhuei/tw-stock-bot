@@ -121,6 +121,17 @@ h1 em { color: var(--green); font-style: italic; }
 .is-playing .play-icon { width: 12px; height: 12px; border: 0; border-left: 4px solid currentColor; border-right: 4px solid currentColor; }
 .seamless-note { margin: 14px 0 0; color: var(--muted); text-align: center; font-size: 11px; }
 .seamless-note span { color: var(--coral); font-size: 16px; font-weight: 900; }
+.export-panel { margin-top: 18px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: #f8f7f1; }
+.export-copy { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
+.export-copy strong { font: 800 16px/1.3 Georgia, "Noto Serif TC", serif; }
+.export-copy span { color: var(--muted); font-size: 11px; text-align: right; }
+.export-progress { height: 5px; margin-bottom: 13px; overflow: hidden; border-radius: 8px; background: #dfdcd3; }
+#export-progress-bar { width: 0; height: 100%; border-radius: inherit; background: var(--coral); transition: width .25s linear; }
+.export-button { width: 100%; min-height: 50px; border: 1px solid var(--ink); border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 10px; background: transparent; color: var(--ink); font-weight: 800; cursor: pointer; transition: .2s ease; }
+.export-button:hover:not(:disabled) { background: var(--mint); transform: translateY(-1px); }
+.export-button:disabled { cursor: wait; opacity: .7; }
+.export-button > span:first-child { font-size: 20px; line-height: 1; }
+.export-note { margin: 11px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; text-align: center; }
 .message { min-height: 1.4em; margin: 18px 0 0; color: #a63c2d; font-size: 13px; text-align: center; }
 
 footer { padding: 0 20px 32px; color: #85877f; text-align: center; font-size: 11px; }

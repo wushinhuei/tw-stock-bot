@@ -1,5 +1,6 @@
 export const MIN_SEGMENT_SECONDS = 3;
 export const MAX_PLAY_SECONDS = 4 * 60 * 60;
+export const SUPPORTED_AUDIO_EXTENSIONS = Object.freeze(["mp3", "wav", "m4a", "aac", "ogg", "oga", "flac", "webm"]);
 
 export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value) || 0));
@@ -29,13 +30,38 @@ export function getCrossfadeSeconds(segmentDuration) {
   return Math.min(3, Math.max(0.15, segmentDuration * 0.18));
 }
 
-export function hasMp3Signature(arrayBuffer) {
-  const bytes = new Uint8Array(arrayBuffer, 0, Math.min(arrayBuffer.byteLength, 3));
-  if (bytes.length < 2) return false;
-  if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) return true;
-  const versionBits = (bytes[1] >> 3) & 0x03;
-  const layerBits = (bytes[1] >> 1) & 0x03;
-  return bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0 && versionBits !== 0x01 && layerBits !== 0;
+export function getFileExtension(filename) {
+  const match = String(filename).toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match ? match[1] : "";
+}
+
+export function isSupportedAudioFile(file) {
+  if (!file) return false;
+  const extension = getFileExtension(file.name);
+  return SUPPORTED_AUDIO_EXTENSIONS.includes(extension) || String(file.type).startsWith("audio/");
+}
+
+export function estimateMp3Bytes(seconds, bitrateKbps = 192) {
+  return Math.ceil(Math.max(0, Number(seconds) || 0) * bitrateKbps * 1000 / 8);
+}
+
+export function buildLoopUnitFilter({ start, end, crossfade }) {
+  const safeStart = Number(start).toFixed(3);
+  const safeEnd = Number(end).toFixed(3);
+  const safeCrossfade = Number(crossfade).toFixed(3);
+  return `[0:a]atrim=start=${safeStart}:end=${safeEnd},asetpts=PTS-STARTPTS,asplit=2[body][head];`
+    + `[head]atrim=end=${safeCrossfade},asetpts=PTS-STARTPTS[loophead];`
+    + `[body]atrim=start=${safeCrossfade},asetpts=PTS-STARTPTS[looptail];`
+    + `[looptail][loophead]acrossfade=d=${safeCrossfade}:c1=tri:c2=tri[loop]`;
+}
+
+export function makeOutputFilename(filename) {
+  const extension = getFileExtension(filename);
+  const original = String(filename);
+  const base = (extension ? original.slice(0, -(extension.length + 1)) : original)
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .trim() || "audio";
+  return `${base}_seamless_loop.mp3`;
 }
 
 export function validateSelection(start, end, audioDuration) {
