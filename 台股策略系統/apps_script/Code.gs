@@ -127,6 +127,11 @@ const FALLBACK_UNIVERSE_BY_CODE = FALLBACK_UNIVERSE.reduce(function(map, item) {
   return map;
 }, {});
 
+// Apps Script 編輯器的初始化入口，刻意放在 doGet 前方便從函式選單選取。
+function setupMonthlyArchive() {
+  return configureMonthlyArchive();
+}
+
 function doGet(e) {
   const params = e && e.parameter ? e.parameter : {};
   const action = params.action || 'read';
