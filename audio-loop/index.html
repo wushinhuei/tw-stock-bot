@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="在瀏覽器內選取 MP3 片段並以交叉淡化方式無縫重複播放。">
+  <meta name="theme-color" content="#f5efe5">
+  <title>無縫循環播放室</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">MP3 LOOP STUDIO</p>
+      <h1>讓喜歡的片段，<br><em>自然地一直播放。</em></h1>
+      <p class="intro">選一首 MP3、框出要重複的段落，再決定想聽多久。音訊只在你的裝置內處理，不會上傳。</p>
+    </header>
+
+    <section class="studio" aria-labelledby="studio-title">
+      <div class="step-heading">
+        <span>01</span>
+        <div>
+          <h2 id="studio-title">選擇 MP3 音檔</h2>
+          <p>支援副檔名 .mp3 的音檔</p>
+        </div>
+      </div>
+
+      <label class="drop-zone" id="drop-zone" for="audio-file">
+        <input id="audio-file" type="file" accept="audio/mpeg,.mp3">
+        <span class="upload-mark" aria-hidden="true">＋</span>
+        <span class="drop-title">點一下選擇，或將 MP3 拖到這裡</span>
+        <span class="drop-note">檔案不會離開這個瀏覽器</span>
+      </label>
+
+      <div class="file-card" id="file-card" hidden>
+        <div class="record-dot" aria-hidden="true"></div>
+        <div class="file-copy">
+          <strong id="file-name"></strong>
+          <span id="file-meta"></span>
+        </div>
+        <button class="text-button" id="replace-file" type="button">更換</button>
+      </div>
+
+      <div class="editor" id="editor" hidden>
+        <div class="step-heading second-step">
+          <span>02</span>
+          <div>
+            <h2>設定循環片段</h2>
+            <p>拖曳起點與終點，至少保留 3 秒</p>
+          </div>
+        </div>
+
+        <div class="wave-wrap">
+          <canvas id="waveform" height="180" aria-label="音訊波形與循環範圍"></canvas>
+          <div class="range-track" aria-hidden="true">
+            <div id="range-fill"></div>
+          </div>
+          <input class="range range-start" id="loop-start" type="range" min="0" max="100" step="0.01" value="0" aria-label="循環起點">
+          <input class="range range-end" id="loop-end" type="range" min="0" max="100" step="0.01" value="100" aria-label="循環終點">
+        </div>
+
+        <div class="time-grid">
+          <label>
+            <span>開始於</span>
+            <input id="start-time" inputmode="decimal" value="00:00.0" aria-label="循環開始時間">
+          </label>
+          <div class="segment-duration">
+            <span>片段長度</span>
+            <strong id="segment-duration">00:00.0</strong>
+          </div>
+          <label>
+            <span>結束於</span>
+            <input id="end-time" inputmode="decimal" value="00:00.0" aria-label="循環結束時間">
+          </label>
+        </div>
+
+        <div class="step-heading third-step">
+          <span>03</span>
+          <div>
+            <h2>決定播放時間</h2>
+            <p>最長可設定 4 小時</p>
+          </div>
+        </div>
+
+        <div class="duration-row">
+          <label><span>小時</span><input id="hours" type="number" min="0" max="4" value="0"></label>
+          <b>:</b>
+          <label><span>分鐘</span><input id="minutes" type="number" min="0" max="59" value="30"></label>
+          <b>:</b>
+          <label><span>秒</span><input id="seconds" type="number" min="0" max="59" value="0"></label>
+        </div>
+
+        <div class="player-panel">
+          <div class="status-line">
+            <span id="status">準備完成</span>
+            <span id="remaining">30:00</span>
+          </div>
+          <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+          <button class="play-button" id="play" type="button">
+            <span class="play-icon" aria-hidden="true"></span>
+            <span id="play-label">開始無縫播放</span>
+          </button>
+          <p class="seamless-note"><span aria-hidden="true">≈</span> 系統會自動交叉淡化循環接點，讓轉場更自然</p>
+        </div>
+      </div>
+
+      <p class="message" id="message" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <footer>所有處理皆在本機完成 · 建議使用最新版 Chrome、Edge 或 Safari</footer>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>
