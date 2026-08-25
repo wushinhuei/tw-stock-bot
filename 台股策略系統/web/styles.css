@@ -604,6 +604,14 @@ td input {
   box-shadow: 0 24px 80px rgba(10, 19, 32, 0.28);
 }
 
+.news-dialog {
+  width: min(1120px, 100%);
+}
+
+.news-modal-content {
+  padding-top: 18px;
+}
+
 .rules-header {
   display: flex;
   align-items: start;

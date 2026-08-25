@@ -1074,6 +1074,31 @@ function appsScriptEndpoint() {
   return /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(endpoint) ? endpoint : '';
 }
 
+function initInternationalNewsModal() {
+  const modal = document.querySelector('#internationalNewsModal');
+  const openButton = document.querySelector('#openInternationalNewsButton');
+  if (!modal || !openButton) return;
+
+  const closeButtons = modal.querySelectorAll('[data-close-international-news]');
+  const close = () => {
+    modal.hidden = true;
+    document.body.classList.remove('modal-open');
+    openButton.focus();
+  };
+  const open = () => {
+    modal.hidden = false;
+    document.body.classList.add('modal-open');
+    const closeButton = modal.querySelector('.icon-close');
+    if (closeButton) closeButton.focus();
+  };
+
+  openButton.addEventListener('click', open);
+  closeButtons.forEach(button => button.addEventListener('click', close));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+}
+
 function cloudDashboardEndpoint() {
   const endpoint = String(window.CLOUD_DASHBOARD_ENDPOINT || '').trim();
   return /^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.run\.app\/dashboard$/.test(endpoint) ? endpoint : '';
@@ -1301,6 +1326,7 @@ async function checkTradeUpdate() {
 }
 
 initRulesModal();
+initInternationalNewsModal();
 initReturnsModal();
 initPositionStatusModal();
 initDataRefresh();

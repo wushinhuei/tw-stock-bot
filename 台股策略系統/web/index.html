@@ -20,6 +20,7 @@
       <button type="button" id="refreshDataButton" class="primary-action">更新資料</button>
       <button type="button" id="openReturnsButton" class="primary-action secondary-action">歷史報酬率</button>
       <button type="button" id="openRulesButton" class="primary-action secondary-action">查閱操作規則</button>
+      <button type="button" id="openInternationalNewsButton" class="primary-action secondary-action">國際風險提示</button>
       <span id="lastUpdatedAt" class="last-updated">最後更新：-</span>
     </div>
   </header>
@@ -66,16 +67,6 @@
         </div>
       </div>
       <div id="aGradeCandidates" class="candidate-grid"></div>
-    </section>
-
-    <section class="panel scanner-panel">
-      <div class="section-title">
-        <div>
-          <h2>國際風險提示</h2>
-          <p>Investing.com RSS 僅顯示合法摘要、來源與原文連結，不改變正式 100 分，也不直接觸發交易。</p>
-        </div>
-      </div>
-      <div id="internationalNews" class="news-grid"></div>
     </section>
 
     <section class="panel holdings-panel">
@@ -140,6 +131,23 @@
       </div>
     </section>
   </main>
+
+  <div id="internationalNewsModal" class="rules-modal" hidden>
+    <div class="rules-backdrop" data-close-international-news></div>
+    <section class="rules-dialog news-dialog" role="dialog" aria-modal="true" aria-labelledby="internationalNewsTitle">
+      <div class="rules-header">
+        <div>
+          <p class="eyebrow">International risk</p>
+          <h2 id="internationalNewsTitle">國際風險提示</h2>
+          <p>Investing.com RSS 僅顯示合法摘要、來源與原文連結，不改變正式 100 分，也不直接觸發交易。</p>
+        </div>
+        <button type="button" class="icon-close" data-close-international-news aria-label="關閉國際風險提示">×</button>
+      </div>
+      <div class="rules-content news-modal-content">
+        <div id="internationalNews" class="news-grid"></div>
+      </div>
+    </section>
+  </div>
 
   <div id="returnsModal" class="rules-modal" hidden>
     <div class="rules-backdrop" data-close-returns></div>
@@ -265,15 +273,15 @@
             <li>依 A/B/C 等級決定是否交易與部位。</li>
             <li>開盤前檢查國際股市、費半、台指期、匯率、重大新聞與族群題材。</li>
             <li>下單前確認限價、追價上限與抽單條件；達到日損、週損或每日小賺目標即停止新增風險。</li>
-            <li>Cloud Run 於交易日 08:50–13:20 每 5 分鐘取得行情並執行模擬。</li>
+            <li>Cloud Run 於交易日 08:50–13:20 每 5 分鐘取得行情並執行模擬；盤中以最新 5 分鐘與日線 K 線重新彙整 15 分鐘及週線，計算技術面、量比與 OBV_MA42。</li>
             <li>網頁每 1 分鐘檢查交易狀態；發現新交易時立即更新畫面。沒有交易異動時，完整頁面資料每 30 分鐘自動更新。</li>
             <li>週末及證交所休市日不執行交易工作；按下頁面上方「更新資料」可立即強制更新。</li>
             <li>盤中股價、最佳買價及最佳賣價以臺灣證券交易所 TWSE MIS 行情為主要來源。</li>
             <li>上市股票成交量排名及候選母體使用 TWSE MI_INDEX 資料。</li>
-            <li>日線歷史價格及技術指標計算使用 Yahoo Finance Chart API 作為歷史行情來源或備援，不視為券商成交價。</li>
+            <li>5 分鐘與日線歷史價格使用 Yahoo Finance Chart API，供 Cloud Run 計算 5／15 分鐘、日／週線及 OBV；此資料只作技術分析，不視為券商成交價。</li>
             <li>收盤後若有盤後定價交易，使用 TWSE BFT41U 的盤後成交價及成交量。</li>
             <li>Investing.com 與財經新聞網站只供消息查核，不作為台股模擬成交價格。</li>
-            <li>行情缺漏、時間戳過期或買賣價無效時，阻擋新交易，不以假價格補單。</li>
+            <li>行情缺漏、時間戳過期、買賣價無效，或技術 K 線／OBV 資料不足時，標示資料不完整並阻擋新交易，不以 0 分或假價格補單。</li>
           </ol>
         </section>
 
@@ -295,8 +303,9 @@
             <div><strong>基本面 10 分</strong><span>營收、獲利、財務品質與產業條件。</span></div>
             <div><strong>官方消息事件 15 分</strong><span>TWSE／MOPS、月營收、財報、法說、處置、停復牌與公司行動。</span></div>
             <div><strong>流動性及執行品質 5 分</strong><span>成交量、買賣價差與限價成交品質。</span></div>
-            <div><strong>A 級：80 分以上</strong><span>仍須無重大阻擋且交易計畫允許進場，才可交易。</span></div>
-            <div><strong>B 級：65–79 分</strong><span>只觀察，不主動買進。</span></div>
+            <div><strong>A 級：80 分以上</strong><span>仍須資料完整、無重大阻擋且交易計畫允許進場；首次部位最高總資產 10%。</span></div>
+            <div><strong>小額試單：75–79 分</strong><span>僅限資料完整、技術面至少 20 分、量價與 OBV 至少 8 分且無阻擋；首次最高總資產 5%。</span></div>
+            <div><strong>B 級：65–74 分</strong><span>只觀察，不主動買進。</span></div>
             <div><strong>C 級：50–64 分</strong><span>只觀察；低於 50 分或重大風險直接阻擋。</span></div>
           </div>
         </section>
@@ -305,12 +314,12 @@
           <h3>技術與動能</h3>
           <ul>
             <li>每日從上市普通股成交量前 50 名建立母體，聚焦 AI 設備、半導體、電力、機器人／自動化，最多完整分析 30 檔。</li>
-            <li>只有 A 級可主動波段買進或當沖；B 級與 C 級只觀察，不新增部位。</li>
+            <li>A 級可依交易計畫使用標準首次部位；75–79 分僅允許一次 5% 小額試單，65–74 分 B 級與 C 級只觀察。</li>
             <li>有效突破需站上魔王線、景線或前高，且成交量放大到平均量 2 倍以上。</li>
             <li>MACD 快慢線在零軸上、柱狀圖翻紅，代表多頭動能較強。</li>
             <li>RSI 站上 50 偏多；強勢股 RSI 大於 70 不一定立刻賣出。</li>
             <li>布林帶擠壓只代表將有大波動，方向需用量價、均線、MACD、RSI 與籌碼確認。</li>
-            <li>OBV_MA42 只作確認與警示：價格突破須有 OBV 同步轉強；頂背離降級，底背離先觀察而不直接買進。</li>
+            <li>OBV_MA42 作為進場確認與警示：價格突破須有 OBV 同步轉強；頂背離降級，底背離先觀察；OBV 資料不足直接阻擋而不以 0 分代替。</li>
           </ul>
         </section>
 
@@ -323,7 +332,7 @@
             <div><strong>現金：至少 40%</strong><span>不得挪用；每日新增投入最高 20%，每日總周轉最高 40%。</span></div>
           </div>
           <ul>
-            <li>單股首次買進最高總資產 10%，策略加碼最高 5%，單股總持倉最高 15%。</li>
+            <li>A 級單股首次買進最高總資產 10%；75–79 分試單最高 5%；策略加碼最高 5%，單股總持倉最高 15%。</li>
             <li>禁止因價格下跌而攤平；同一股票已有持倉時，不重複買進，僅允許一次符合條件的獲利加碼。</li>
           </ul>
         </section>
