@@ -4,14 +4,22 @@ function number(value) { const out = Number(String(value ?? '').replace(/,/g, ''
 function bestPrice(item) { return number(item.z) ?? number(String(item.a || '').split('_')[0]) ?? number(String(item.b || '').split('_')[0]) ?? number(item.y); }
 
 async function fetchJson(url, fetchImpl = fetch, referer = 'https://www.twse.com.tw/') {
-  const response = await fetchImpl(url, { headers: { Referer: referer, 'User-Agent': 'tw-stock-cloud-simulator/1.0' } });
+  const response = await fetchImpl(url, {
+    cache: 'no-store',
+    headers: {
+      Referer: referer,
+      'User-Agent': 'tw-stock-cloud-simulator/1.0',
+      'Cache-Control': 'no-cache, no-store, max-age=0',
+      Pragma: 'no-cache'
+    }
+  });
   if (!response.ok) throw new Error(`TWSE HTTP ${response.status}: ${url}`);
   return response.json();
 }
 
 async function fetchQuotes(symbols, fetchImpl = fetch) {
   const channels = symbols.map(symbol => `tse_${symbol}.tw`).join('|');
-  const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${encodeURIComponent(channels)}&json=1&delay=0`;
+  const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${encodeURIComponent(channels)}&json=1&delay=0&_=${Date.now()}`;
   const json = await fetchJson(url, fetchImpl, 'https://mis.twse.com.tw/stock/index.jsp');
   const quotes = {};
   for (const item of json.msgArray || []) {

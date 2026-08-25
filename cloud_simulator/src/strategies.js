@@ -3,9 +3,18 @@
 function minutes(time) { const [h, m] = String(time).split(':').map(Number); return h * 60 + m; }
 function within(time, start, end) { const value = minutes(time); return value >= minutes(start) && value <= minutes(end); }
 
+function trialEntryEligible(candidate, config) {
+  return candidate.dataStatus === 'COMPLETE'
+    && Number(candidate.score) >= config.trialScoreMin
+    && Number(candidate.score) < config.scoreThresholds.A
+    && Number(candidate.components?.technical || 0) >= config.trialMinTechnical
+    && Number(candidate.components?.volumeObv || 0) >= config.trialMinVolumeObv
+    && !(candidate.blockedReasons || []).length;
+}
+
 function entryDecision(candidate, strategy, context, config) {
   const reasons = [];
-  if (candidate.grade !== 'A') reasons.push('非A級');
+  if (candidate.grade !== 'A' && !trialEntryEligible(candidate, config)) reasons.push('未達A級或小額試單條件');
   if (candidate.blockedReasons && candidate.blockedReasons.length) reasons.push(...candidate.blockedReasons);
   if (context.marketMode === 'DEFENSIVE') reasons.push('大盤防守');
   if (context.sameSymbolStrategy && context.sameSymbolStrategy !== strategy) reasons.push('同股已有其他策略部位');
@@ -50,4 +59,4 @@ function canAddOn(position, candidate, account, config) {
   return currentPct + config.addOnPct <= config.maxSymbolPct;
 }
 
-module.exports = { canAddOn, entryDecision, exitDecision, minutes, within };
+module.exports = { canAddOn, entryDecision, exitDecision, minutes, trialEntryEligible, within };

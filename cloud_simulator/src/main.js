@@ -7,6 +7,7 @@ const { fetchQuotes } = require('./twse');
 const { buildUniverse } = require('./scanner');
 const { adaptCandidatePayload } = require('./candidate_adapter');
 const { isTwseTradingDay } = require('./trading_calendar');
+const { enrichCandidatesWithLiveScores } = require('./live_scoring');
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function compactDate(date) { return date.replace(/-/g, ''); }
@@ -71,6 +72,7 @@ async function runSession() {
       const symbols = [...new Set(candidates.map(item => item.symbol).concat(engine.account.positions.map(item => item.symbol)))];
       const quotes = await fetchQuotes(symbols);
       candidates = candidates.map(candidate => ({ ...candidate, ...(quotes[candidate.symbol] || {}) }));
+      candidates = await enrichCandidatesWithLiveScores(candidates, { now });
       const context = { date, time, signalTimestamp: now.toISOString(), marketMode: 'NORMAL' };
       engine.processCandidates(candidates, context);
       engine.processQuotes(quotes, candidates, context);
@@ -117,6 +119,8 @@ async function runTick(options = {}) {
     const symbols = [...new Set(candidates.map(item => item.symbol).concat(engine.account.positions.map(item => item.symbol)))];
     const quotes = options.quotes || await fetchQuotes(symbols);
     candidates = candidates.map(candidate => ({ ...candidate, ...(quotes[candidate.symbol] || {}) }));
+    const liveScorer = options.enrichCandidates || enrichCandidatesWithLiveScores;
+    candidates = await liveScorer(candidates, { now });
     const context = {
       date: taipeiDate(now), time: decision.time, signalTimestamp: now.toISOString(), marketMode: 'NORMAL'
     };

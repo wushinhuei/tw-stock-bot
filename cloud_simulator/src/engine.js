@@ -4,7 +4,7 @@ const { CONFIG } = require('./config');
 const { fetchInvestingRss, fetchTaiwanMediaRss } = require('./news');
 const { OrderManager } = require('./orders');
 const { availableToBuy, buildSettlementLedger, hasSettlementShortfall } = require('./settlement');
-const { canAddOn, entryDecision, exitDecision } = require('./strategies');
+const { canAddOn, entryDecision, exitDecision, trialEntryEligible } = require('./strategies');
 
 function fee(amount, config = CONFIG) { return Math.max(config.minBrokerFee, Math.round(amount * config.brokerFeeRate)); }
 function tax(amount, dayTrade, config = CONFIG) { return Math.round(amount * (dayTrade ? config.dayTradeTaxRate : config.sellTaxRate)); }
@@ -37,24 +37,25 @@ function strategyExposure(account, strategy) {
     .reduce((sum, position) => sum + Number(position.marketValue || position.quantity * position.averagePrice || 0), 0);
 }
 
-function maxEntryBudget(account, strategy, config = CONFIG) {
+function maxEntryBudget(account, strategy, config = CONFIG, entryPct = config.firstEntryPct) {
   const capRemaining = account.equity * config.strategyCaps[strategy] - strategyExposure(account, strategy);
   const dailyRemaining = account.equity * config.dailyNewCapitalPct - account.dailyNewCapital;
   const turnoverRemaining = account.equity * config.dailyTurnoverPct - account.dailyTurnover;
   const reserveRemaining = account.bankCash - account.equity * config.minCashReservePct;
-  return Math.max(0, Math.min(account.equity * config.firstEntryPct, capRemaining, dailyRemaining, turnoverRemaining, reserveRemaining, availableToBuy(account, config)));
+  return Math.max(0, Math.min(account.equity * entryPct, capRemaining, dailyRemaining, turnoverRemaining, reserveRemaining, availableToBuy(account, config)));
 }
 
 function createEntryOrder(engine, candidate, strategy, context) {
   const decision = entryDecision(candidate, strategy, context, engine.config);
   if (!decision.allowed) return { order: null, reasons: decision.reasons };
-  const budget = maxEntryBudget(engine.account, strategy, engine.config);
+  const trial = candidate.grade !== 'A' && trialEntryEligible(candidate, engine.config);
+  const budget = maxEntryBudget(engine.account, strategy, engine.config, trial ? engine.config.trialEntryPct : engine.config.firstEntryPct);
   const price = Number(candidate.askPrice || candidate.price || 0);
   const quantity = Math.min(999, Math.floor((budget - engine.config.minBrokerFee) / price));
   if (quantity <= 0) return { order: null, reasons: ['可用資金不足'] };
   const order = engine.orderManager.create({
     tradeDate: context.date, strategy, symbol: candidate.symbol, side: 'BUY', quantity, price,
-    signalTimestamp: context.signalTimestamp, reason: `${strategy} A級進場`
+    signalTimestamp: context.signalTimestamp, reason: trial ? `${strategy} 75–79分小額試單` : `${strategy} A級進場`
   }, engine.account.orders);
   if (order) {
     engine.account.orders.push(order);
@@ -97,7 +98,7 @@ class SimulationEngine {
     this.account.weeklyStopped = risk.weeklyStopped;
     if (!risk.allowNewRisk) return [];
     const created = [];
-    for (const candidate of candidates.filter(row => row.grade === 'A').sort((a, b) => b.score - a.score)) {
+    for (const candidate of candidates.filter(row => row.grade === 'A' || trialEntryEligible(row, this.config)).sort((a, b) => b.score - a.score)) {
       const strategy = candidate.strategy;
       if (!strategy) continue;
       const held = this.account.positions.find(position => position.symbol === candidate.symbol);

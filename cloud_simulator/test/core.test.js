@@ -17,6 +17,9 @@ const { runTick, tickDecision } = require('../src/main');
 const { createDashboardServer } = require('../src/api');
 const { closedDatesFromSchedule, rocCompactToYmd } = require('../src/trading_calendar');
 const { createMonthlyArchive, previousTaipeiMonth } = require('../src/monthly_archive');
+const { fetchQuotes } = require('../src/twse');
+const { enrichCandidatesWithLiveScores } = require('../src/live_scoring');
+const { aggregateBars, fetchChart, weeklyBars } = require('../src/yahoo');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -47,6 +50,65 @@ test('scanner uses only TWSE common stocks, top 50 and target industries', () =>
   assert.ok(result.length <= 30);
   assert.ok(result.every(row => row.market === 'TWSE' && row.securityType === 'COMMON_STOCK' && row.group === '半導體'));
   assert.ok(result.every(row => Number(row.symbol) < 1050));
+});
+
+test('TWSE MIS quotes bypass intermediary caches', async () => {
+  let requestedUrl = '';
+  let requestedOptions = null;
+  const quotes = await fetchQuotes(['2330'], async (url, options) => {
+    requestedUrl = url;
+    requestedOptions = options;
+    return {
+      ok: true,
+      async json() {
+        return { msgArray: [{ c: '2330', n: '台積電', z: '1200', b: '1195_', a: '1200_', f: '5_', d: '20260825', t: '11:08:10' }] };
+      }
+    };
+  });
+  assert.match(requestedUrl, /[?&]_=[0-9]+/);
+  assert.equal(requestedOptions.cache, 'no-store');
+  assert.match(requestedOptions.headers['Cache-Control'], /no-cache/);
+  assert.equal(requestedOptions.headers.Pragma, 'no-cache');
+  assert.equal(quotes['2330'].timestamp, '2026-08-25T11:08:10+08:00');
+});
+
+test('Yahoo chart requests bypass caches and bar aggregation preserves OHLCV', async () => {
+  let requestedUrl = '';
+  let requestedOptions;
+  const result = await fetchChart('2330.TW', '5d', '5m', async (url, options) => {
+    requestedUrl = url;
+    requestedOptions = options;
+    return { ok: true, async json() { return { chart: { result: [{ timestamp: [], indicators: { quote: [{}] } }], error: null } }; } };
+  });
+  assert.ok(result);
+  assert.match(requestedUrl, /[?&]_=[0-9]+/);
+  assert.equal(requestedOptions.cache, 'no-store');
+  const grouped = aggregateBars([
+    { timestamp: '2026-08-25T01:00:00Z', open: 100, high: 101, low: 99, close: 100, volume: 10 },
+    { timestamp: '2026-08-25T01:05:00Z', open: 100, high: 103, low: 100, close: 102, volume: 20 }
+  ], 15 * 60 * 1000);
+  assert.deepEqual({ open: grouped[0].open, high: grouped[0].high, low: grouped[0].low, close: grouped[0].close, volume: grouped[0].volume },
+    { open: 100, high: 103, low: 99, close: 102, volume: 30 });
+});
+
+test('Cloud live scoring computes OBV and blocks incomplete technical data', async () => {
+  const candidate = {
+    symbol: '2330', price: 120, bidPrice: 119.5, askPrice: 120, timestamp: '2026-08-25T11:00:00+08:00',
+    strategy: 'SWING', chipOk: true, fundamentalOk: true,
+    components: { chip: 15, fundamental: 10, officialNews: 8 }
+  };
+  const completeBars = { bars5m: bars(80), bars15m: bars(80), dailyBars: bars(100), weeklyBars: weeklyBars(bars(100).map((bar, i) => ({ ...bar, timestamp: new Date(Date.UTC(2024, 0, 1 + i * 7)).toISOString() }))), provider: 'test' };
+  const [complete] = await enrichCandidatesWithLiveScores([candidate], { now: new Date('2026-08-25T03:01:00Z'), fetchBars: async () => completeBars });
+  assert.equal(complete.dataStatus, 'COMPLETE');
+  assert.equal(complete.scoringMethod, 'CLOUD_LIVE_V2');
+  assert.equal(complete.metrics.obv.bullish, true);
+  const [stale] = await enrichCandidatesWithLiveScores([{ ...candidate, timestamp: '2026-08-25T09:00:00+08:00' }], { now: new Date('2026-08-25T03:01:00Z'), fetchBars: async () => completeBars });
+  assert.equal(stale.entryTier, 'NONE');
+  assert.equal(stale.grade, 'BLOCKED');
+  const [incomplete] = await enrichCandidatesWithLiveScores([candidate], { now: new Date('2026-08-25T03:01:00Z'), fetchBars: async () => ({ bars5m: [], bars15m: [], dailyBars: [], weeklyBars: [] }) });
+  assert.equal(incomplete.grade, 'BLOCKED');
+  assert.equal(incomplete.dataStatus, 'INCOMPLETE');
+  assert.match(incomplete.blockedReasons.join(','), /OBV不足/);
 });
 
 test('Apps Script scenario adapter enforces top 50 and creates 100-point components', () => {
@@ -228,6 +290,18 @@ test('profitable OBV-confirmed swing position permits only one 5% add-on', () =>
   engine.processCandidates([candidate], { ...context, signalTimestamp: '2026-08-21T02:01:00.000Z' });
   assert.equal(engine.account.orders.length, 1);
   assert.match(engine.account.orders[0].reason, /一次策略加碼/);
+});
+
+test('75-79 point complete candidate uses at most a 5% trial entry', () => {
+  const engine = new SimulationEngine({ config: CONFIG, repository: new MemoryRepository(), account: createAccount(100000) });
+  const candidate = {
+    symbol: '2330', grade: 'B', score: 77, strategy: 'SWING', price: 100, askPrice: 100,
+    dataStatus: 'COMPLETE', blockedReasons: [], components: { technical: 25, volumeObv: 10 }
+  };
+  engine.processCandidates([candidate], { date: '2026-08-25', time: '10:00', signalTimestamp: 'trial-1', marketMode: 'NORMAL' });
+  assert.equal(engine.account.orders.length, 1);
+  assert.ok(engine.account.orders[0].quantity * engine.account.orders[0].price <= 5000);
+  assert.match(engine.account.orders[0].reason, /小額試單/);
 });
 
 test('short tick accepts only weekdays from 08:50 through 13:20 Taipei time', () => {
