@@ -1115,6 +1115,9 @@ async function loadCloudDashboardPayload() {
   if (!payload || payload.ok === false || !Array.isArray(payload.scenario) || !payload.simulation) {
     throw new Error(payload && payload.error ? payload.error : 'Invalid Cloud dashboard payload');
   }
+  if (!payload.simulation.generatedAt && payload.generatedAt) {
+    payload.simulation.generatedAt = payload.generatedAt;
+  }
   window.ACTUAL_SCENARIO = payload.scenario;
   window.PRECOMPUTED_SIMULATION = payload.simulation;
   return true;
@@ -1175,6 +1178,9 @@ async function loadAppsScriptPayload(action, options = {}) {
   const payload = await requestJsonp(appsScriptUrl(action, options));
   if (!payload || payload.ok === false || !Array.isArray(payload.scenario) || !payload.simulation) {
     throw new Error(payload && payload.error ? payload.error : 'Invalid Apps Script payload');
+  }
+  if (!payload.simulation.generatedAt && payload.generatedAt) {
+    payload.simulation.generatedAt = payload.generatedAt;
   }
   if (Array.isArray(payload.internationalNews) && payload.scenario.length) {
     payload.scenario[payload.scenario.length - 1].internationalNews = payload.internationalNews;
