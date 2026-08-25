@@ -21,6 +21,7 @@ const { fetchQuotes } = require('../src/twse');
 const { enrichCandidatesWithLiveScores } = require('../src/live_scoring');
 const { aggregateBars, fetchChart, weeklyBars } = require('../src/yahoo');
 const { executionRiskReasons, scoreChipSignals } = require('../src/chip');
+const { DRIVE_DATASETS, DriveHistorySource, parseCsv } = require('../src/drive_history');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -90,6 +91,30 @@ test('Yahoo chart requests bypass caches and bar aggregation preserves OHLCV', a
   ], 15 * 60 * 1000);
   assert.deepEqual({ open: grouped[0].open, high: grouped[0].high, low: grouped[0].low, close: grouped[0].close, volume: grouped[0].volume },
     { open: 100, high: 103, low: 99, close: 102, volume: 30 });
+});
+
+test('Drive history uses fixed TOP50 and STOCK_DAILY files and rejects missing prices', async () => {
+  assert.equal(DRIVE_DATASETS.top50.manifestId, '1_dUjbK480Mng6ABditIRUAtou1S9XP6m');
+  assert.equal(DRIVE_DATASETS.stockDaily.manifestId, '1_0NnEjwCRkoguD9OowRnp7mQ8rovneKx');
+  const files = {
+    manifestTop: JSON.stringify({ last_update: { status: 'backfill_complete', error: null } }),
+    manifestDaily: JSON.stringify({ last_update: { status: 'update_complete', error: null } }),
+    top: 'trade_date,rank,stock_code,stock_name\n2026-08-25,1,2330,台積電',
+    daily: 'trade_date,stock_code,stock_name,open,high,low,close,trade_volume,trade_value,transactions,top50_rank,is_top50\n2026-08-24,2330,台積電,100,103,99,102,10,1020,2,,0\n2026-08-25,2330,台積電,,,,,0,0,0,1,1'
+  };
+  const source = new DriveHistorySource({
+    datasets: {
+      top50: { manifestId: 'manifestTop', files: { 2026: 'top' } },
+      stockDaily: { manifestId: 'manifestDaily', files: { 2026: 'daily' } }
+    },
+    fetchText: async id => files[id]
+  });
+  assert.equal((await source.top50Rows('2026-08-25', '2026-08-25'))[0].stock_code, '2330');
+  const daily = await source.dailyBars('2330', '2026-08-24', '2026-08-25');
+  assert.equal(daily.length, 1);
+  assert.equal(daily[0].close, 102);
+  assert.equal(daily[0].isTop50, false);
+  assert.equal(parseCsv('a,b\n"x,y",z')[0].a, 'x,y');
 });
 
 test('Cloud live scoring computes OBV and blocks incomplete technical data', async () => {
