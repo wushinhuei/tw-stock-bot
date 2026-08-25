@@ -813,12 +813,27 @@ function renderInternationalNews(items) {
   if (!target) return;
   target.innerHTML = (items || []).slice(0, 12).map(item => `
     <article class="news-card">
-      <div><strong>${item.risk || '低'}影響 · ${item.sentiment || '不確定'}</strong><span>${item.category || '國際市場'}</span></div>
-      <h3>${item.title || '-'}</h3>
-      <p>${item.summary || '僅提供原文連結。'}</p>
+      <div><strong>${internationalRiskLabel(item.risk)}影響 · ${internationalSentimentLabel(item.sentiment)}</strong><span>${internationalCategoryLabel(item.category)}</span></div>
+      <h3>${item.titleZhTw || item.translatedTitle || item.title || '-'}</h3>
+      <p>${item.summaryZhTw || item.translatedSummary || item.summary || '僅提供原文連結。'}</p>
       <a href="${item.url}" target="_blank" rel="noopener noreferrer">${item.source || '來源'} · ${formatTaipeiDateTime(item.publishedAt)}</a>
     </article>
   `).join('') || '<div class="empty-candidates"><strong>目前沒有國際 RSS 提示</strong><span>消息失敗不會中斷正式選股與持倉管理。</span></div>';
+}
+
+function internationalSentimentLabel(value) {
+  return ({ POSITIVE: '正面', NEGATIVE: '負面', NEUTRAL: '中性', UNCERTAIN: '不確定' })[String(value || '').toUpperCase()] || value || '不確定';
+}
+
+function internationalRiskLabel(value) {
+  return ({ HIGH: '高', MEDIUM: '中', LOW: '低' })[String(value || '').toUpperCase()] || value || '低';
+}
+
+function internationalCategoryLabel(value) {
+  return ({
+    'AI equipment': 'AI設備', 'Global markets': '全球市場', 'Macro economy': '總體經濟',
+    Commodities: '原物料', Energy: '能源', Semiconductor: '半導體', Technology: '科技'
+  })[String(value || '')] || value || '國際市場';
 }
 
 function positionStatusReasons(candidate, position, current) {
