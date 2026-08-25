@@ -1151,6 +1151,9 @@ async function loadAppsScriptPayload(action, options = {}) {
   if (!payload || payload.ok === false || !Array.isArray(payload.scenario) || !payload.simulation) {
     throw new Error(payload && payload.error ? payload.error : 'Invalid Apps Script payload');
   }
+  if (Array.isArray(payload.internationalNews) && payload.scenario.length) {
+    payload.scenario[payload.scenario.length - 1].internationalNews = payload.internationalNews;
+  }
   window.ACTUAL_SCENARIO = payload.scenario;
   window.PRECOMPUTED_SIMULATION = payload.simulation;
   return true;
@@ -1224,13 +1227,13 @@ async function refreshData(options = {}) {
   if (lastUpdatedLabel) lastUpdatedLabel.textContent = '最後更新：更新中...';
 
   try {
-    const loadedFromCloud = force ? false : await loadCloudDashboardPayload().catch(error => {
+    const loadedFromAppsScript = await loadAppsScriptPayload(force ? 'refresh' : 'read', {
+      force: Boolean(options.force),
+    }).catch(error => {
       console.warn(error);
       return false;
     });
-    const loadedFromAppsScript = loadedFromCloud ? false : await loadAppsScriptPayload(force ? 'refresh' : 'read', {
-      force: Boolean(options.force),
-    }).catch(error => {
+    const loadedFromCloud = loadedFromAppsScript ? false : await loadCloudDashboardPayload().catch(error => {
       console.warn(error);
       return false;
     });
