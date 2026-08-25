@@ -813,12 +813,27 @@ function renderInternationalNews(items) {
   if (!target) return;
   target.innerHTML = (items || []).slice(0, 12).map(item => `
     <article class="news-card">
-      <div><strong>${item.risk || '低'}影響 · ${item.sentiment || '不確定'}</strong><span>${item.category || '國際市場'}</span></div>
-      <h3>${item.title || '-'}</h3>
-      <p>${item.summary || '僅提供原文連結。'}</p>
+      <div><strong>${internationalRiskLabel(item.risk)}影響 · ${internationalSentimentLabel(item.sentiment)}</strong><span>${internationalCategoryLabel(item.category)}</span></div>
+      <h3>${item.titleZhTw || item.translatedTitle || item.title || '-'}</h3>
+      <p>${item.summaryZhTw || item.translatedSummary || item.summary || '僅提供原文連結。'}</p>
       <a href="${item.url}" target="_blank" rel="noopener noreferrer">${item.source || '來源'} · ${formatTaipeiDateTime(item.publishedAt)}</a>
     </article>
   `).join('') || '<div class="empty-candidates"><strong>目前沒有國際 RSS 提示</strong><span>消息失敗不會中斷正式選股與持倉管理。</span></div>';
+}
+
+function internationalSentimentLabel(value) {
+  return ({ POSITIVE: '正面', NEGATIVE: '負面', NEUTRAL: '中性', UNCERTAIN: '不確定' })[String(value || '').toUpperCase()] || value || '不確定';
+}
+
+function internationalRiskLabel(value) {
+  return ({ HIGH: '高', MEDIUM: '中', LOW: '低' })[String(value || '').toUpperCase()] || value || '低';
+}
+
+function internationalCategoryLabel(value) {
+  return ({
+    'AI equipment': 'AI設備', 'Global markets': '全球市場', 'Macro economy': '總體經濟',
+    Commodities: '原物料', Energy: '能源', Semiconductor: '半導體', Technology: '科技'
+  })[String(value || '')] || value || '國際市場';
 }
 
 function positionStatusReasons(candidate, position, current) {
@@ -1059,6 +1074,31 @@ function appsScriptEndpoint() {
   return /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(endpoint) ? endpoint : '';
 }
 
+function initInternationalNewsModal() {
+  const modal = document.querySelector('#internationalNewsModal');
+  const openButton = document.querySelector('#openInternationalNewsButton');
+  if (!modal || !openButton) return;
+
+  const closeButtons = modal.querySelectorAll('[data-close-international-news]');
+  const close = () => {
+    modal.hidden = true;
+    document.body.classList.remove('modal-open');
+    openButton.focus();
+  };
+  const open = () => {
+    modal.hidden = false;
+    document.body.classList.add('modal-open');
+    const closeButton = modal.querySelector('.icon-close');
+    if (closeButton) closeButton.focus();
+  };
+
+  openButton.addEventListener('click', open);
+  closeButtons.forEach(button => button.addEventListener('click', close));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+}
+
 function cloudDashboardEndpoint() {
   const endpoint = String(window.CLOUD_DASHBOARD_ENDPOINT || '').trim();
   return /^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.run\.app\/dashboard$/.test(endpoint) ? endpoint : '';
@@ -1136,6 +1176,9 @@ async function loadAppsScriptPayload(action, options = {}) {
   if (!payload || payload.ok === false || !Array.isArray(payload.scenario) || !payload.simulation) {
     throw new Error(payload && payload.error ? payload.error : 'Invalid Apps Script payload');
   }
+  if (Array.isArray(payload.internationalNews) && payload.scenario.length) {
+    payload.scenario[payload.scenario.length - 1].internationalNews = payload.internationalNews;
+  }
   window.ACTUAL_SCENARIO = payload.scenario;
   window.PRECOMPUTED_SIMULATION = payload.simulation;
   return true;
@@ -1209,13 +1252,13 @@ async function refreshData(options = {}) {
   if (lastUpdatedLabel) lastUpdatedLabel.textContent = '最後更新：更新中...';
 
   try {
-    const loadedFromCloud = force ? false : await loadCloudDashboardPayload().catch(error => {
+    const loadedFromAppsScript = await loadAppsScriptPayload(force ? 'refresh' : 'read', {
+      force: Boolean(options.force),
+    }).catch(error => {
       console.warn(error);
       return false;
     });
-    const loadedFromAppsScript = loadedFromCloud ? false : await loadAppsScriptPayload(force ? 'refresh' : 'read', {
-      force: Boolean(options.force),
-    }).catch(error => {
+    const loadedFromCloud = loadedFromAppsScript ? false : await loadCloudDashboardPayload().catch(error => {
       console.warn(error);
       return false;
     });
@@ -1283,6 +1326,7 @@ async function checkTradeUpdate() {
 }
 
 initRulesModal();
+initInternationalNewsModal();
 initReturnsModal();
 initPositionStatusModal();
 initDataRefresh();
