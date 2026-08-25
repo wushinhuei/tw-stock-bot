@@ -84,16 +84,16 @@ h2 {
 }
 
 .top-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
   justify-content: flex-end;
-  max-width: 430px;
+  max-width: none;
 }
 
 .last-updated {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
   color: #cfe2ee;
   font-size: 13px;
   text-align: right;
@@ -124,6 +124,7 @@ button:hover,
   background: linear-gradient(180deg, #ffffff, #eaf2f8);
   color: #0d273a;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .secondary-action {
@@ -769,6 +770,8 @@ td input {
   .top-actions {
     justify-content: flex-start;
     max-width: none;
+    overflow-x: auto;
+    padding-bottom: 4px;
   }
 
   .last-updated {
