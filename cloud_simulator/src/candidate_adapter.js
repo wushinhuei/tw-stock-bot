@@ -2,6 +2,7 @@
 
 const { CONFIG } = require('./config');
 const { clamp } = require('./indicators');
+const { executionRiskReasons, scoreChipSignals } = require('./chip');
 
 function latestScenario(payload) {
   const rows = Array.isArray(payload && payload.scenario) ? payload.scenario : [];
@@ -30,11 +31,7 @@ function legacyComponents(candidate) {
   if (metrics.obv && metrics.obv.rising) volumeObv += 2;
 
   const chipMetrics = metrics.chip || {};
-  let chip = candidate.chipOk ? 15 : 0;
-  if (!candidate.chipOk && chipMetrics) {
-    chip = [chipMetrics.institutionalOk, chipMetrics.marginOk, chipMetrics.shortOk, chipMetrics.largeTraderProxyOk]
-      .filter(Boolean).length * 3;
-  }
+  const chip = scoreChipSignals(chipMetrics, candidate.chipOk ? 1 : 0).score;
   const spread = Number(metrics.spreadPct ?? candidate.executionPlan?.spreadPct ?? 1);
   return {
     technical: clamp(technical, 0, 35), volumeObv: clamp(volumeObv, 0, 20),
@@ -50,6 +47,7 @@ function adaptCandidate(candidate, context = {}) {
   const quoteTime = candidate.metrics && candidate.metrics.latestQuoteTime;
   if (!candidate.bidPrice || !candidate.askPrice) blockedReasons.push('缺少零股買一或賣一價');
   if (Number(candidate.metrics?.spreadPct ?? candidate.executionPlan?.spreadPct ?? 0) > CONFIG.maxSpreadPct) blockedReasons.push('零股價差超標');
+  blockedReasons.push(...executionRiskReasons({ ...candidate, chipSignals: candidate.metrics?.chip }));
   const grade = blockedReasons.length ? 'BLOCKED' : score >= 80 ? 'A' : score >= 65 ? 'B' : score >= 50 ? 'C' : 'BLOCKED';
   return {
     ...candidate, score, grade, components, blockedReasons,

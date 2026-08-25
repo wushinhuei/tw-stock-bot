@@ -27,6 +27,7 @@ function scoringInput(candidate, bars, now = new Date()) {
     weeklyBars: bars.weeklyBars,
     quoteFresh: quoteIsFresh(candidate, now),
     spreadPct: spread,
+    chipSignals: candidate.metrics?.chip,
     chipScore: fraction(candidate.components?.chip, 15, candidate.chipOk ? 1 : 0),
     fundamentalScore: fraction(candidate.components?.fundamental, 10, candidate.fundamentalOk ? 1 : 0),
     officialNewsScore: fraction(candidate.components?.officialNews, 15, 8 / 15),

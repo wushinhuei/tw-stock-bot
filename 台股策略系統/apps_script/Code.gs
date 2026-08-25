@@ -2,6 +2,7 @@ const START_DATE = '2026-08-20';
 const STATE_KEY = 'TW_STOCK_DASHBOARD_STATE_V1';
 const SETTINGS_SPREADSHEET_ID_KEY = 'TW_STOCK_SETTINGS_SPREADSHEET_ID';
 const CLOUD_DASHBOARD_URL_KEY = 'TW_STOCK_CLOUD_DASHBOARD_URL';
+const DEFAULT_CLOUD_DASHBOARD_URL = 'https://tw-stock-dashboard-api-702657072551.asia-east1.run.app/dashboard';
 const CLOUD_ARCHIVE_BUCKET_KEY = 'TW_STOCK_ARCHIVE_BUCKET';
 const DRIVE_ARCHIVE_FOLDER_ID_KEY = 'TW_STOCK_DRIVE_ARCHIVE_FOLDER_ID';
 const SETTINGS_SHEET_NAME = '策略設定';
@@ -182,7 +183,7 @@ function doGet(e) {
 }
 
 function cloudDashboardUrl() {
-  return String(PropertiesService.getScriptProperties().getProperty(CLOUD_DASHBOARD_URL_KEY) || '').trim();
+  return String(PropertiesService.getScriptProperties().getProperty(CLOUD_DASHBOARD_URL_KEY) || DEFAULT_CLOUD_DASHBOARD_URL).trim();
 }
 
 function readCloudDashboard() {
@@ -191,8 +192,61 @@ function readCloudDashboard() {
     throw new Error('Cloud dashboard HTTP ' + response.getResponseCode());
   }
   const payload = JSON.parse(response.getContentText());
+  localizeInternationalNews(payload);
   payload.appsScriptProxyAt = new Date().toISOString();
   return payload;
+}
+
+function localizeInternationalNews(payload) {
+  const groups = [];
+  if (Array.isArray(payload.internationalNews)) groups.push(payload.internationalNews);
+  if (payload.latestDay && Array.isArray(payload.latestDay.internationalNews)) groups.push(payload.latestDay.internationalNews);
+  if (Array.isArray(payload.history)) {
+    payload.history.slice(-1).forEach(function(day) {
+      if (day && Array.isArray(day.internationalNews)) groups.push(day.internationalNews);
+    });
+  }
+  if (Array.isArray(payload.scenario)) {
+    payload.scenario.slice(-1).forEach(function(day) {
+      if (day && Array.isArray(day.internationalNews)) groups.push(day.internationalNews);
+    });
+  }
+  groups.forEach(function(items) {
+    items.slice(0, 12).forEach(function(item) {
+      translateNewsField(item, 'title', 'titleZhTw');
+      translateNewsField(item, 'summary', 'summaryZhTw');
+    });
+  });
+  return payload;
+}
+
+function translateNewsField(item, sourceField, translatedField) {
+  const text = String(item && item[sourceField] || '').trim();
+  if (!text || !/[A-Za-z]{3}/.test(text) || item[translatedField]) return;
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'news-zh-tw-' + simpleTextHash(text);
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    item[translatedField] = cached;
+    return;
+  }
+  try {
+    const translated = LanguageApp.translate(text, '', 'zh-TW').trim();
+    if (translated) {
+      item[translatedField] = translated;
+      cache.put(cacheKey, translated, 21600);
+    }
+  } catch (error) {
+    item.translationError = String(error);
+  }
+}
+
+function simpleTextHash(text) {
+  let hash = 5381;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ text.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function scheduledUpdate() {
@@ -646,7 +700,7 @@ function buildScenario(existingPositions) {
     groups: groupCounts,
     candidates: candidates,
     source: {
-      provider: 'Apps Script + TWSE MIS + TWSE BFT41U after-hours + TWSE T86/MI_MARGN + Yahoo Finance chart API',
+      provider: 'Apps Script + TWSE MIS/BFT41U/T86/MI_MARGN/TWT93U/TWTB4U/notice + Yahoo Finance chart API',
       generatedAt: new Date().toISOString(),
       startDate: START_DATE,
       universe: universeResult.meta,
@@ -1214,25 +1268,68 @@ function fetchOfficialChipData(targetDate, items) {
   }, function(json) {
     return json && json.stat === 'OK' && Array.isArray(json.tables) && json.tables.length > 1;
   });
+  const shortPayload = tryFetchLatestTwseTable('exchangeReport/TWT93U', targetDate, {}, function(json) {
+    return json && json.stat === 'OK' && Array.isArray(json.data);
+  });
+  const dayTradePayload = tryFetchLatestTwseTable('rwd/zh/dayTrading/TWTB4U', targetDate, {}, function(json) {
+    return json && json.stat === 'OK' && Array.isArray(json.tables) && json.tables[1]
+      && Array.isArray(json.tables[1].data) && json.tables[1].data.some(function(row) { return row.length >= 6; });
+  });
+  const noticePayload = fetchTwseNotice(targetDate);
 
   const institutional = parseInstitutionalRows(institutionPayload.json);
   const margin = parseMarginRows(marginPayload.json);
+  const shortLending = shortPayload ? parseShortLendingRows(shortPayload.json) : {};
+  const dayTrade = dayTradePayload ? parseDayTradeRows(dayTradePayload.json) : {};
+  const notices = parseNoticeRows(noticePayload ? noticePayload.json : null);
   const out = {};
   items.forEach(function(item) {
     out[item.code] = buildChipSignal(
       institutional[item.code] || null,
       margin[item.code] || null,
+      shortLending[item.code] || null,
+      dayTradePayload ? (dayTrade[item.code] || { eligible: false, suspendedSellFirst: false, volume: null }) : null,
+      notices[item.code] || null,
       institutionPayload.date,
-      marginPayload.date
+      marginPayload.date,
+      shortPayload ? shortPayload.date : null,
+      dayTradePayload ? dayTradePayload.date : null,
+      noticePayload ? noticePayload.date : null
     );
   });
   out._meta = {
-    provider: 'TWSE T86/MI_MARGN',
+    provider: 'TWSE T86/MI_MARGN/TWT93U/TWTB4U/notice',
     institutionalDate: institutionPayload.date,
     marginDate: marginPayload.date,
+    shortLendingDate: shortPayload ? shortPayload.date : null,
+    dayTradeDate: dayTradePayload ? dayTradePayload.date : null,
+    noticeDate: noticePayload ? noticePayload.date : null,
     largeTraderProxy: 'institutional net-buy ratio plus margin/short balance change; TWSE has no stable public daily large-holder API for this use case'
   };
   return out;
+}
+
+function tryFetchLatestTwseTable(path, targetDate, params, isUsable) {
+  try {
+    return fetchLatestTwseTable(path, targetDate, params, isUsable);
+  } catch (error) {
+    console.warn('Optional TWSE table unavailable ' + path + ': ' + error.message);
+    return null;
+  }
+}
+
+function fetchTwseNotice(targetDate) {
+  const compact = ymdCompact(targetDate);
+  const url = 'https://www.twse.com.tw/rwd/zh/announcement/notice?' + toQuery({
+    response: 'json', startDate: compact, endDate: compact
+  });
+  try {
+    const json = fetchJson(url, { Referer: 'https://www.twse.com.tw/', 'User-Agent': 'Mozilla/5.0' });
+    return json && json.stat === 'OK' && Array.isArray(json.data) ? { date: compact, json: json } : null;
+  } catch (error) {
+    console.warn('TWSE notice unavailable: ' + error.message);
+    return null;
+  }
 }
 
 function fetchLatestTwseTable(path, targetDate, params, isUsable) {
@@ -1386,7 +1483,58 @@ function parseMarginRows(json) {
   return out;
 }
 
-function buildChipSignal(institutional, margin, institutionalDate, marginDate) {
+function parseShortLendingRows(json) {
+  const out = {};
+  ((json && json.data) || []).forEach(function(row) {
+    const code = String(row[0] || '').trim();
+    if (!code) return;
+    const previous = parseTwseNumber(row[8]) || 0;
+    const today = parseTwseNumber(row[12]) || 0;
+    out[code] = {
+      previousBalance: previous,
+      soldToday: parseTwseNumber(row[9]) || 0,
+      returnedToday: parseTwseNumber(row[10]) || 0,
+      adjustedToday: parseTwseNumber(row[11]) || 0,
+      todayBalance: today,
+      change: today - previous,
+      changeRatio: previous ? (today - previous) / previous : 0
+    };
+  });
+  return out;
+}
+
+function parseDayTradeRows(json) {
+  const table = json && json.tables && json.tables[1] ? json.tables[1] : null;
+  const out = {};
+  ((table && table.data) || []).forEach(function(row) {
+    const code = String(row[0] || '').trim();
+    if (!code) return;
+    out[code] = {
+      eligible: true,
+      suspendedSellFirst: Boolean(String(row[2] || '').trim()),
+      volume: parseTwseNumber(row[3]) || 0,
+      buyValue: parseTwseNumber(row[4]) || 0,
+      sellValue: parseTwseNumber(row[5]) || 0
+    };
+  });
+  return out;
+}
+
+function parseNoticeRows(json) {
+  const out = {};
+  ((json && json.data) || []).forEach(function(row) {
+    const code = String(row[1] || '').trim();
+    if (!code) return;
+    out[code] = {
+      active: true,
+      count: parseTwseNumber(row[3]) || 1,
+      reason: String(row[4] || '官方注意交易資訊').trim()
+    };
+  });
+  return out;
+}
+
+function buildChipSignal(institutional, margin, shortLending, dayTrade, notice, institutionalDate, marginDate, shortLendingDate, dayTradeDate, noticeDate) {
   const hasInstitutional = Boolean(institutional);
   const hasMargin = Boolean(margin);
   const foreignNet = hasInstitutional ? institutional.foreignNet : 0;
@@ -1397,6 +1545,7 @@ function buildChipSignal(institutional, margin, institutionalDate, marginDate) {
   const shortChange = hasMargin ? margin.shortChange : 0;
   const marginChangeRatio = hasMargin && margin.marginPrev ? marginChange / margin.marginPrev : 0;
   const shortChangeRatio = hasMargin && margin.shortPrev ? shortChange / margin.shortPrev : 0;
+  const securitiesLendingChangeRatio = shortLending ? shortLending.changeRatio : null;
   const institutionalOk = !hasInstitutional || (totalNet > 0 && (foreignNet > 0 || dealerNet > 0 || trustNet > 0));
   const marginOk = !hasMargin || marginChangeRatio <= 0.02;
   const shortOk = !hasMargin || shortChangeRatio <= 0.08;
@@ -1406,15 +1555,28 @@ function buildChipSignal(institutional, margin, institutionalDate, marginDate) {
   return {
     institutional: institutional || null,
     margin: margin || null,
+    shortLending: shortLending || null,
+    dayTrade: dayTrade || null,
+    notice: notice || null,
     institutionalDate: institutionalDate || null,
     marginDate: marginDate || null,
+    shortLendingDate: shortLendingDate || null,
+    dayTradeDate: dayTradeDate || null,
+    noticeDate: noticeDate || null,
     institutionalOk: institutionalOk,
     marginOk: marginOk,
     shortOk: shortOk,
     largeTraderProxyOk: largeTraderProxyOk,
     chipFlowOk: chipFlowOk,
     marginChangeRatio: marginChangeRatio,
-    shortChangeRatio: shortChangeRatio
+    shortChangeRatio: shortChangeRatio,
+    securitiesLendingChangeRatio: securitiesLendingChangeRatio,
+    dayTradeEligible: dayTrade ? dayTrade.eligible : null,
+    suspendedSellFirst: dayTrade ? dayTrade.suspendedSellFirst : null,
+    dayTradeVolume: dayTrade ? dayTrade.volume : null,
+    noticeActive: Boolean(notice && notice.active),
+    noticeCount: notice ? notice.count : 0,
+    noticeReason: notice ? notice.reason : null
   };
 }
 
@@ -1499,12 +1661,24 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
   const volumeRatio = volume20 ? latest.volume / volume20 : 1;
   const volumePriceOk = latest.close >= high20 * 0.985 || volumeRatio >= 1.2;
   const momentumOk = (rsi14 == null || rsi14 >= 50) && (m.hist == null || m.hist >= 0);
-  const chipSignal = officialChip || buildChipSignal(null, null, null, null);
+  const chipSignal = officialChip || buildChipSignal(null, null, null, null, null, null, null, null, null, null);
   const institutionalNetRatio = latest.volume && chipSignal.institutional ? chipSignal.institutional.totalNet / latest.volume : 0;
-  const dynamicChipOk = chipSignal.chipFlowOk && (base.chipOk || institutionalNetRatio >= 0.03 || chipSignal.largeTraderProxyOk);
+  const dayTradeCompactDate = chipSignal.dayTradeDate ? String(chipSignal.dayTradeDate).replace(/-/g, '') : null;
+  const dayTradeReferenceRow = dayTradeCompactDate ? mergedRows.find(function(row) {
+    return ymdCompact(row.date) === dayTradeCompactDate;
+  }) : null;
+  const dayTradeRatio = dayTradeReferenceRow && dayTradeReferenceRow.volume && chipSignal.dayTradeVolume != null
+    ? chipSignal.dayTradeVolume / dayTradeReferenceRow.volume : null;
+  chipSignal.dayTradeRatio = dayTradeRatio;
+  const executionRiskReasons = [];
+  if (chipSignal.noticeActive) executionRiskReasons.push('證交所注意股票：' + (chipSignal.noticeReason || '官方注意交易資訊'));
+  if (dayTradeRatio != null && dayTradeRatio > 0.60) executionRiskReasons.push('近一期當沖成交量占比超過60%');
+  const dynamicChipOk = !executionRiskReasons.length && chipSignal.chipFlowOk
+    && (base.chipOk || institutionalNetRatio >= 0.03 || chipSignal.largeTraderProxyOk);
   const all = base.industryOk && base.fundamentalOk && dynamicChipOk && trendOk && volumePriceOk && momentumOk;
   const backed = base.industryOk || base.fundamentalOk || dynamicChipOk;
-  const grade = all ? 'A' : trendOk && volumePriceOk && momentumOk && backed ? 'B' : trendOk || volumePriceOk || momentumOk ? 'C' : 'BLOCKED';
+  const signalGrade = all ? 'A' : trendOk && volumePriceOk && momentumOk && backed ? 'B' : trendOk || volumePriceOk || momentumOk ? 'C' : 'BLOCKED';
+  const grade = executionRiskReasons.length ? 'BLOCKED' : signalGrade;
   const stopPrice = Math.round(Math.min(latest.close * 0.94, ma20 || latest.close * 0.94) * 10) / 10;
   const targetPrice = Math.round(latest.close * 1.08 * 10) / 10;
   const intradayReturnPct = latest.open ? latest.close / latest.open - 1 : 0;
@@ -1528,7 +1702,9 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
     stopPrice: stopPrice,
     targetPrice: targetPrice,
     grade: grade,
-    dayTradeOk: grade === 'A' && executionPlan.dayTradeOk,
+    blockedReasons: executionRiskReasons,
+    dayTradeOk: grade === 'A' && executionPlan.dayTradeOk
+      && chipSignal.dayTradeEligible !== false && !chipSignal.suspendedSellFirst,
     overnightOk: overnightPlan.ok,
     executionPlan: executionPlan,
     overnightPlan: overnightPlan,

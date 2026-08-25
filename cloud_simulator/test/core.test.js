@@ -20,6 +20,7 @@ const { createMonthlyArchive, previousTaipeiMonth } = require('../src/monthly_ar
 const { fetchQuotes } = require('../src/twse');
 const { enrichCandidatesWithLiveScores } = require('../src/live_scoring');
 const { aggregateBars, fetchChart, weeklyBars } = require('../src/yahoo');
+const { executionRiskReasons, scoreChipSignals } = require('../src/chip');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -290,6 +291,50 @@ test('profitable OBV-confirmed swing position permits only one 5% add-on', () =>
   engine.processCandidates([candidate], { ...context, signalTimestamp: '2026-08-21T02:01:00.000Z' });
   assert.equal(engine.account.orders.length, 1);
   assert.match(engine.account.orders[0].reason, /一次策略加碼/);
+});
+
+test('chip score uses institutional, margin, securities lending and day-trade heat within 15 points', () => {
+  const healthy = scoreChipSignals({
+    institutional: { totalNet: 100000, foreignNet: 80000, trustNet: 10000 }, institutionalNetRatio: 0.04,
+    margin: { marginToday: 900 }, marginChangeRatio: -0.02,
+    shortLending: { todayBalance: 800 }, securitiesLendingChangeRatio: -0.01,
+    dayTradeRatio: 0.30
+  });
+  const crowded = scoreChipSignals({
+    institutional: { totalNet: -100000, foreignNet: -80000, trustNet: 0 }, institutionalNetRatio: -0.04,
+    margin: { marginToday: 1200 }, marginChangeRatio: 0.08,
+    shortLending: { todayBalance: 1300 }, securitiesLendingChangeRatio: 0.12,
+    dayTradeRatio: 0.65
+  });
+  assert.equal(healthy.score, 15);
+  assert.ok(crowded.score < healthy.score);
+  assert.equal(Object.values(healthy.details).reduce((sum, value) => sum + value, 0), 15);
+  assert.equal(scoreChipSignals({ margin: { marginToday: 100 }, marginChangeRatio: null }).details.dayTradePoints, 2);
+});
+
+test('official notice reason and excessive day-trade heat become execution blockers', () => {
+  const reasons = executionRiskReasons({
+    strategy: 'DAY_TRADE', dayTradeEligible: false, noticeActive: true,
+    noticeReason: '最近六日當沖比率異常', chipSignals: { dayTradeRatio: 0.61 }
+  });
+  assert.match(reasons.join(','), /注意股票.*當沖比率異常/);
+  assert.match(reasons.join(','), /非當日沖銷標的/);
+  assert.match(reasons.join(','), /超過60%/);
+});
+
+test('detailed chip weakness lowers score and notice blocks otherwise tradable candidate', () => {
+  const result = scoreCandidate({
+    strategy: 'SWING', dailyBars: bars(70), weeklyBars: bars(60), quoteFresh: true,
+    chipScore: 1, fundamentalScore: 1, officialNewsScore: 1, liquidityScore: 1, spreadPct: 0.001,
+    chipSignals: {
+      institutional: { totalNet: -1000, foreignNet: -1000 }, marginChangeRatio: 0.08,
+      securitiesLendingChangeRatio: 0.12, dayTradeRatio: 0.61, noticeActive: true,
+      noticeReason: '週轉率與當沖比率異常'
+    }
+  });
+  assert.ok(result.components.chip <= 2);
+  assert.equal(result.grade, 'BLOCKED');
+  assert.match(result.blockedReasons.join(','), /注意股票/);
 });
 
 test('75-79 point complete candidate uses at most a 5% trial entry', () => {
