@@ -116,6 +116,10 @@ class DriveHistorySource {
     return this.cache.get(key);
   }
 
+  clearRows(name, year) {
+    this.cache.delete(`${name}:${year}`);
+  }
+
   async top50Rows(start, end) {
     await this.manifest('top50');
     const result = [];

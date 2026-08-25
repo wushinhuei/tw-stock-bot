@@ -22,6 +22,7 @@ const { enrichCandidatesWithLiveScores } = require('../src/live_scoring');
 const { aggregateBars, fetchChart, weeklyBars } = require('../src/yahoo');
 const { executionRiskReasons, scoreChipSignals } = require('../src/chip');
 const { DRIVE_DATASETS, DriveHistorySource, parseCsv } = require('../src/drive_history');
+const { fee, technicalProxy } = require('../src/drive_backtest');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -115,6 +116,18 @@ test('Drive history uses fixed TOP50 and STOCK_DAILY files and rejects missing p
   assert.equal(daily[0].close, 102);
   assert.equal(daily[0].isTop50, false);
   assert.equal(parseCsv('a,b\n"x,y",z')[0].a, 'x,y');
+});
+
+test('Drive backtest proxy requires warmup and includes fees', () => {
+  assert.equal(technicalProxy([]), null);
+  const bars = Array.from({ length: 70 }, (_, index) => ({
+    open: 100 + index, high: 101 + index, low: 99 + index, close: 100 + index,
+    volume: 1000 + index * 100
+  }));
+  const result = technicalProxy(bars);
+  assert.ok(result.score >= 75);
+  assert.ok(result.volumeObv > 0);
+  assert.equal(fee(1000), 1);
 });
 
 test('Cloud live scoring computes OBV and blocks incomplete technical data', async () => {

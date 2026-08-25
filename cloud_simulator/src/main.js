@@ -165,6 +165,13 @@ async function main() {
       stockDaily: { status: stockDaily.last_update.status, rows: stockDaily.total_rows, end: stockDaily.data_end_date }
     };
     console.log(JSON.stringify({ event: 'drive-history-check', ...result }));
+  } else if (mode === 'drive-backtest') {
+    const { runDriveBacktest } = require('./drive_backtest');
+    result = await runDriveBacktest({
+      start: process.env.BACKTEST_START || '2023-08-25',
+      end: process.env.BACKTEST_END || '2026-08-24'
+    });
+    console.log(JSON.stringify({ event: 'drive-backtest-result', ...result, tradeLog: undefined }));
   } else {
     throw new Error(`Unsupported RUN_MODE: ${mode}`);
   }
