@@ -154,6 +154,17 @@ async function main() {
       bucket: new Storage().bucket(process.env.GCS_BUCKET),
       month: process.env.ARCHIVE_MONTH || undefined
     });
+  } else if (mode === 'drive-check') {
+    const { DriveHistorySource } = require('./drive_history');
+    const source = new DriveHistorySource();
+    const [top50, stockDaily] = await Promise.all([source.manifest('top50'), source.manifest('stockDaily')]);
+    result = {
+      generatedAt: new Date().toISOString(),
+      source: 'google-drive-history',
+      top50: { status: top50.last_update.status, rows: top50.total_rows, end: top50.data_end_date },
+      stockDaily: { status: stockDaily.last_update.status, rows: stockDaily.total_rows, end: stockDaily.data_end_date }
+    };
+    console.log(JSON.stringify({ event: 'drive-history-check', ...result }));
   } else {
     throw new Error(`Unsupported RUN_MODE: ${mode}`);
   }
@@ -164,7 +175,8 @@ async function main() {
     equity: result.simulation && result.simulation.finalEquity,
     month: result.month,
     destination: result.destination,
-    count: result.count
+    count: result.count,
+    source: result.source
   }));
 }
 
