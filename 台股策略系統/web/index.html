@@ -299,7 +299,7 @@
           <div class="rules-table">
             <div><strong>多週期技術面 35 分</strong><span>VWAP、EMA、MA20、MA50、MACD、RSI、ATR 與支撐壓力。</span></div>
             <div><strong>量價與 OBV 20 分</strong><span>成交量比、OBV 趨勢及 OBV_MA42 確認；背離時降低評價。</span></div>
-            <div><strong>法人及籌碼 15 分</strong><span>法人買賣、籌碼流向及大戶代理訊號。</span></div>
+            <div><strong>法人及籌碼 15 分</strong><span>法人流向 6 分、融資變化 3 分、融券／借券賣出壓力 3 分、當沖熱度 3 分；缺項採中性，不把單一指標當成買進訊號。</span></div>
             <div><strong>基本面 10 分</strong><span>營收、獲利、財務品質與產業條件。</span></div>
             <div><strong>官方消息事件 15 分</strong><span>TWSE／MOPS、月營收、財報、法說、處置、停復牌與公司行動。</span></div>
             <div><strong>流動性及執行品質 5 分</strong><span>成交量、買賣價差與限價成交品質。</span></div>
@@ -320,6 +320,8 @@
             <li>RSI 站上 50 偏多；強勢股 RSI 大於 70 不一定立刻賣出。</li>
             <li>布林帶擠壓只代表將有大波動，方向需用量價、均線、MACD、RSI 與籌碼確認。</li>
             <li>OBV_MA42 作為進場確認與警示：價格突破須有 OBV 同步轉強；頂背離降級，底背離先觀察；OBV 資料不足直接阻擋而不以 0 分代替。</li>
+            <li>融資快速增加、融券或借券賣出餘額上升、當沖熱度過高時降低籌碼分；借券成交不等於放空，只使用實際借券賣出資料。</li>
+            <li>證交所注意股票會顯示官方原因並阻擋新交易；處置、停牌、變更交易方法、非當沖標的或當沖成交量占比超過 60% 同樣列入執行風險阻擋。</li>
           </ul>
         </section>
 
@@ -421,6 +423,6 @@
   <script src="apps_script_config.js?v=20260822-formal-v2"></script>
   <script src="actual_data.js?v=20260810-actual"></script>
   <script src="simulation_result.js?v=20260810-actions"></script>
-  <script src="app.js?v=20260825-update-time-v1"></script>
+  <script src="app.js?v=20260825-chip-risk-v1"></script>
 </body>
 </html>
