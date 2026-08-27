@@ -510,6 +510,7 @@ function render(result) {
   document.querySelector('#maxDrawdown').className = 'loss';
 
   renderTodayDecision(result, latestDay);
+  renderCandidateUniverse(window.CANDIDATE_UNIVERSE);
   renderAGradeCandidates(latestDay);
   renderInternationalNews(latestDay.internationalNews || result.internationalNews || []);
   renderPositions(result, latestDay);
@@ -819,6 +820,26 @@ function renderInternationalNews(items) {
       <a href="${item.url}" target="_blank" rel="noopener noreferrer">${item.source || '來源'} · ${formatTaipeiDateTime(item.publishedAt)}</a>
     </article>
   `).join('') || '<div class="empty-candidates"><strong>目前沒有國際 RSS 提示</strong><span>消息失敗不會中斷正式選股與持倉管理。</span></div>';
+}
+
+function renderCandidateUniverse(universe) {
+  const target = document.querySelector('#candidateUniverse');
+  const summary = document.querySelector('#candidateUniverseSummary');
+  if (!target) return;
+  const items = Array.isArray(universe?.items) ? universe.items.slice(0, 50) : [];
+  if (summary && universe?.tradeDate) {
+    summary.textContent = `${universe.tradeDate} 檢討成交量前 ${universe.reviewedCount || 100} 名，取出 ${items.length} 檔；這是追蹤母體，不代表已符合買進條件。`;
+  }
+  if (!items.length) {
+    target.innerHTML = '<div class="empty-candidates"><strong>候選名單尚未產生</strong><span>最近交易日資料完成後會自動顯示。</span></div>';
+    return;
+  }
+  target.innerHTML = items.map(item => `
+    <article class="universe-chip">
+      <span class="universe-rank">${item.rank}</span>
+      <div><strong>${item.symbol} ${item.name}</strong><small>收盤 ${price(item.close)} · 量 ${Number(item.volume || 0).toLocaleString('zh-TW')}</small></div>
+    </article>
+  `).join('');
 }
 
 function internationalSentimentLabel(value) {
@@ -1182,6 +1203,7 @@ async function loadAppsScriptPayload(action, options = {}) {
   if (!payload.simulation.generatedAt && payload.generatedAt) {
     payload.simulation.generatedAt = payload.generatedAt;
   }
+  window.CANDIDATE_UNIVERSE = payload.candidateUniverse || null;
   if (Array.isArray(payload.internationalNews) && payload.scenario.length) {
     payload.scenario[payload.scenario.length - 1].internationalNews = payload.internationalNews;
   }

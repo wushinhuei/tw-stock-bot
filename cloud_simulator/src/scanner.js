@@ -9,6 +9,7 @@ function buildUniverse(volumeRows, enrichmentBySymbol = {}, config = CONFIG) {
   return [...volumeRows]
     .filter(row => row.market === 'TWSE' && row.securityType === 'COMMON_STOCK')
     .sort((a, b) => Number(b.volume) - Number(a.volume))
+    .slice(0, config.rawVolumeReviewLimit)
     .slice(0, config.topVolumeLimit)
     .filter(row => TARGET_GROUPS.has(row.group))
     .slice(0, config.maxCandidates)

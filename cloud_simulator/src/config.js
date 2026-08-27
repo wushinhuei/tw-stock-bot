@@ -3,6 +3,7 @@
 const CONFIG = Object.freeze({
   timezone: 'Asia/Taipei',
   initialCapital: 100000,
+  rawVolumeReviewLimit: 100,
   topVolumeLimit: 50,
   maxCandidates: 30,
   schedulerIntervalMinutes: 5,

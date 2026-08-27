@@ -36,6 +36,7 @@ const CONFIG = {
   maxChasePct: 0.003,
   maxMarketOrderSpreadPct: 0.002,
   maxLimitOrderSpreadPct: 0.006,
+  rawVolumeReviewLimit: 100,
   topVolumeLimit: 50,
   maxScanCandidates: 30,
   monthlyTargetReturnMin: 0.03,
@@ -78,7 +79,8 @@ const STRATEGY_SETTINGS = [
   ['maxChasePct', '追價上限', 'number', CONFIG.maxChasePct, '最多追價幅度'],
   ['maxMarketOrderSpreadPct', '市價允許價差', 'number', CONFIG.maxMarketOrderSpreadPct, '價差小於此值才允許類市價'],
   ['maxLimitOrderSpreadPct', '限價最大價差', 'number', CONFIG.maxLimitOrderSpreadPct, '價差超過此值不進場'],
-  ['topVolumeLimit', '成交量前 N 名', 'number', CONFIG.topVolumeLimit, '每日先抓成交量前 N 名'],
+  ['rawVolumeReviewLimit', '成交量原始檢討筆數', 'number', CONFIG.rawVolumeReviewLimit, '每日先檢討成交量前 100 名'],
+  ['topVolumeLimit', '成交量入選筆數', 'number', CONFIG.topVolumeLimit, '由原始排名取前 50 名'],
   ['maxScanCandidates', '掃描候選上限', 'number', CONFIG.maxScanCandidates, '最多分析幾檔'],
   ['allowDayTrade', '是否允許當沖', 'boolean', CONFIG.allowDayTrade, 'TRUE/FALSE'],
   ['allowOvernight', '是否允許隔日沖', 'boolean', CONFIG.allowOvernight, 'TRUE/FALSE'],
@@ -171,6 +173,14 @@ function doGet(e) {
     };
   }
 
+  if (payload && payload.ok !== false && (action === 'read' || action === 'refresh')) {
+    try {
+      payload.candidateUniverse = readLatestCandidateUniverse();
+    } catch (candidateError) {
+      payload.candidateUniverse = { ok: false, items: [], error: String(candidateError) };
+    }
+  }
+
   if (callback) {
     return ContentService
       .createTextOutput(callback + '(' + JSON.stringify(payload) + ');')
@@ -184,6 +194,30 @@ function doGet(e) {
 
 function cloudDashboardUrl() {
   return String(PropertiesService.getScriptProperties().getProperty(CLOUD_DASHBOARD_URL_KEY) || DEFAULT_CLOUD_DASHBOARD_URL).trim();
+}
+
+function readLatestCandidateUniverse() {
+  const manifest = historyReadJson(HISTORY_DRIVE.top50Manifest);
+  const latest = (manifest.raw_ranking_files || []).slice().sort(function(a, b) {
+    return String(b.latest_trade_date || '').localeCompare(String(a.latest_trade_date || ''));
+  })[0];
+  if (!latest || !latest.file_id) throw new Error('尚無成交量前 100 名原始排名檔');
+  const lines = historyReadText(latest.file_id).replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+  const header = historyParseCsvLine(lines[0]);
+  const rows = lines.slice(1).map(historyParseCsvLine).filter(function(row) {
+    return row[header.indexOf('trade_date')] === latest.latest_trade_date;
+  }).slice(0, 50);
+  return {
+    ok: true, tradeDate: latest.latest_trade_date,
+    reviewedCount: Number(manifest.selection_source_count || 100), selectedCount: rows.length,
+    generatedAt: latest.updated_at || manifest.generated_at,
+    items: rows.map(function(row) {
+      const value = function(name) { return row[header.indexOf(name)]; };
+      return { rank: Number(value('rank')), symbol: value('stock_code'), name: value('stock_name'),
+        volume: Number(value('trade_volume') || 0), close: Number(value('close') || 0),
+        priceChange: Number(value('price_change') || 0) };
+    })
+  };
 }
 
 function readCloudDashboard() {
@@ -584,14 +618,15 @@ function buildScenarioForRefresh(previous, schedule) {
   const shouldResetForStartDate = !previousDay || previousDay.date < START_DATE || schedule.date < START_DATE;
 
   if (shouldResetForStartDate) {
-    return buildScenario([]);
+    return buildScenario([], schedule.date);
   }
 
-  if (previousDay && Array.isArray(previousDay.candidates) && hasScannerUniverse) {
+  const isNewTradingDate = previousDay && previousDay.date !== schedule.date;
+  if (previousDay && Array.isArray(previousDay.candidates) && hasScannerUniverse && !isNewTradingDate) {
     return quickRefreshScenario(previousDay, schedule, positions);
   }
 
-  return buildScenario(positions);
+  return buildScenario(positions, schedule.date);
 }
 
 function readOrSeedPayload() {
@@ -657,7 +692,7 @@ function parseWindowAssignment(text, key) {
   return JSON.parse(match[1]);
 }
 
-function buildScenario(existingPositions) {
+function buildScenario(existingPositions, targetDate) {
   const marketResult = fetchChart('^TWII', '1y', '1d');
   const marketQuote = safeFetchLatestQuote('^TWII');
   const marketRows = mergeLatestRow(rowsFromChart(marketResult), marketQuote);
@@ -669,12 +704,16 @@ function buildScenario(existingPositions) {
     ma50: round2(sma(marketCloses, 50))
   };
 
-  const universeResult = buildTradingUniverse(latestMarket.date, existingPositions || []);
+  const scannerDate = targetDate || latestMarket.date;
+  const universeResult = buildTradingUniverse(scannerDate, existingPositions || []);
   const universe = universeResult.items;
   const candidates = [];
   const twseQuotes = safeFetchTwseQuotes(universe);
-  const afterMarketTrades = safeFetchAfterMarketTrades(latestMarket.date, universe);
-  const chipData = safeFetchOfficialChipData(latestMarket.date, universe);
+  const analysisDate = universeResult.meta && universeResult.meta.date
+    ? universeResult.meta.date
+    : latestMarket.date;
+  const afterMarketTrades = safeFetchAfterMarketTrades(analysisDate, universe);
+  const chipData = safeFetchOfficialChipData(analysisDate, universe);
   universe.forEach(function(stockInfo) {
     try {
       const result = fetchChart(stockInfo.symbol, '1y', '1d');
@@ -693,7 +732,7 @@ function buildScenario(existingPositions) {
   });
 
   return [{
-    date: latestMarket.date >= START_DATE ? latestMarket.date : START_DATE,
+    date: scannerDate >= START_DATE ? scannerDate : START_DATE,
     session: hasAfterMarketTrades(afterMarketTrades) ? 'AFTER_MARKET' : 'REGULAR',
     market: market,
     preOpenPlan: buildPreOpenPlan(market, latestMarket.date),
@@ -704,6 +743,8 @@ function buildScenario(existingPositions) {
       generatedAt: new Date().toISOString(),
       startDate: START_DATE,
       universe: universeResult.meta,
+      analysisDate: analysisDate,
+      dataDatesAligned: !(chipData._meta && chipData._meta.alignedToUniverseDate === false),
       afterMarketDate: afterMarketTrades._meta ? afterMarketTrades._meta.date : null,
       chipDates: chipData._meta || null
     }
@@ -723,7 +764,8 @@ function buildTradingUniverse(targetDate, existingPositions) {
   };
 
   try {
-    const ranked = fetchTopVolumeStocks(targetDate, CONFIG.topVolumeLimit);
+    const rawRanked = fetchTopVolumeStocks(targetDate, CONFIG.rawVolumeReviewLimit);
+    const ranked = rawRanked.slice(0, CONFIG.topVolumeLimit);
     let selected = ranked
       .map(function(row) { return classifyTargetStock(row); })
       .filter(Boolean)
@@ -741,9 +783,11 @@ function buildTradingUniverse(targetDate, existingPositions) {
       meta: {
         mode: 'dynamic',
         source: 'TWSE MI_INDEX top volume',
-        date: targetDate,
+        date: ranked[0] && ranked[0].sourceDate ? ranked[0].sourceDate : targetDate,
         topVolumeLimit: CONFIG.topVolumeLimit,
+        rawVolumeReviewLimit: CONFIG.rawVolumeReviewLimit,
         scannedLimit: CONFIG.maxScanCandidates,
+        rawRankedCount: rawRanked.length,
         rankedCount: ranked.length,
         filteredCount: selected.length,
         heldSupplementCount: heldItems.length,
@@ -1282,9 +1326,11 @@ function fetchOfficialChipData(targetDate, items) {
   const shortLending = shortPayload ? parseShortLendingRows(shortPayload.json) : {};
   const dayTrade = dayTradePayload ? parseDayTradeRows(dayTradePayload.json) : {};
   const notices = parseNoticeRows(noticePayload ? noticePayload.json : null);
+  const expectedDate = ymdCompact(targetDate);
+  const alignedToUniverseDate = institutionPayload.date === expectedDate && marginPayload.date === expectedDate;
   const out = {};
   items.forEach(function(item) {
-    out[item.code] = buildChipSignal(
+    out[item.code] = Object.assign(buildChipSignal(
       institutional[item.code] || null,
       margin[item.code] || null,
       shortLending[item.code] || null,
@@ -1295,7 +1341,10 @@ function fetchOfficialChipData(targetDate, items) {
       shortPayload ? shortPayload.date : null,
       dayTradePayload ? dayTradePayload.date : null,
       noticePayload ? noticePayload.date : null
-    );
+    ), {
+      universeDate: expectedDate,
+      dataDateAligned: alignedToUniverseDate
+    });
   });
   out._meta = {
     provider: 'TWSE T86/MI_MARGN/TWT93U/TWTB4U/notice',
@@ -1304,6 +1353,8 @@ function fetchOfficialChipData(targetDate, items) {
     shortLendingDate: shortPayload ? shortPayload.date : null,
     dayTradeDate: dayTradePayload ? dayTradePayload.date : null,
     noticeDate: noticePayload ? noticePayload.date : null,
+    universeDate: expectedDate,
+    alignedToUniverseDate: alignedToUniverseDate,
     largeTraderProxy: 'institutional net-buy ratio plus margin/short balance change; TWSE has no stable public daily large-holder API for this use case'
   };
   return out;
@@ -1671,6 +1722,7 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
     ? chipSignal.dayTradeVolume / dayTradeReferenceRow.volume : null;
   chipSignal.dayTradeRatio = dayTradeRatio;
   const executionRiskReasons = [];
+  if (chipSignal.dataDateAligned === false) executionRiskReasons.push('籌碼資料日期與成交量排名不一致');
   if (chipSignal.noticeActive) executionRiskReasons.push('證交所注意股票：' + (chipSignal.noticeReason || '官方注意交易資訊'));
   if (dayTradeRatio != null && dayTradeRatio > 0.60) executionRiskReasons.push('近一期當沖成交量占比超過60%');
   const dynamicChipOk = !executionRiskReasons.length && chipSignal.chipFlowOk
