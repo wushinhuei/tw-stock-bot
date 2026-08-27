@@ -5,6 +5,28 @@ const HISTORY_DRIVE = {
   marketFlowManifest: '1euGZK6A2YzyQKrZehk7qvTLhOP83uOVm'
 };
 
+const MOPS_DRIVE = {
+  companyBasicFolder: '1Qd_zkcAFa4Jc_Mlps3XJp35q3vG0TGqP',
+  monthlyRevenueFolder: '1w6Xft0UqrC4lnFCRl8HYtnN5JjgrTBeS',
+  quarterlyFinancialFolder: '1oNlmeY46SpjBoZCUUlLCGGu8AV1W-knd',
+  majorMessagesFolder: '1r7ThzvUZeX6stObW1XrA42IrIAPisKsO',
+  filingIndexFolder: '1sl84LYnUXJ149HhUzQKdcmPCnEQPL1l9',
+  validationFolder: '1zN3mhXleUSdg_zc3_pZRwXpn0J3dXmcL'
+};
+
+const MOPS_OPENAPI_BASE = 'https://openapi.twse.com.tw/v1/opendata/';
+const CLOUD_RUN_DRIVE_READER = 'tw-stock-runtime@project-aef205b5-5c27-4084-94c.iam.gserviceaccount.com';
+const CLOUD_RUN_ANALYSIS_FOLDERS = [
+  '1UN4xM089UmWq0XKbVJjlLM2avK7yHq-i', // 每日籌碼
+  '1tzD1pSXC77ywAwgSirEnfdZ2lznoXS34', // 公司行動與還原因子
+  '142XdplVTUEHIq6-H81Ug__9ym0LM7Zwa'  // MOPS 與全部子資料夾
+];
+const MOPS_FINANCIAL_ENDPOINTS = [
+  't187ap06_L_ci', 't187ap06_L_fh', 't187ap06_L_ins', 't187ap06_L_bd', 't187ap06_L_basi', 't187ap06_L_mim',
+  't187ap07_L_ci', 't187ap07_L_fh', 't187ap07_L_ins', 't187ap07_L_bd', 't187ap07_L_basi', 't187ap07_L_mim',
+  't187ap17_L'
+];
+
 const HISTORY_TOP50_HEADER = [
   'trade_date', 'rank', 'stock_code', 'stock_name', 'trade_volume', 'trade_value',
   'transactions', 'open', 'high', 'low', 'close', 'price_change'
@@ -30,7 +52,11 @@ const HISTORY_FLOW_HEADER = [
   'institutional_report_available', 'margin_report_available', 'lending_report_available'
 ];
 
-/** 建立每日 19:15 左右執行的十年資料增量更新觸發器。 */
+/**
+ * 建立每日兩次的十年資料增量更新觸發器。
+ * 19:15 執行主要更新；21:15 在 TWSE 籌碼報表較晚發布時補跑。
+ * 資料已是最新日期時會直接結束，不重複寫入。
+ */
 function configureDailyHistoryUpdate() {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (trigger.getHandlerFunction() === 'updateTenYearHistoryToLatestTradeDate') {
@@ -39,7 +65,238 @@ function configureDailyHistoryUpdate() {
   });
   ScriptApp.newTrigger('updateTenYearHistoryToLatestTradeDate')
     .timeBased().everyDays(1).atHour(19).nearMinute(15).inTimezone('Asia/Taipei').create();
-  return { ok: true, handler: 'updateTenYearHistoryToLatestTradeDate', schedule: '每日約 19:15（台北時間）' };
+  ScriptApp.newTrigger('updateTenYearHistoryToLatestTradeDate')
+    .timeBased().everyDays(1).atHour(21).nearMinute(15).inTimezone('Asia/Taipei').create();
+  return {
+    ok: true,
+    handler: 'updateTenYearHistoryToLatestTradeDate',
+    schedule: ['每日約 19:15', '每日約 21:15 補跑'],
+    timezone: 'Asia/Taipei'
+  };
+}
+
+/** 建立 MOPS/OpenAPI 每日增量更新；精確申報時間只取官方重大訊息，不以法定期限代填。 */
+function configureMopsRollingUpdate() {
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'updateMopsRollingData') ScriptApp.deleteTrigger(trigger);
+  });
+  ScriptApp.newTrigger('updateMopsRollingData')
+    .timeBased().everyDays(1).atHour(22).nearMinute(30).inTimezone('Asia/Taipei').create();
+  return { ok: true, handler: 'updateMopsRollingData', schedule: '每日約 22:30', timezone: 'Asia/Taipei' };
+}
+
+/** 一次性設定 Cloud Run 對分析資料父資料夾的唯讀權限；新檔案會沿用父資料夾權限。 */
+function configureCloudRunDriveReadAccess() {
+  const results = CLOUD_RUN_ANALYSIS_FOLDERS.map(function(folderId) {
+    const folder = DriveApp.getFolderById(folderId);
+    folder.addViewer(CLOUD_RUN_DRIVE_READER);
+    return { folderId: folderId, name: folder.getName(), role: 'reader', account: CLOUD_RUN_DRIVE_READER };
+  });
+  return { ok: true, folders: results };
+}
+
+/**
+ * 更新供正式分析使用的 MOPS 最小資料集。
+ * OpenAPI 只提供目前可取得的批次資料；十年季度 XBRL 仍由 Cloud Run 初始回填。
+ */
+function updateMopsRollingData() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const now = new Date();
+    const year = Utilities.formatDate(now, 'Asia/Taipei', 'yyyy');
+    const allowed = mopsAllowedSymbols();
+    if (!Object.keys(allowed).length) throw new Error('MOPS 更新找不到前50歷史母體');
+
+    const companyRows = mopsFetchOpenApi('t187ap03_L').filter(function(row) {
+      return allowed[mopsStockCode(row)];
+    }).map(mopsCompanyBasicRow).filter(mopsHasStockCode);
+    const revenueRows = mopsFetchOpenApi('t187ap05_L').filter(function(row) {
+      return allowed[mopsStockCode(row)];
+    }).map(mopsMonthlyRevenueRow).filter(mopsHasStockCode);
+    const messageRows = mopsFetchOpenApi('t187ap04_L').filter(function(row) {
+      return allowed[mopsStockCode(row)];
+    }).map(mopsMajorMessageRow).filter(mopsHasStockCode);
+
+    let financialRows = [];
+    const financialErrors = [];
+    MOPS_FINANCIAL_ENDPOINTS.forEach(function(endpoint) {
+      try {
+        financialRows = financialRows.concat(mopsFetchOpenApi(endpoint).filter(function(row) {
+          return allowed[mopsStockCode(row)];
+        }).map(function(row) { return mopsFinancialRow(row, endpoint); }).filter(mopsHasStockCode));
+      } catch (error) {
+        financialErrors.push(endpoint + ': ' + String(error.message || error));
+      }
+    });
+    if (!financialRows.length) throw new Error('MOPS 財報 OpenAPI 全部無資料：' + financialErrors.join('；'));
+
+    const filingRows = messageRows.filter(function(row) {
+      return /財務報告|財務報表|年報/.test(row.subject) && row.filing_date && row.filing_time;
+    }).map(function(row) {
+      return {
+        stock_code: row.stock_code, stock_name: row.stock_name,
+        filing_date: row.filing_date, filing_time: row.filing_time,
+        available_from: row.available_from, subject: row.subject,
+        source: 'TWSE_MOPS_OPENAPI', source_url: row.source_url
+      };
+    });
+
+    const results = {
+      company_basic: mopsReplaceSnapshot(MOPS_DRIVE.companyBasicFolder, 'company_basic_latest.jsonl', companyRows),
+      monthly_revenue: mopsMergeJsonl(MOPS_DRIVE.monthlyRevenueFolder, 'monthly_revenue_' + year + '.jsonl', revenueRows,
+        function(row) { return row.stock_code + '|' + row.data_year_month; }),
+      quarterly_financials: mopsMergeJsonl(MOPS_DRIVE.quarterlyFinancialFolder, 'quarterly_openapi_' + year + '.jsonl', financialRows,
+        function(row) { return row.stock_code + '|' + row.fiscal_year + '|' + row.quarter + '|' + row.report_kind; }),
+      major_messages: mopsMergeJsonl(MOPS_DRIVE.majorMessagesFolder, 'major_messages_' + year + '.jsonl', messageRows,
+        function(row) { return row.stock_code + '|' + row.filing_date + '|' + row.filing_time + '|' + row.subject; }),
+      filing_index: mopsMergeJsonl(MOPS_DRIVE.filingIndexFolder, 'filing_times_' + year + '.jsonl', filingRows,
+        function(row) { return row.stock_code + '|' + row.available_from + '|' + row.subject; })
+    };
+    const manifest = {
+      dataset: 'MOPS_ROLLING', generated_at: now.toISOString(), status: financialErrors.length ? 'complete_with_warnings' : 'complete',
+      universe: 'stocks ever entering TWSE_TOP50', symbol_count: Object.keys(allowed).length,
+      source: 'TWSE OpenAPI', source_base: MOPS_OPENAPI_BASE,
+      point_in_time_rule: 'Only official filing_date and filing_time form available_from; statutory deadlines are never substituted.',
+      results: results, warnings: financialErrors,
+      historical_xbrl: 'Initial 10-year quarterly backfill is maintained separately by the Cloud Run XBRL builder.'
+    };
+    mopsReplaceSnapshot(MOPS_DRIVE.validationFolder, 'mops_rolling_manifest.json', [manifest]);
+    PropertiesService.getScriptProperties().setProperty('MOPS_LAST_SUCCESS', JSON.stringify(manifest));
+    return { ok: true, status: manifest.status, generatedAt: manifest.generated_at, results: results, warnings: financialErrors };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function mopsAllowedSymbols() {
+  const manifest = historyReadJson(HISTORY_DRIVE.stockDailyManifest);
+  const out = {};
+  (manifest.stock_codes || []).forEach(function(code) { if (/^\d{4}$/.test(String(code))) out[String(code)] = true; });
+  return out;
+}
+
+function mopsFetchOpenApi(endpoint) {
+  const response = UrlFetchApp.fetch(MOPS_OPENAPI_BASE + endpoint, {
+    method: 'get', muteHttpExceptions: true,
+    headers: { Accept: 'application/json', 'User-Agent': 'tw-stock-bot/1.0' }
+  });
+  if (response.getResponseCode() !== 200) throw new Error(endpoint + ' HTTP ' + response.getResponseCode());
+  const payload = JSON.parse(response.getContentText('UTF-8'));
+  if (!Array.isArray(payload)) throw new Error(endpoint + ' 回傳格式不是陣列');
+  return payload;
+}
+
+function mopsStockCode(row) {
+  const value = row['公司代號'] || row['公司代碼'] || row['證券代號'] || row['代號'] || '';
+  const match = String(value).match(/\b\d{4}\b/);
+  return match ? match[0] : '';
+}
+
+function mopsHasStockCode(row) { return Boolean(row && row.stock_code); }
+function mopsText(row, names) {
+  const normalized = {};
+  Object.keys(row || {}).forEach(function(key) { normalized[String(key).trim()] = row[key]; });
+  for (let i = 0; i < names.length; i += 1) if (normalized[names[i]] != null) return String(normalized[names[i]]).trim();
+  return '';
+}
+function mopsNumber(row, names) {
+  const value = mopsText(row, names).replace(/,/g, '');
+  return value === '' || value === '--' ? null : Number(value);
+}
+function mopsAvailableFrom(date, time) {
+  if (!date) return '';
+  return date + (time ? 'T' + time.replace(/^(\d{2})(\d{2})(\d{2})$/, '$1:$2:$3') : '');
+}
+function mopsGregorianDate(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (/^\d{7}$/.test(digits)) return String(Number(digits.slice(0, 3)) + 1911) + '-' + digits.slice(3, 5) + '-' + digits.slice(5, 7);
+  if (/^\d{8}$/.test(digits)) return digits.slice(0, 4) + '-' + digits.slice(4, 6) + '-' + digits.slice(6, 8);
+  return String(value || '').trim();
+}
+function mopsGregorianYearMonth(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (/^\d{5}$/.test(digits)) return String(Number(digits.slice(0, 3)) + 1911) + '-' + digits.slice(3, 5);
+  if (/^\d{6}$/.test(digits)) return digits.slice(0, 4) + '-' + digits.slice(4, 6);
+  return String(value || '').trim();
+}
+function mopsGregorianYear(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return /^\d{3}$/.test(digits) ? String(Number(digits) + 1911) : digits;
+}
+function mopsSourceUrl(endpoint) { return MOPS_OPENAPI_BASE + endpoint; }
+
+function mopsCompanyBasicRow(row) {
+  return {
+    stock_code: mopsStockCode(row), stock_name: mopsText(row, ['公司簡稱', '公司名稱']),
+    industry: mopsText(row, ['產業別']), listing_date: mopsText(row, ['上市日期']),
+    established_date: mopsText(row, ['成立日期']), paid_in_capital: mopsNumber(row, ['實收資本額']),
+    issued_common_shares: mopsNumber(row, ['已發行普通股數或TDR原股發行股數']),
+    financial_statement_type: mopsText(row, ['編制財務報表類型']),
+    updated_date: mopsGregorianDate(mopsText(row, ['出表日期'])), source: 'TWSE_MOPS_OPENAPI', source_url: mopsSourceUrl('t187ap03_L')
+  };
+}
+
+function mopsMonthlyRevenueRow(row) {
+  const reportDate = mopsGregorianDate(mopsText(row, ['出表日期']));
+  return {
+    stock_code: mopsStockCode(row), stock_name: mopsText(row, ['公司名稱', '公司簡稱']),
+    industry: mopsText(row, ['產業別']), data_year_month: mopsGregorianYearMonth(mopsText(row, ['資料年月'])),
+    monthly_revenue: mopsNumber(row, ['營業收入-當月營收']), previous_month_revenue: mopsNumber(row, ['營業收入-上月營收']),
+    previous_year_revenue: mopsNumber(row, ['營業收入-去年當月營收']),
+    mom_pct: mopsNumber(row, ['營業收入-上月比較增減(%)']), yoy_pct: mopsNumber(row, ['營業收入-去年同月增減(%)']),
+    cumulative_revenue: mopsNumber(row, ['累計營業收入-當月累計營收']), report_date: reportDate,
+    available_from: reportDate, source: 'TWSE_MOPS_OPENAPI', source_url: mopsSourceUrl('t187ap05_L')
+  };
+}
+
+function mopsMajorMessageRow(row) {
+  const date = mopsGregorianDate(mopsText(row, ['發言日期', '發布日期', '申報日期']));
+  const time = mopsText(row, ['發言時間', '發布時間', '申報時間']);
+  return {
+    stock_code: mopsStockCode(row), stock_name: mopsText(row, ['公司簡稱', '公司名稱']),
+    filing_date: date, filing_time: time, available_from: mopsAvailableFrom(date, time),
+    subject: mopsText(row, ['主旨', '重大訊息主旨']),
+    source: 'TWSE_MOPS_OPENAPI', source_url: mopsSourceUrl('t187ap04_L')
+  };
+}
+
+function mopsFinancialRow(row, endpoint) {
+  const selected = {};
+  Object.keys(row).forEach(function(key) {
+    if (/出表日期|年度|季別|公司代號|公司名稱|營業收入|營業利益|稅前|本期淨利|每股盈餘|資產總額|負債總額|權益總額|毛利率|利益率|純益率/.test(key)) selected[key] = row[key];
+  });
+  const reportDate = mopsGregorianDate(mopsText(row, ['出表日期']));
+  return {
+    stock_code: mopsStockCode(row), stock_name: mopsText(row, ['公司名稱', '公司簡稱']),
+    fiscal_year: mopsGregorianYear(mopsText(row, ['年度'])), quarter: mopsText(row, ['季別']), report_kind: endpoint,
+    report_date: reportDate, available_from: reportDate,
+    metrics: selected, source: 'TWSE_MOPS_OPENAPI', source_url: mopsSourceUrl(endpoint)
+  };
+}
+
+function mopsFindFile(folderId, name) {
+  const files = DriveApp.getFolderById(folderId).getFilesByName(name);
+  return files.hasNext() ? files.next() : null;
+}
+function mopsReadJsonl(file) {
+  if (!file) return [];
+  return file.getBlob().getDataAsString('UTF-8').split(/\r?\n/).filter(Boolean).map(function(line) { return JSON.parse(line); });
+}
+function mopsWriteJsonl(folderId, name, rows) {
+  const content = rows.map(function(row) { return JSON.stringify(row); }).join('\n') + (rows.length ? '\n' : '');
+  const file = mopsFindFile(folderId, name);
+  if (file) historyReplaceText(file.getId(), content, 'application/x-ndjson');
+  else DriveApp.getFolderById(folderId).createFile(name, content, MimeType.PLAIN_TEXT);
+  return { file: name, rows: rows.length, updated_at: new Date().toISOString() };
+}
+function mopsReplaceSnapshot(folderId, name, rows) { return mopsWriteJsonl(folderId, name, rows); }
+function mopsMergeJsonl(folderId, name, incoming, keyFn) {
+  const file = mopsFindFile(folderId, name);
+  const index = {};
+  mopsReadJsonl(file).concat(incoming || []).forEach(function(row) { const key = keyFn(row); if (key) index[key] = row; });
+  const rows = Object.keys(index).sort().map(function(key) { return index[key]; });
+  return mopsWriteJsonl(folderId, name, rows);
 }
 
 /**

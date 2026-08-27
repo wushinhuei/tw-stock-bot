@@ -13,7 +13,7 @@ const { gradeWithMedia, scoreCandidate } = require('../src/scoring');
 const { MemoryRepository } = require('../src/repository');
 const { buildUniverse } = require('../src/scanner');
 const { adaptCandidatePayload } = require('../src/candidate_adapter');
-const { runTick, tickDecision } = require('../src/main');
+const { candidateSourceUrl, runTick, tickDecision } = require('../src/main');
 const { createDashboardServer } = require('../src/api');
 const { closedDatesFromSchedule, rocCompactToYmd } = require('../src/trading_calendar');
 const { createMonthlyArchive, previousTaipeiMonth } = require('../src/monthly_archive');
@@ -21,8 +21,12 @@ const { fetchQuotes } = require('../src/twse');
 const { enrichCandidatesWithLiveScores } = require('../src/live_scoring');
 const { aggregateBars, fetchChart, weeklyBars } = require('../src/yahoo');
 const { executionRiskReasons, scoreChipSignals } = require('../src/chip');
-const { DRIVE_DATASETS, DriveHistorySource, parseCsv } = require('../src/drive_history');
+const { DRIVE_DATASETS, MOPS_ROLLING, DriveHistorySource, parseCsv, parseJsonl } = require('../src/drive_history');
 const { fee, technicalProxy } = require('../src/drive_backtest');
+const { archiveEntryIdentity, attachFilingTimes, MopsClient, parseHtmlTables, parseXbrlInstance,
+  rowsFromTable, toCsv, validateMopsCompleteness, validateOfficialBatch, xbrlArchiveUrl } = require('../src/mops_history');
+const { parse0050, parseTaiex, rocDate, validateBenchmarks } = require('../src/benchmark_history');
+const { adjustBars, buildCumulativeFactors, parseCorporateActions } = require('../src/corporate_actions');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -30,6 +34,28 @@ function bars(count, start = 100) {
     close: start + i * 0.2 + 0.5, volume: 1000 + i * 30
   }));
 }
+
+test('TWSE benchmark parser normalizes 0050 and TAIEX official monthly rows', () => {
+  assert.equal(rocDate('114/08/25'), '2025-08-25');
+  const etf = parse0050({ stat: 'OK', fields: ['日期', '成交股數', '成交金額', '開盤價', '最高價', '最低價', '收盤價', '成交筆數'], data: [['114/08/25', '1,000', '50,000', '50', '51', '49', '50.5', '100']] });
+  const index = parseTaiex({ stat: 'OK', fields: ['日期', '開盤指數', '最高指數', '最低指數', '收盤指數'], data: [['114/08/25', '20,000', '20,100', '19,900', '20,050']] });
+  assert.deepEqual([etf[0].benchmark_id, index[0].benchmark_id], ['0050', 'TAIEX']);
+  assert.equal(etf[0].volume, 1000);
+  assert.equal(index[0].close, 20050);
+  assert.equal(validateBenchmarks([...etf, ...index], '2025-08-25', '2025-08-25').passed, false);
+});
+
+test('corporate actions create point-in-time adjustment factors without changing post-event bars', () => {
+  const actions = parseCorporateActions({ stat: 'OK', fields: ['資料日期', '股票代號', '股票名稱', '除權息前收盤價', '除權息參考價', '權值+息值', '權/息', '漲停價格', '跌停價格', '開盤競價基準', '減除股利參考價', '詳細資料'], data: [['114年08月01日', '0050', '元大台灣50', '200', '196', '4', '息', '215', '176', '196', '196', '0050,20250801']] });
+  assert.equal(actions[0].adjustment_factor, 0.98);
+  assert.equal(buildCumulativeFactors(actions)[0].cumulative_factor_before_date, 0.98);
+  const adjusted = adjustBars([
+    { symbol: '0050', tradeDate: '2025-07-31', open: 200, high: 201, low: 199, close: 200, volume: 980 },
+    { symbol: '0050', tradeDate: '2025-08-01', open: 196, high: 197, low: 195, close: 196, volume: 1000 }
+  ], actions);
+  assert.equal(adjusted[0].adjustedClose, 196);
+  assert.equal(adjusted[1].adjustedClose, 196);
+});
 
 test('score totals 100 points at most and maps A/B/C thresholds', () => {
   const daily = bars(70);
@@ -75,6 +101,14 @@ test('TWSE MIS quotes bypass intermediary caches', async () => {
   assert.equal(quotes['2330'].timestamp, '2026-08-25T11:08:10+08:00');
 });
 
+test('Apps Script candidate source always requests a forced fresh daily scan', () => {
+  const url = new URL(candidateSourceUrl('https://script.google.com/macros/s/example/exec'));
+  assert.equal(url.searchParams.get('action'), 'refresh');
+  assert.equal(url.searchParams.get('force'), '1');
+  assert.ok(url.searchParams.get('_'));
+  assert.equal(candidateSourceUrl('https://example.test/candidates.json'), 'https://example.test/candidates.json');
+});
+
 test('Yahoo chart requests bypass caches and bar aggregation preserves OHLCV', async () => {
   let requestedUrl = '';
   let requestedOptions;
@@ -118,6 +152,47 @@ test('Drive history uses fixed TOP50 and STOCK_DAILY files and rejects missing p
   assert.equal(parseCsv('a,b\n"x,y",z')[0].a, 'x,y');
 });
 
+test('Drive history exposes corporate actions and adjusted daily prices', async () => {
+  const files = {
+    dailyManifest: JSON.stringify({ last_update: { status: 'complete', error: null } }),
+    actionManifest: JSON.stringify({ last_update: { status: 'complete', error: null } }),
+    daily: 'trade_date,stock_code,stock_name,open,high,low,close,trade_volume,trade_value,transactions,top50_rank,is_top50\n2025-07-31,0050,元大台灣50,200,201,199,200,980,196000,10,,0\n2025-08-01,0050,元大台灣50,196,197,195,196,1000,196000,10,,0',
+    actions: 'action_date,stock_code,stock_name,action_type,adjustment_factor\n2025-08-01,0050,元大台灣50,息,0.98'
+  };
+  const source = new DriveHistorySource({ datasets: {
+    stockDaily: { manifestId: 'dailyManifest', files: { 2025: 'daily' } },
+    corporateActions: { manifestId: 'actionManifest', files: { all: 'actions' } }
+  }, fetchText: async id => files[id] });
+  const adjusted = await source.adjustedDailyBars('0050', '2025-07-31', '2025-08-01');
+  assert.equal(adjusted[0].adjustedClose, 196);
+  assert.equal(adjusted[1].adjustedClose, 196);
+});
+
+test('Drive analysis requires aligned market flow and complete MOPS data', async () => {
+  assert.equal(DRIVE_DATASETS.marketFlow.manifestId, '1euGZK6A2YzyQKrZehk7qvTLhOP83uOVm');
+  assert.equal(MOPS_ROLLING.manifestId, '1Sl5pzvt3SjaHQF7gvjZDZsVMTSbf1PiD');
+  const complete = date => JSON.stringify({ latest_successful_trade_date: date, total_rows: 50, stock_count: 2,
+    last_update: { status: 'update_complete', error: null }, top50_alignment: { aligned: true }, source_status: {} });
+  const files = {
+    top: complete('2026-08-27'), dailyManifest: complete('2026-08-27'), flowManifest: complete('2026-08-27'),
+    mopsManifest: JSON.stringify({ status: 'complete', warnings: [], generated_at: '2026-08-27T16:32:58Z', symbol_count: 2, results: {} }),
+    revenue: '{"stock_code":"2330","year":2026,"month":7}\n'
+  };
+  const source = new DriveHistorySource({ datasets: {
+    top50: { manifestId: 'top', files: {} }, stockDaily: { manifestId: 'dailyManifest', files: {} },
+    marketFlow: { manifestId: 'flowManifest', files: {} }
+  }, fetchText: async id => id === MOPS_ROLLING.manifestId ? files.mopsManifest : files[id],
+  findFile: async (_folder, name) => name === 'monthly_revenue_2026.jsonl' ? 'revenue' : 'missing' });
+  assert.equal((await source.analysisStatus()).tradeDate, '2026-08-27');
+  assert.equal((await source.mopsRows('monthlyRevenue', 2026))[0].stock_code, '2330');
+  assert.equal(parseJsonl('{"a":1}\n')[0].a, 1);
+
+  files.flowManifest = complete('2026-08-26');
+  const stale = new DriveHistorySource({ datasets: source.datasets,
+    fetchText: async id => id === MOPS_ROLLING.manifestId ? files.mopsManifest : files[id] });
+  await assert.rejects(() => stale.analysisStatus(), /not aligned/);
+});
+
 test('Drive backtest proxy requires warmup and includes fees', () => {
   assert.equal(technicalProxy([]), null);
   const bars = Array.from({ length: 70 }, (_, index) => ({
@@ -128,6 +203,50 @@ test('Drive backtest proxy requires warmup and includes fees', () => {
   assert.ok(result.score >= 75);
   assert.ok(result.volumeObv > 0);
   assert.equal(fee(1000), 1);
+});
+
+test('MOPS history parser keeps announcement time and raw fields', async () => {
+  const html = '<table><tr><th>公司代號</th><th>公司名稱</th><th>發言日期</th><th>發言時間</th><th>主旨</th></tr><tr><td>2330</td><td>台積電</td><td>115/08/25</td><td>17:30:00</td><td>重大訊息</td></tr></table>';
+  assert.equal(rowsFromTable(parseHtmlTables(html)[0])[0]['公司代號'], '2330');
+  const client = new MopsClient({ delayMs: 0, fetchImpl: async () => ({ ok: true, text: async () => html }) });
+  const rows = await client.query('majorMessages', 2026, null);
+  assert.equal(rows[0].stock_code, '2330');
+  assert.equal(rows[0].available_from, '115/08/25 17:30:00');
+  assert.match(toCsv(rows), /content_hash/);
+});
+
+test('MOPS history downloader refuses official security block pages', async () => {
+  const client = new MopsClient({ delayMs: 0, fetchImpl: async () => ({ ok: true, text: async () => 'FOR SECURITY REASONS, THIS PAGE CAN NOT BE ACCESSED.' }) });
+  await assert.rejects(() => client.query('monthlyRevenue', 2025, 1), /MOPS_SECURITY_BLOCK/);
+});
+
+test('MOPS XBRL archive URL uses the official bulk download path', () => {
+  const url = xbrlArchiveUrl(2025, 4);
+  assert.match(url, /mopsov\.twse\.com\.tw\/server-java\/FileDownLoad/);
+  assert.match(url, /tifrs-2025Q4\.zip/);
+  assert.match(url, /%2Fifrs%2F2025%2F/);
+});
+
+test('MOPS XBRL parser filters core non-dimensional facts and requires filing time', () => {
+  const xml = `<?xml version="1.0"?><xbrl><context id="From20250101To20250331"><entity><identifier>2330</identifier></entity><period><startDate>2025-01-01</startDate><endDate>2025-03-31</endDate></period></context><context id="Dim"><entity><identifier>2330</identifier></entity><period><instant>2025-03-31</instant></period><scenario><member>segment</member></scenario></context><tifrs:Revenue contextRef="From20250101To20250331" unitRef="TWD" decimals="-3">1000</tifrs:Revenue><tifrs:Revenue contextRef="Dim" unitRef="TWD">99</tifrs:Revenue></xbrl>`;
+  const identity = archiveEntryIdentity('tifrs-fr1-m1-ci-cr-2330-2025Q1.xml');
+  const parsed = parseXbrlInstance(xml, identity, 'https://example.invalid/official.zip');
+  assert.equal(parsed.stock_code, '2330');
+  assert.equal(parsed.facts.length, 1);
+  assert.equal(parsed.facts[0].metric, 'revenue');
+  assert.equal(validateMopsCompleteness({ expectedArchives: 1, archives: [{}], financials: [parsed], monthlyRevenueComplete: true, majorMessagesComplete: true }).passed, false);
+  const [enriched] = attachFilingTimes([parsed], [{ stock_code: '2330', fiscal_year: 2025, quarter: 1, filing_date: '2025-05-08', filing_time: '14:31:00', source_url: 'https://mops.twse.com.tw/' }]);
+  assert.equal(enriched.available_from, '2025-05-08T14:31:00');
+  assert.equal(validateMopsCompleteness({ expectedArchives: 1, archives: [{}], financials: [enriched], monthlyRevenueComplete: true, majorMessagesComplete: true }).passed, true);
+});
+
+test('MOPS official batch gate rejects unlicensed or incomplete history', () => {
+  const rows = [{ fiscal_year: 2025, month: 1, available_from: '2025-02-10T14:00:00', source_url: 'https://mops.twse.com.tw/' }];
+  const manifest = { source_kind: 'SCRAPED_WEB', complete: true, coverage_start: '2016-01-01', coverage_end: '2025-12-31', record_count: 1, content_sha256: 'a'.repeat(64) };
+  assert.equal(validateOfficialBatch(manifest, rows).passed, false);
+  const valid = { ...manifest, source_kind: 'MOPS_OFFICIAL_BATCH' };
+  assert.equal(validateOfficialBatch(valid, rows).passed, true);
+  assert.equal(validateOfficialBatch(valid, rows, { dataset: 'monthlyRevenue', expectedMonths: 120 }).passed, false);
 });
 
 test('Cloud live scoring computes OBV and blocks incomplete technical data', async () => {

@@ -42,7 +42,8 @@ async function loadCandidates() {
   // Candidate bars and official-event enrichment are supplied by the daily scanner/backtest input.
   // The session runner intentionally refuses to manufacture missing prices or scores.
   if (!process.env.CANDIDATE_SNAPSHOT_URL) return [];
-  const response = await fetch(process.env.CANDIDATE_SNAPSHOT_URL);
+  const sourceUrl = candidateSourceUrl(process.env.CANDIDATE_SNAPSHOT_URL);
+  const response = await fetch(sourceUrl, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache, no-store, max-age=0', Pragma: 'no-cache' } });
   if (!response.ok) throw new Error(`Candidate snapshot HTTP ${response.status}`);
   const payload = await response.json();
   if (Array.isArray(payload.volumeRows)) return buildUniverse(payload.volumeRows, payload.enrichmentBySymbol || {});
@@ -83,6 +84,16 @@ async function runSession() {
     await sleep(CONFIG.marketPollMs);
   }
   return engine.dashboard(candidates);
+}
+
+function candidateSourceUrl(value) {
+  const url = new URL(value);
+  if (url.hostname === 'script.google.com' && /\/macros\/s\//.test(url.pathname)) {
+    url.searchParams.set('action', 'refresh');
+    url.searchParams.set('force', '1');
+    url.searchParams.set('_', String(Date.now()));
+  }
+  return url.toString();
 }
 
 async function runTick(options = {}) {
@@ -157,12 +168,11 @@ async function main() {
   } else if (mode === 'drive-check') {
     const { DriveHistorySource } = require('./drive_history');
     const source = new DriveHistorySource();
-    const [top50, stockDaily] = await Promise.all([source.manifest('top50'), source.manifest('stockDaily')]);
+    const status = await source.analysisStatus();
     result = {
       generatedAt: new Date().toISOString(),
       source: 'google-drive-history',
-      top50: { status: top50.last_update.status, rows: top50.total_rows, end: top50.data_end_date },
-      stockDaily: { status: stockDaily.last_update.status, rows: stockDaily.total_rows, end: stockDaily.data_end_date }
+      ...status
     };
     console.log(JSON.stringify({ event: 'drive-history-check', ...result }));
   } else if (mode === 'drive-backtest') {
@@ -172,6 +182,16 @@ async function main() {
       end: process.env.BACKTEST_END || '2026-08-24'
     });
     console.log(JSON.stringify({ event: 'drive-backtest-result', ...result, tradeLog: undefined }));
+  } else if (mode === 'mops-history') {
+    const { downloadMopsHistory } = require('./mops_history');
+    result = await downloadMopsHistory({
+      startYear: process.env.START_YEAR || 2016,
+      endYear: process.env.END_YEAR || new Date().getFullYear(),
+      outputDir: process.env.OUTPUT_DIR || '/tmp/mops-history',
+      driveParentId: process.env.DRIVE_PARENT_FOLDER_ID || null,
+      delayMs: process.env.REQUEST_DELAY_MS || 1500,
+      downloadXbrlArchives: process.env.DOWNLOAD_XBRL_ARCHIVES === '1'
+    });
   } else {
     throw new Error(`Unsupported RUN_MODE: ${mode}`);
   }
@@ -189,4 +209,4 @@ async function main() {
 
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
 
-module.exports = { compactDate, isWeekday, loadCandidates, repositoryFromEnvironment, runSession, runTick, tickDecision };
+module.exports = { candidateSourceUrl, compactDate, isWeekday, loadCandidates, repositoryFromEnvironment, runSession, runTick, tickDecision };

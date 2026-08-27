@@ -6,7 +6,7 @@
 
 - 前端網站：https://wushinhuei.github.io/tw-stock-bot/
 - 音訊無縫循環與 MP3 輸出：https://wushinhuei.github.io/tw-stock-bot/audio-loop/
-- Apps Script 專案：https://script.google.com/d/10V4wAflJ30eQBWCsfikj-4xPX5uKY0IgBIGeaDarqeUJoiMd5ob8O_9o/edit
+- Apps Script 專案「台股操作策略v1.0」：https://script.google.com/home/projects/1YM-Y28i7gGB9mMtVYzN53toJFJHT8ksoDCrZrX-ELJ_VONpIcjdRyqga/edit
 
 ## 執行流程
 
@@ -52,6 +52,10 @@ npm.cmd run check
 3. 依 `deploy/scheduler.md` 建立台北時間工作日每 5 分鐘觸發的排程；程式只接受 08:50 至 13:20，並在初始化模擬與讀寫雲端資料前排除證交所休市日。
 4. `CANDIDATE_SNAPSHOT_URL` 可傳完整 `candidates[]`，或 `volumeRows[]` 與 `enrichmentBySymbol` 讓 Cloud Run 篩選及評分。
 5. Apps Script 的 Script Property 設 `TW_STOCK_CLOUD_DASHBOARD_URL`，建立新版 Web App 部署後驗證匿名讀取。
+
+## 帳戶轉移與完整重裝
+
+執行 `deploy/build-portable-package.ps1` 可建立不含登入權杖、服務帳戶金鑰、`.clasp.json`、Git 紀錄及暫存資料的可攜 ZIP。新帳戶的設定範本、Google Cloud 重建腳本、Apps Script／Sheets／Drive／GitHub Pages 安裝順序及回復方式，請依 `deploy/PORTABLE-DEPLOYMENT.md` 操作。
 
 回測使用 `RUN_MODE=backtest` 與 `BACKTEST_INPUT_URL`。資料須含按時間排列的 `frames[]`，不可用未來事件回填當時分數。Investing.com RSS 只從啟用後做前測對照，不列入三年正式評分。
 

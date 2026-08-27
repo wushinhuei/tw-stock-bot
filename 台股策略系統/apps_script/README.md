@@ -8,10 +8,18 @@ This folder is the Apps Script version of the simulation backend. It is designed
 2. Copy `Code.gs` into the script editor.
 3. Copy `appsscript.json` into Project Settings > Show appsscript.json manifest file.
 4. Run `installRealtimeTradingTrigger()` once and authorize it.
-5. Deploy as Web app:
+5. Run `configureDailyHistoryUpdate()` once to install the 19:15 and 21:15 aligned market-history updates.
+6. Run `configureMopsRollingUpdate()` once to install the 22:30 MOPS/TWSE OpenAPI update.
+7. Deploy as Web app:
    - Execute as: Me
    - Who has access: Anyone
-6. Copy the Web app URL into `web/apps_script_config.js`.
+8. Copy the Web app URL into `web/apps_script_config.js`.
+
+## MOPS rolling data
+
+`updateMopsRollingData()` updates the existing Traditional-Chinese Drive folders with the minimum data used by analysis: company basics, monthly revenue, current quarterly financial tables, daily material messages, and exact filing timestamps found in official messages. Files are merged by stable keys so retries do not duplicate rows. Statutory deadlines are never substituted for an unavailable official filing timestamp.
+
+The ten-year quarterly XBRL build remains a separate initial Cloud Run/local backfill because forty ZIP archives exceed a normal Apps Script execution window. Rolling OpenAPI updates preserve that archive and add newly published periods.
 
 ## Web API
 

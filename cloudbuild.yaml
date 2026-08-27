@@ -24,6 +24,6 @@ substitutions:
   _REPOSITORY: tw-stock
   _GCS_BUCKET: project-aef205b5-5c27-4084-94c-tw-stock-data
   _RUNTIME_SERVICE_ACCOUNT: tw-stock-runtime@project-aef205b5-5c27-4084-94c.iam.gserviceaccount.com
-  _CANDIDATE_SNAPSHOT_URL: https://script.google.com/macros/s/AKfycbxMSe1WvXNjTbAzxZSP8mD_9wt11BIGQSyaFTktoet_v7WQ1KujUu19pflwS6zHfhqt/exec
+  _CANDIDATE_SNAPSHOT_URL: 'https://script.google.com/macros/s/AKfycbxMSe1WvXNjTbAzxZSP8mD_9wt11BIGQSyaFTktoet_v7WQ1KujUu19pflwS6zHfhqt/exec?action=refresh&force=1'
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA'
