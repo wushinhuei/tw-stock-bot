@@ -18,7 +18,7 @@ const { createDashboardServer } = require('../src/api');
 const { closedDatesFromSchedule, rocCompactToYmd } = require('../src/trading_calendar');
 const { createMonthlyArchive, previousTaipeiMonth } = require('../src/monthly_archive');
 const { fetchQuotes } = require('../src/twse');
-const { enrichCandidatesWithLiveScores } = require('../src/live_scoring');
+const { driveChipSignals, enrichCandidatesWithLiveScores, fetchDriveTechnicalBars } = require('../src/live_scoring');
 const { aggregateBars, fetchChart, weeklyBars } = require('../src/yahoo');
 const { executionRiskReasons, scoreChipSignals } = require('../src/chip');
 const { DRIVE_DATASETS, MOPS_ROLLING, DriveHistorySource, parseCsv, parseJsonl } = require('../src/drive_history');
@@ -258,7 +258,7 @@ test('Cloud live scoring computes OBV and blocks incomplete technical data', asy
   const completeBars = { bars5m: bars(80), bars15m: bars(80), dailyBars: bars(100), weeklyBars: weeklyBars(bars(100).map((bar, i) => ({ ...bar, timestamp: new Date(Date.UTC(2024, 0, 1 + i * 7)).toISOString() }))), provider: 'test' };
   const [complete] = await enrichCandidatesWithLiveScores([candidate], { now: new Date('2026-08-25T03:01:00Z'), fetchBars: async () => completeBars });
   assert.equal(complete.dataStatus, 'COMPLETE');
-  assert.equal(complete.scoringMethod, 'CLOUD_LIVE_V2');
+  assert.equal(complete.scoringMethod, 'CLOUD_DRIVE_LONG_ONLY_V1');
   assert.equal(complete.metrics.obv.bullish, true);
   const [stale] = await enrichCandidatesWithLiveScores([{ ...candidate, timestamp: '2026-08-25T09:00:00+08:00' }], { now: new Date('2026-08-25T03:01:00Z'), fetchBars: async () => completeBars });
   assert.equal(stale.entryTier, 'NONE');
@@ -282,6 +282,51 @@ test('Apps Script scenario adapter enforces top 50 and creates 100-point compone
   assert.equal(result.candidates[0].metrics.volumeRank, 5);
   assert.equal(Object.values(result.candidates[0].components).reduce((a, b) => a + b, 0), result.candidates[0].score);
   assert.equal(result.candidates[0].strategy, 'SWING');
+});
+
+test('long-only adapter never keeps a legacy odd-lot day-trade strategy', () => {
+  const result = adaptCandidatePayload({ candidates: [{
+    symbol: '2330', price: 100, bidPrice: 99.9, askPrice: 100, strategy: 'DAY_TRADE',
+    grade: 'A', dayTradeOk: true, overnightOk: false, fundamentalOk: true, chipOk: true,
+    trendOk: true, momentumOk: true, volumePriceOk: true,
+    metrics: { latestQuoteTime: '2026-08-28T01:10:00Z', spreadPct: 0.001 }
+  }] }, { time: '09:10' });
+  assert.equal(result.candidates[0].strategy, 'SWING');
+  assert.equal(CONFIG.strategyMode, 'LONG_ONLY');
+});
+
+test('Drive technical enrichment combines Drive daily bars with intraday bars', async () => {
+  const daily = bars(100).map((bar, index) => ({ ...bar, timestamp: new Date(Date.UTC(2025, 0, 1 + index * 2)).toISOString() }));
+  const result = await fetchDriveTechnicalBars({ symbol: '2330' }, {
+    now: new Date('2026-08-28T01:10:00Z'), driveTradeDate: '2026-08-27',
+    driveSource: {
+      adjustedDailyBars: async (symbol) => { assert.equal(symbol, '2330'); return daily; },
+      marketFlowRows: async () => [{
+        trade_date: '2026-08-27', institutional_total_net: '1000', foreign_net: '800',
+        investment_trust_net: '100', dealer_total_net: '100', margin_previous_balance: '1000',
+        margin_current_balance: '990', short_previous_balance: '100', short_current_balance: '90',
+        sbl_previous_balance: '200', sbl_current_balance: '180'
+      }]
+    },
+    fetchIntradayBars: async () => ({ bars5m: bars(80), bars15m: bars(30), provider: 'intraday-test' })
+  });
+  assert.equal(result.dailyBars.length, 100);
+  assert.ok(result.weeklyBars.length >= 20);
+  assert.equal(result.driveTradeDate, '2026-08-27');
+  assert.match(result.provider, /Google Drive/);
+  assert.equal(result.chipSignals.institutional.totalNet, 1000);
+});
+
+test('Drive market flow becomes the long-only chip scoring source', () => {
+  const chip = driveChipSignals([{
+    trade_date: '2026-08-27', institutional_total_net: '500', foreign_net: '300',
+    investment_trust_net: '100', dealer_total_net: '100', margin_previous_balance: '1000',
+    margin_current_balance: '1100', short_previous_balance: '200', short_current_balance: '180',
+    sbl_previous_balance: '400', sbl_current_balance: '360'
+  }]);
+  assert.equal(chip.source, 'Google Drive TWSE每日籌碼');
+  assert.equal(chip.marginChangeRatio, 0.1);
+  assert.equal(chip.securitiesLendingChangeRatio, -0.1);
 });
 
 test('stale quote and official risk hard-block an otherwise strong candidate', () => {

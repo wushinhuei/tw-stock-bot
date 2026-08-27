@@ -41,7 +41,7 @@ const CONFIG = {
   maxScanCandidates: 30,
   monthlyTargetReturnMin: 0.03,
   monthlyTargetReturnMax: 0.05,
-  allowDayTrade: true,
+  allowDayTrade: false,
   allowOvernight: true,
   allowChasing: true,
   allowMarketableOrders: true,

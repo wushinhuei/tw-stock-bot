@@ -39,7 +39,10 @@ function strategyExposure(account, strategy) {
 
 function maxEntryBudget(account, strategy, config = CONFIG, entryPct = config.firstEntryPct) {
   const capRemaining = account.equity * config.strategyCaps[strategy] - strategyExposure(account, strategy);
-  const dailyRemaining = account.equity * config.dailyNewCapitalPct - account.dailyNewCapital;
+  const percentageLimit = account.equity * config.dailyNewCapitalPct;
+  const dailyLimit = Number.isFinite(Number(config.dailyNewCapitalLimit))
+    ? Math.min(percentageLimit, Number(config.dailyNewCapitalLimit)) : percentageLimit;
+  const dailyRemaining = dailyLimit - account.dailyNewCapital;
   const turnoverRemaining = account.equity * config.dailyTurnoverPct - account.dailyTurnover;
   const reserveRemaining = account.bankCash - account.equity * config.minCashReservePct;
   return Math.max(0, Math.min(account.equity * entryPct, capRemaining, dailyRemaining, turnoverRemaining, reserveRemaining, availableToBuy(account, config)));
@@ -223,6 +226,7 @@ class SimulationEngine {
     }));
     return {
       ok: true, source: 'google-cloud-simulator', generatedAt: new Date().toISOString(),
+      strategyMode: this.config.strategyMode,
       schedule: { pollMs: this.config.marketPollMs, sessionStart: this.config.sessionStart, sessionEnd: this.config.sessionEnd },
       account: this.account, candidates, internationalNews: this.news.slice(0, 30), taiwanMediaNews: this.taiwanMediaNews.slice(0, 30), risk,
       scenario: [{

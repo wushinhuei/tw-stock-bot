@@ -1,6 +1,7 @@
 'use strict';
 
 const CONFIG = Object.freeze({
+  strategyMode: 'LONG_ONLY',
   timezone: 'Asia/Taipei',
   initialCapital: 100000,
   rawVolumeReviewLimit: 100,
@@ -18,6 +19,7 @@ const CONFIG = Object.freeze({
   strategyCaps: Object.freeze({ SWING: 0.30, OVERNIGHT: 0.15, DAY_TRADE: 0.15 }),
   minCashReservePct: 0.40,
   dailyNewCapitalPct: 0.20,
+  dailyNewCapitalLimit: 300000,
   dailyTurnoverPct: 0.40,
   firstEntryPct: 0.10,
   addOnPct: 0.05,

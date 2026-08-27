@@ -97,4 +97,16 @@ async function fetchTechnicalBars(symbol, fetchImpl = fetch) {
   };
 }
 
-module.exports = { aggregateBars, chartBars, fetchChart, fetchTechnicalBars, weeklyBars };
+async function fetchIntradayBars(symbol, fetchImpl = fetch) {
+  const yahooSymbol = String(symbol).includes('.') ? String(symbol) : `${symbol}.TW`;
+  const intraday = await fetchChart(yahooSymbol, '5d', '5m', fetchImpl);
+  const bars5m = chartBars(intraday);
+  return {
+    bars5m,
+    bars15m: aggregateBars(bars5m, 15 * 60 * 1000),
+    provider: 'Yahoo Finance Chart API',
+    fetchedAt: new Date().toISOString()
+  };
+}
+
+module.exports = { aggregateBars, chartBars, fetchChart, fetchIntradayBars, fetchTechnicalBars, weeklyBars };

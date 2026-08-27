@@ -10,9 +10,14 @@ function latestScenario(payload) {
 }
 
 function strategyFor(candidate, time = '09:10') {
-  if (candidate.dayTradeOk && time <= CONFIG.dayTradeEntryCutoff) return 'DAY_TRADE';
   if (candidate.overnightOk && time >= CONFIG.overnightEntryStart) return 'OVERNIGHT';
   return 'SWING';
+}
+
+function longOnlyStrategy(candidate, time) {
+  return ['SWING', 'OVERNIGHT'].includes(candidate.strategy)
+    ? candidate.strategy
+    : strategyFor(candidate, time);
 }
 
 function legacyComponents(candidate) {
@@ -51,7 +56,7 @@ function adaptCandidate(candidate, context = {}) {
   const grade = blockedReasons.length ? 'BLOCKED' : score >= 80 ? 'A' : score >= 65 ? 'B' : score >= 50 ? 'C' : 'BLOCKED';
   return {
     ...candidate, score, grade, components, blockedReasons,
-    strategy: candidate.strategy || strategyFor(candidate, context.time),
+    strategy: longOnlyStrategy(candidate, context.time),
     quoteFresh: Boolean(quoteTime),
     sourceGrade: candidate.grade,
     scoringMethod: candidate.components ? 'CLOUD_NATIVE' : 'APPS_SCRIPT_ADAPTER_V1'
@@ -74,4 +79,4 @@ function adaptCandidatePayload(payload, context = {}) {
   };
 }
 
-module.exports = { adaptCandidate, adaptCandidatePayload, latestScenario, legacyComponents, strategyFor };
+module.exports = { adaptCandidate, adaptCandidatePayload, latestScenario, legacyComponents, longOnlyStrategy, strategyFor };

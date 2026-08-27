@@ -6,15 +6,15 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>台股自動模擬交易系統</title>
+  <title>台股純做多模擬交易系統</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
     <div>
-      <p class="eyebrow">Forced Rules Simulation</p>
-      <h1>台股每日自動買賣模擬</h1>
-      <p class="hero-copy">從 2026-08-20 起以初始資金 10 萬每日模擬買賣，以零股操作為主，優先保護本金、沒條件不操作，統計扣除手續費與交易稅後的每週表現；目前只模擬，不下單。</p>
+      <p class="eyebrow">Long-only Rules Simulation</p>
+      <h1>台股純做多零股模擬</h1>
+      <p class="hero-copy">從 2026-08-20 起以初始資金 10 萬進行零股純做多模擬，只做先買後賣的隔日沖與波段，不建立空單、不把零股視為現股當沖；目前只模擬，不下單。</p>
     </div>
     <div class="top-actions">
       <button type="button" id="refreshDataButton" class="primary-action">更新資料</button>
@@ -83,7 +83,7 @@
       <div class="section-title">
         <div>
           <h2>目前模擬持倉</h2>
-          <p>買賣依大盤濾網、A/B 分級、停損、目標價、假突破與當沖規則自動執行。</p>
+          <p>零股買賣依大盤濾網、A/B 分級、停損、目標價與假突破規則自動執行，只做多、不放空。</p>
         </div>
       </div>
       <div class="table-wrap">
@@ -108,7 +108,7 @@
       <div class="section-title">
         <div>
           <h2>每日資產曲線</h2>
-          <p>自 2026-08-20 起，每個交易日自動檢查賣出、買進與當沖機會。</p>
+          <p>自 2026-08-20 起，每個交易日自動檢查零股買進、隔日沖與波段賣出機會。</p>
         </div>
       </div>
       <div id="equityCurve" class="equity-curve" aria-label="每日資產曲線"></div>
@@ -118,7 +118,7 @@
       <div class="section-title">
         <div>
           <h2>今日自動交易紀錄</h2>
-          <p>只顯示今天的波段買賣與當沖模擬交易；若今天沒有觸發規則，則顯示暫無交易。</p>
+          <p>只顯示今天的純做多零股買賣；若今天沒有觸發規則，則顯示暫無交易。</p>
         </div>
       </div>
       <div class="table-wrap">
@@ -253,7 +253,7 @@
       <div class="rules-header">
         <div>
           <p class="eyebrow">Trading Rulebook</p>
-          <h2 id="rulesTitle">台股自動模擬操作規則</h2>
+          <h2 id="rulesTitle">台股純做多模擬操作規則</h2>
         </div>
         <button type="button" class="icon-close" data-close-rules aria-label="關閉操作規則">×</button>
       </div>
@@ -269,6 +269,7 @@
             <li>初始資金 100,000 元，從 2026-08-20 開始，以零股操作為主。</li>
             <li>所有損益都扣除手續費與交易稅後才列入績效。</li>
             <li>同一股票同時只允許一種策略；下跌禁止攤平，只有獲利且 OBV 確認時才允許一次策略加碼。</li>
+            <li>本網址固定為純做多版本：零股只做先買後賣的隔日沖與波段，不建立無券、融券或其他空方部位。</li>
           </ul>
         </section>
 
@@ -288,7 +289,7 @@
             <li>週末及證交所休市日不執行交易工作；按下頁面上方「更新資料」可立即強制更新。</li>
             <li>盤中股價、最佳買價及最佳賣價以臺灣證券交易所 TWSE MIS 行情為主要來源。</li>
             <li>上市股票成交量排名及候選母體使用 TWSE MI_INDEX 資料。</li>
-            <li>5 分鐘與日線歷史價格使用 Yahoo Finance Chart API，供 Cloud Run 計算 5／15 分鐘、日／週線及 OBV；此資料只作技術分析，不視為券商成交價。</li>
+            <li>日線、週線與 OBV 使用 Google Drive 中日期一致且完整的 TWSE 歷史資料；盤中 5 分鐘與 15 分鐘線使用 Yahoo Finance Chart API 補充技術分析，兩者都不視為券商成交價。</li>
             <li>收盤後若有盤後定價交易，使用 TWSE BFT41U 的盤後成交價及成交量。</li>
             <li>Investing.com 與財經新聞網站只供消息查核，不作為台股模擬成交價格。</li>
             <li>行情缺漏、時間戳過期、買賣價無效，或技術 K 線／OBV 資料不足時，標示資料不完整並阻擋新交易，不以 0 分或假價格補單。</li>
@@ -336,12 +337,11 @@
         </section>
 
         <section>
-          <h3>三策略與資金配置</h3>
+          <h3>純做多策略與資金配置</h3>
           <div class="rules-table">
-            <div><strong>當沖：上限 15%</strong><span>使用 5 分與 15 分線；約 -1% 停損、+1.5% 停利，13:20 前平倉。</span></div>
             <div><strong>隔日沖：上限 15%</strong><span>使用 15 分與日線；約 -2% 停損、+3% 停利，最多持有 3 個交易日。</span></div>
             <div><strong>波段：上限 30%</strong><span>使用日線與週線；初始停損約 -6%，+5% 後移至保本，+8% 先賣一半。</span></div>
-            <div><strong>現金：至少 40%</strong><span>不得挪用；每日新增投入最高 20%，每日總周轉最高 40%。</span></div>
+            <div><strong>現金：至少 40%</strong><span>不得挪用；每日新增投入受總資產 20% 與 30 萬元兩項上限約束，取較低者。</span></div>
           </div>
           <ul>
             <li>A 級單股首次買進最高總資產 10%；75–79 分試單最高 5%；策略加碼最高 5%，單股總持倉最高 15%。</li>
@@ -360,18 +360,17 @@
             <li>A/B 持倉若跌破停損價，下一次模擬賣出。</li>
             <li>現價達目標價，視為停利候選並執行賣出規則。</li>
             <li>價格未跌破停損但等級轉為 C，列為防守觀察，不再加碼。</li>
-            <li>當沖單跌回魔王線、買進 K 棒低點或價差不利時，立即模擬平倉。</li>
+            <li>隔日沖或波段部位跌破買進 K 棒低點、停損價或關鍵價時，立即依賣出規則處理。</li>
           </ul>
         </section>
 
         <section>
-          <h3>當沖規則</h3>
+          <h3>純做多限制</h3>
           <ul>
-            <li>開盤前 5 分鐘不搶單，先觀察大盤方向與個股是否站穩。</li>
-            <li>優先選成交量大、流動性佳、振幅足夠的股票。</li>
-            <li>只做 A 級且價差小、量能放大、盤中波動足夠的標的。</li>
-            <li>突破魔王線需 1 分 K 實體紅棒完整越過，且成交量明顯放大。</li>
-            <li>跌破買進 K 棒低點或跌回關鍵價下方，立刻出場，不凹單。</li>
+            <li>只允許零股買進後賣出，不建立賣出後買回的空方部位。</li>
+            <li>盤中零股不視為現股當沖；新買部位依隔日沖或波段規則管理。</li>
+            <li>同股已有持倉時禁止因刷新重複買進，只允許一次符合條件的獲利加碼。</li>
+            <li>下跌禁止攤平；跌破停損或重大風險成立時優先賣出。</li>
           </ul>
         </section>
 
@@ -391,7 +390,7 @@
             <li>收盤後納入證交所 BFT41U 盤後定價交易資料。</li>
             <li>有盤後成交量與成交價時，才用盤後價估算買進、賣出與持倉價值。</li>
             <li>同一交易日只執行一次盤後階段，避免重複買賣。</li>
-            <li>盤後不做當沖；盤後刷新只管理既有狀態，不得因重整或重複觸發再次買進。</li>
+            <li>盤後刷新只管理既有狀態，不得因重整或重複觸發再次買進。</li>
           </ul>
         </section>
 
@@ -422,7 +421,6 @@
           <ul>
             <li>買進與賣出都扣券商手續費。</li>
             <li>現股賣出交易稅用 0.3%。</li>
-            <li>當沖賣出交易稅用 0.15%。</li>
             <li>手續費未滿最低收費時，依最低收費計算。</li>
           </ul>
         </section>

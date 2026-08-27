@@ -118,6 +118,8 @@ async function runTick(options = {}) {
   await engine.restore();
   let candidates = options.candidates || await loadCandidates();
 
+  if (CONFIG.strategyMode !== 'LONG_ONLY') throw new Error(`Unsupported strategy mode: ${CONFIG.strategyMode}`);
+
   // RSS is advisory-only and comparatively slow. Refresh on ten-minute boundaries;
   // quotes, positions and orders are still evaluated on every five-minute tick.
   const minute = Number(decision.time.slice(3, 5));
