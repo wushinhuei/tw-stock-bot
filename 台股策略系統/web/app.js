@@ -1,4 +1,5 @@
 const CONFIG = {
+  strategyMode: 'LONG_ONLY',
   initialCapital: 100000,
   simulationStartDate: '2026-08-20',
   boardLot: 1,
@@ -11,7 +12,7 @@ const CONFIG = {
   dailyProfitLockPct: 0.003,
   weeklyStopLossPct: -0.05,
   minStrongPeers: 2,
-  dayTradeCapitalPct: 0.08,
+  dayTradeCapitalPct: 0,
   overnightPositionPct: 0.12,
   afterMarketPositionPct: 0.1,
   brokerFeeRate: 0.001425,
@@ -397,6 +398,7 @@ function buyByRules(account, day, marketState) {
 }
 
 function runDayTrades(account, day, marketState) {
+  if (CONFIG.strategyMode === 'LONG_ONLY') return;
   if (day.session === 'AFTER_MARKET') return;
   if (marketState.mode === 'DEFENSIVE' || account.dailyStopped) return;
   day.candidates
