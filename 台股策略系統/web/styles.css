@@ -193,6 +193,29 @@ button:hover,
   border-top-color: var(--red);
 }
 
+.metric-action {
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.metric-action:hover,
+.metric-action:focus-visible {
+  border-color: #9fb2c7;
+  box-shadow: 0 14px 32px rgba(31, 43, 58, 0.13);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.metric-action::after {
+  content: "查看紀錄";
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .metric span,
 .totals span {
   color: var(--muted);
@@ -472,6 +495,10 @@ tbody tr:hover {
 
 .status-dialog {
   max-width: 760px;
+}
+
+.pnl-dialog {
+  width: min(980px, 100%);
 }
 
 .status-summary,
