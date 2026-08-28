@@ -209,6 +209,13 @@
     realized.setAttribute('role', 'button');
     realized.setAttribute('tabindex', '0');
     realized.setAttribute('aria-controls', 'pnlModal');
+    const realizedLabel = realized.querySelector('span');
+    const realizedStrong = realized.querySelector('strong');
+    if (realizedLabel) realizedLabel.textContent = '已實現損益';
+    if (realizedStrong) {
+      realizedStrong.id = 'realizedPnl';
+      realizedStrong.textContent = '-';
+    }
     const realizedSmall = realized.querySelector('small');
     if (realizedSmall && !document.querySelector('#realizedPnlPct')) {
       realizedSmall.removeAttribute('id');
