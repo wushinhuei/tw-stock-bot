@@ -21,19 +21,36 @@ jobs:
   update-static-dashboard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+
+      - name: Checkout GitHub Pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: pages
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Update GitHub Pages static backup data
+      - name: Update static backup data on main
+        working-directory: main
         run: node scripts/update_static_dashboard_backup.js
 
-      - name: Commit updated backup files
+      - name: Copy backup data to GitHub Pages branch
+        run: |
+          cp main/台股策略系統/web/actual_data.js pages/台股策略系統/web/actual_data.js
+          cp main/台股策略系統/web/simulation_result.js pages/台股策略系統/web/simulation_result.js
+
+      - name: Commit updated backup files to main
+        working-directory: main
         run: |
           if git diff --quiet -- 台股策略系統/web/actual_data.js 台股策略系統/web/simulation_result.js; then
-            echo "No static backup changes."
+            echo "No main static backup changes."
             exit 0
           fi
 
@@ -41,4 +58,18 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add 台股策略系統/web/actual_data.js 台股策略系統/web/simulation_result.js
           git commit -m "Update static dashboard backup"
+          git push
+
+      - name: Commit updated backup files to gh-pages
+        working-directory: pages
+        run: |
+          if git diff --quiet -- 台股策略系統/web/actual_data.js 台股策略系統/web/simulation_result.js; then
+            echo "No GitHub Pages static backup changes."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 台股策略系統/web/actual_data.js 台股策略系統/web/simulation_result.js
+          git commit -m "Publish static dashboard backup"
           git push
