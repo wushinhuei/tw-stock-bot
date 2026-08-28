@@ -8,6 +8,7 @@ const { buildUniverse } = require('./scanner');
 const { adaptCandidatePayload } = require('./candidate_adapter');
 const { isTwseTradingDay } = require('./trading_calendar');
 const { enrichCandidatesWithLiveScores } = require('./live_scoring');
+const { triggerStaticBackupOnTrades } = require('./static_backup');
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function compactDate(date) { return date.replace(/-/g, ''); }
@@ -50,6 +51,14 @@ async function loadCandidates() {
   return adaptCandidatePayload(payload, { time: taipeiTime() }).candidates;
 }
 
+async function publishDashboardAndSyncBackup(repository, engine, candidates, tradesBefore) {
+  const dashboard = engine.dashboard(candidates);
+  if (repository.publishDashboard) await repository.publishDashboard(dashboard);
+  const newTrades = engine.account.trades.slice(tradesBefore);
+  if (newTrades.length) await triggerStaticBackupOnTrades(newTrades);
+  return dashboard;
+}
+
 async function runSession() {
   const sessionNow = new Date();
   if (!isWeekday(sessionNow) || !await isTwseTradingDay(sessionNow, { ymd: taipeiDate(sessionNow) })) {
@@ -60,6 +69,7 @@ async function runSession() {
   await engine.restore();
   let candidates = await loadCandidates();
   let lastNewsAt = 0;
+  let latestDashboard = null;
   while (taipeiTime() <= CONFIG.sessionEnd) {
     const now = new Date();
     const time = taipeiTime(now);
@@ -75,15 +85,16 @@ async function runSession() {
       candidates = candidates.map(candidate => ({ ...candidate, ...(quotes[candidate.symbol] || {}) }));
       candidates = await enrichCandidatesWithLiveScores(candidates, { now });
       const context = { date, time, signalTimestamp: now.toISOString(), marketMode: 'NORMAL' };
+      const tradesBefore = engine.account.trades.length;
       engine.processCandidates(candidates, context);
       engine.processQuotes(quotes, candidates, context);
       await repository.saveSnapshot({ timestamp: now.toISOString(), quotes });
       await repository.saveState({ account: engine.account });
-      if (repository.publishDashboard) await repository.publishDashboard(engine.dashboard(candidates));
+      latestDashboard = await publishDashboardAndSyncBackup(repository, engine, candidates, tradesBefore);
     }
     await sleep(CONFIG.marketPollMs);
   }
-  return engine.dashboard(candidates);
+  return latestDashboard || engine.dashboard(candidates);
 }
 
 function candidateSourceUrl(value) {
@@ -137,11 +148,12 @@ async function runTick(options = {}) {
     const context = {
       date: taipeiDate(now), time: decision.time, signalTimestamp: now.toISOString(), marketMode: 'NORMAL'
     };
+    const tradesBefore = engine.account.trades.length;
     engine.processCandidates(candidates, context);
     engine.processQuotes(quotes, candidates, context);
     await repository.saveSnapshot({ timestamp: now.toISOString(), quotes });
     await repository.saveState({ account: engine.account });
-    if (repository.publishDashboard) await repository.publishDashboard(engine.dashboard(candidates));
+    await publishDashboardAndSyncBackup(repository, engine, candidates, tradesBefore);
   }
   return engine.dashboard(candidates);
 }
