@@ -38,16 +38,17 @@
         <strong id="totalReturn">-</strong>
         <small>以 10 萬初始資金計算</small>
       </article>
-      <article class="panel metric">
+      <article class="panel metric metric-action" data-pnl-card="realized" role="button" tabindex="0" aria-controls="pnlModal">
         <span>已實現損益</span>
         <strong id="realizedPnl">-</strong>
-        <small id="tradeCount">-</small>
+        <small><span id="realizedPnlPct">-</span>；<span id="tradeCount">-</span></small>
       </article>
-      <article class="panel metric">
-        <span>最大回撤</span>
-        <strong id="maxDrawdown">-</strong>
-        <small>用每日總資產峰值計算</small>
+      <article class="panel metric metric-action" data-pnl-card="unrealized" role="button" tabindex="0" aria-controls="pnlModal">
+        <span>未實現損益</span>
+        <strong id="unrealizedPnl">-</strong>
+        <small><span id="unrealizedPnlPct">-</span>；<span id="unrealizedPositionCount">-</span></small>
       </article>
+      <span id="maxDrawdown" hidden>-</span>
     </section>
 
     <section class="panel workspace">
@@ -248,6 +249,20 @@
     </section>
   </div>
 
+  <div id="pnlModal" class="rules-modal" hidden>
+    <div class="rules-backdrop" data-close-pnl></div>
+    <section class="rules-dialog pnl-dialog" role="dialog" aria-modal="true" aria-labelledby="pnlModalTitle">
+      <div class="rules-header">
+        <div>
+          <p class="eyebrow">Profit and Loss</p>
+          <h2 id="pnlModalTitle">損益紀錄</h2>
+        </div>
+        <button type="button" class="icon-close" data-close-pnl aria-label="關閉損益紀錄">×</button>
+      </div>
+      <div id="pnlModalContent" class="rules-content"></div>
+    </section>
+  </div>
+
   <div id="rulesModal" class="rules-modal" hidden>
     <div class="rules-backdrop" data-close-rules></div>
     <section class="rules-dialog" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
@@ -281,7 +296,8 @@
             <li>再看同族群是否至少 2 到 3 檔同步轉強。</li>
             <li>檢查個股產業、基本面、籌碼是否合格。</li>
             <li>確認布林擠壓、W 底、VCP、均線多頭與帶量突破。</li>
-            <li>確認 MACD 零軸上、RSI 站上 50，KD 不逆勢解讀。</li>
+            <li>確認 MACD 零軸上、柱狀圖翻紅，代表多頭動能較強。</li>
+            <li>RSI 站上 50 偏多；強勢股 RSI 大於 70 不一定立刻賣出。</li>
             <li>依 A/B/C 等級決定是否交易與部位。</li>
             <li>開盤前檢查國際股市、費半、台指期、匯率、重大新聞與族群題材。</li>
             <li>下單前確認限價、追價上限與抽單條件；達到日損、週損或每日小賺目標即停止新增風險。</li>
@@ -433,6 +449,7 @@
   <script src="actual_data.js?v=20260810-actual"></script>
   <script src="simulation_result.js?v=20260810-actions"></script>
   <script src="app.js?v=20260828-long-only-v1"></script>
+  <script src="pnl_cards.js?v=20260828-pnl-cards-v1"></script>
   <script src="no_trade_reasons.js?v=20260828-no-trade-reasons-v1"></script>
 </body>
 </html>
