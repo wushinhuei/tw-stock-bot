@@ -14,6 +14,9 @@ const MOPS_DRIVE = {
   validationFolder: '1zN3mhXleUSdg_zc3_pZRwXpn0J3dXmcL'
 };
 
+const ANALYSIS_UNIVERSE_FILE = 'analysis_universe.jsonl';
+const ANALYSIS_UNIVERSE_MANIFEST = 'analysis_universe_manifest.json';
+
 const MOPS_OPENAPI_BASE = 'https://openapi.twse.com.tw/v1/opendata/';
 const CLOUD_RUN_DRIVE_READER = 'tw-stock-runtime@project-aef205b5-5c27-4084-94c.iam.gserviceaccount.com';
 const CLOUD_RUN_ANALYSIS_FOLDERS = [
@@ -106,7 +109,7 @@ function updateMopsRollingData() {
     const now = new Date();
     const year = Utilities.formatDate(now, 'Asia/Taipei', 'yyyy');
     const allowed = mopsAllowedSymbols();
-    if (!Object.keys(allowed).length) throw new Error('MOPS 更新找不到前50歷史母體');
+    if (!Object.keys(allowed).length) throw new Error('MOPS 更新找不到分析母體');
 
     const companyRows = mopsFetchOpenApi('t187ap03_L').filter(function(row) {
       return allowed[mopsStockCode(row)];
@@ -155,13 +158,14 @@ function updateMopsRollingData() {
     };
     const manifest = {
       dataset: 'MOPS_ROLLING', generated_at: now.toISOString(), status: financialErrors.length ? 'complete_with_warnings' : 'complete',
-      universe: 'stocks ever entering TWSE_TOP50', symbol_count: Object.keys(allowed).length,
+      universe: 'historical TWSE_TOP50 union latest TWSE_TOP100', symbol_count: Object.keys(allowed).length,
       source: 'TWSE OpenAPI', source_base: MOPS_OPENAPI_BASE,
       point_in_time_rule: 'Only official filing_date and filing_time form available_from; statutory deadlines are never substituted.',
       results: results, warnings: financialErrors,
       historical_xbrl: 'Initial 10-year quarterly backfill is maintained separately by the Cloud Run XBRL builder.'
     };
     mopsReplaceSnapshot(MOPS_DRIVE.validationFolder, 'mops_rolling_manifest.json', [manifest]);
+    rebuildAnalysisUniverseIndex({ mopsManifest: manifest });
     PropertiesService.getScriptProperties().setProperty('MOPS_LAST_SUCCESS', JSON.stringify(manifest));
     return { ok: true, status: manifest.status, generatedAt: manifest.generated_at, results: results, warnings: financialErrors };
   } finally {
@@ -315,6 +319,8 @@ function updateTenYearHistoryToLatestTradeDate() {
       daily: historyReadJson(HISTORY_DRIVE.stockDailyManifest),
       flow: historyReadJson(HISTORY_DRIVE.marketFlowManifest)
     };
+    const marketRows = historyParseMarketRows(market.json);
+    if (!marketRows.length) throw new Error('MI_INDEX 沒有可用的上市普通股資料');
     const latestDates = [
       manifests.top50.latest_successful_trade_date,
       manifests.daily.latest_successful_trade_date,
@@ -324,11 +330,23 @@ function updateTenYearHistoryToLatestTradeDate() {
       return Number(item.year) === Number(tradeDate.slice(0, 4)) && item.latest_trade_date >= tradeDate;
     });
     if (latestDates.every(function(value) { return value >= tradeDate; }) && rawCurrent) {
-      return { ok: true, status: 'already_current', tradeDate: tradeDate, latestDates: latestDates };
+      const currentTop100 = marketRows.slice().sort(function(a, b) { return b.trade_volume - a.trade_volume; }).slice(0, 100);
+      currentTop100.forEach(function(row, index) { row.rank = index + 1; });
+      const currentRawFile = historyEnsureRaw100File(manifests.top50, Number(tradeDate.slice(0, 4)));
+      const correctedRawCsv = historyAppendRows(historyReadText(currentRawFile.file_id), HISTORY_TOP50_HEADER, tradeDate,
+        currentTop100.map(function(row) { return historyTop50Values(tradeDate, row); }));
+      historyReplaceText(currentRawFile.file_id, correctedRawCsv, 'text/csv');
+      const historicalCodes = (manifests.daily.stock_codes || []).slice();
+      const queued = historyQueueNewTop100(manifests.daily, currentTop100, tradeDate);
+      historyReplaceText(HISTORY_DRIVE.stockDailyManifest, JSON.stringify(manifests.daily, null, 2) + '\n', 'application/json');
+      if ((manifests.daily.pending_backfill || []).some(function(item) { return item.status !== 'complete'; })) historyEnsureBackfillTrigger();
+      const universe = rebuildAnalysisUniverseIndex({
+        tradeDate: tradeDate, currentTop100: currentTop100,
+        historicalTop50Codes: historicalCodes, dailyManifest: manifests.daily
+      });
+      return { ok: true, status: 'already_current', tradeDate: tradeDate, latestDates: latestDates, newCodes: queued, universe: universe };
     }
 
-    const marketRows = historyParseMarketRows(market.json);
-    if (!marketRows.length) throw new Error('MI_INDEX 沒有可用的上市普通股資料');
     const volumeTop100 = marketRows.slice().sort(function(a, b) { return b.trade_volume - a.trade_volume; }).slice(0, 100);
     volumeTop100.forEach(function(row, index) { row.rank = index + 1; });
     const top50 = volumeTop100.slice(0, 50);
@@ -346,13 +364,13 @@ function updateTenYearHistoryToLatestTradeDate() {
 
     const knownCodes = {};
     (manifests.daily.stock_codes || []).forEach(function(code) { knownCodes[String(code)] = true; });
-    const newCodes = top50.filter(function(row) { return !knownCodes[row.stock_code]; }).map(function(row) { return row.stock_code; });
-    // 新制只續寫當日成交量前 50 名；被剔除股票保留歷史、停止新增資料。
-    const dailyRows = top50.slice();
+    const newCodes = volumeTop100.filter(function(row) { return !knownCodes[row.stock_code]; }).map(function(row) { return row.stock_code; });
+    // 每日只續寫當日前 100 名；離開前 100 的股票保留歷史但暫停增量更新。
+    const dailyRows = volumeTop100.slice();
 
     const flowPayload = historyFetchAlignedFlow(market.date);
-    const flowRows = historyBuildFlowRows(top50, flowPayload);
-    if (flowRows.length !== 50) throw new Error('市場資金流向資料不足 50 筆');
+    const flowRows = historyBuildFlowRows(volumeTop100, flowPayload);
+    if (flowRows.length !== 100) throw new Error('市場資金流向資料不足 100 筆');
 
     const nextTopCsv = historyAppendRows(topCsv, HISTORY_TOP50_HEADER, tradeDate,
       top50.map(function(row) { return historyTop50Values(tradeDate, row); }));
@@ -374,7 +392,7 @@ function updateTenYearHistoryToLatestTradeDate() {
     const now = new Date().toISOString();
     historyAdvanceManifest(manifests.top50, topFile, tradeDate, 50, now);
     historyAdvanceManifest(manifests.daily, dailyFile, tradeDate, dailyRows.length, now);
-    historyAdvanceManifest(manifests.flow, flowFile, tradeDate, 50, now);
+    historyAdvanceManifest(manifests.flow, flowFile, tradeDate, 100, now);
     raw100File.rows = Number(raw100File.rows || 0) + (raw100File.latest_trade_date >= tradeDate ? 0 : 100);
     raw100File.latest_trade_date = tradeDate; raw100File.updated_at = now;
     manifests.top50.selection_source_count = 100;
@@ -398,21 +416,28 @@ function updateTenYearHistoryToLatestTradeDate() {
       institutional_latest: tradeDate, margin_latest: tradeDate, lending_latest: tradeDate
     };
     manifests.flow.top50_alignment = { top50_latest: tradeDate, aligned: true };
+    manifests.flow.top100_alignment = { top100_latest: tradeDate, aligned: true };
     historyReplaceText(HISTORY_DRIVE.top50Manifest, JSON.stringify(manifests.top50, null, 2) + '\n', 'application/json');
     historyReplaceText(HISTORY_DRIVE.stockDailyManifest, JSON.stringify(manifests.daily, null, 2) + '\n', 'application/json');
     historyReplaceText(HISTORY_DRIVE.marketFlowManifest, JSON.stringify(manifests.flow, null, 2) + '\n', 'application/json');
 
     PropertiesService.getScriptProperties().setProperty('HISTORY_LAST_SUCCESS', JSON.stringify({
       at: now, tradeDate: tradeDate, rawRankingRows: 100, top50Rows: 50,
-      dailyRows: dailyRows.length, flowRows: 50, newCodes: newCodes
+      dailyRows: dailyRows.length, flowRows: 100, newCodes: newCodes
     }));
+    rebuildAnalysisUniverseIndex({
+      tradeDate: tradeDate,
+      currentTop100: volumeTop100,
+      historicalTop50Codes: Object.keys(knownCodes),
+      dailyManifest: manifests.daily
+    });
     return { ok: true, status: 'updated', tradeDate: tradeDate, dailyRows: dailyRows.length };
   } finally {
     lock.releaseLock();
   }
 }
 
-/** 分批補齊新入選股票自 2016-08-26（或上市日）起的官方月日線，避免 Apps Script 單次逾時。 */
+/** 分批補齊新進 TOP100 股票自 2016-08-26（或上市日）起的官方月日線，避免 Apps Script 單次逾時。 */
 function backfillNewTop50History() {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -435,9 +460,122 @@ function backfillNewTop50History() {
     task.updated_at = new Date().toISOString();
     manifest.generated_at = task.updated_at;
     historyReplaceText(HISTORY_DRIVE.stockDailyManifest, JSON.stringify(manifest, null, 2) + '\n', 'application/json');
+    rebuildAnalysisUniverseIndex({ dailyManifest: manifest });
     if (queue.every(function(item) { return item.status === 'complete'; })) historyDeleteBackfillTriggers();
     return { ok: true, stockCode: task.stock_code, status: task.status, nextMonth: task.next_month };
   } finally { lock.releaseLock(); }
+}
+
+/**
+ * 建立「歷史 TOP50 + 最新 TOP100」唯一母體索引。
+ * 回填或 MOPS 尚未完整時 analysis_ready 維持 false，供後續 Cloud Run 接軌使用。
+ */
+function rebuildAnalysisUniverseIndex(options) {
+  options = options || {};
+  const dailyManifest = options.dailyManifest || historyReadJson(HISTORY_DRIVE.stockDailyManifest);
+  const previousFile = mopsFindFile(MOPS_DRIVE.validationFolder, ANALYSIS_UNIVERSE_FILE);
+  const previous = {};
+  mopsReadJsonl(previousFile).forEach(function(row) { if (row.stock_code) previous[row.stock_code] = row; });
+  const currentTop100 = options.currentTop100 || historyLatestRaw100Rows();
+  const current = {};
+  currentTop100.forEach(function(row) { current[row.stock_code] = row; });
+  const historicalTop50 = {};
+  const initialHistorical = options.historicalTop50Codes || (!Object.keys(previous).length ? (dailyManifest.stock_codes || []) : []);
+  initialHistorical.forEach(function(code) { historicalTop50[String(code)] = true; });
+  Object.keys(previous).forEach(function(code) { if (previous[code].historical_top50) historicalTop50[code] = true; });
+  const codes = {};
+  Object.keys(previous).concat(Object.keys(historicalTop50), Object.keys(current)).forEach(function(code) {
+    const row = current[code] || previous[code] || {};
+    if (historyIsListedCommonStock(code, row.stock_name || '')) codes[code] = true;
+  });
+  const pending = {};
+  (dailyManifest.pending_backfill || []).forEach(function(item) { pending[item.stock_code] = item; });
+  const company = {};
+  mopsReadJsonl(mopsFindFile(MOPS_DRIVE.companyBasicFolder, 'company_basic_latest.jsonl')).forEach(function(row) {
+    if (row.stock_code) company[row.stock_code] = row;
+  });
+  const mopsManifestRows = mopsReadJsonl(mopsFindFile(MOPS_DRIVE.validationFolder, 'mops_rolling_manifest.json'));
+  const mopsManifest = options.mopsManifest || mopsManifestRows[0] || {};
+  const mopsComplete = String(mopsManifest.status || '') === 'complete' && !(mopsManifest.warnings || []).length;
+  const tradeDate = options.tradeDate || dailyManifest.latest_successful_trade_date || '';
+  const now = new Date().toISOString();
+  const rows = Object.keys(codes).sort().map(function(code) {
+    const old = previous[code] || {};
+    const quote = current[code] || {};
+    const task = pending[code];
+    const basic = company[code] || {};
+    const dailyComplete = !task || task.status === 'complete';
+    const missing = [];
+    if (!dailyComplete) missing.push('daily_history');
+    if (!basic.stock_code) missing.push('company_basic');
+    if (!mopsComplete) missing.push('mops_rolling');
+    return {
+      stock_code: code,
+      stock_name: quote.stock_name || basic.stock_name || old.stock_name || '',
+      industry: basic.industry || old.industry || '',
+      listing_date: basic.listing_date || old.listing_date || '',
+      first_top100_date: old.first_top100_date || (current[code] ? tradeDate : ''),
+      last_top100_date: current[code] ? tradeDate : (old.last_top100_date || ''),
+      active_top100: Boolean(current[code]),
+      current_top100_rank: current[code] ? Number(current[code].rank || 0) : null,
+      historical_top50: Boolean(historicalTop50[code] || old.historical_top50),
+      daily_history_status: dailyComplete ? 'complete' : String(task.status || 'pending'),
+      mops_status: basic.stock_code && mopsComplete ? 'complete' : 'pending',
+      analysis_ready: missing.length === 0,
+      missing_datasets: missing,
+      updated_at: now
+    };
+  });
+  const manifest = {
+    dataset: 'TWSE_ANALYSIS_UNIVERSE', version: tradeDate || now.slice(0, 10), generated_at: now,
+    definition: 'historical TWSE_TOP50 union latest TWSE_TOP100', latest_successful_trade_date: tradeDate,
+    symbol_count: rows.length, current_top100_count: rows.filter(function(row) { return row.active_top100; }).length,
+    analysis_ready_count: rows.filter(function(row) { return row.analysis_ready; }).length,
+    pending_backfill_count: rows.filter(function(row) { return !row.analysis_ready; }).length,
+    pending_symbols: rows.filter(function(row) { return !row.analysis_ready; }).map(function(row) { return row.stock_code; }),
+    status: rows.some(function(row) { return !row.analysis_ready; }) ? 'updating' : 'complete'
+  };
+  mopsWriteJsonl(MOPS_DRIVE.validationFolder, ANALYSIS_UNIVERSE_FILE, rows);
+  mopsReplaceSnapshot(MOPS_DRIVE.validationFolder, ANALYSIS_UNIVERSE_MANIFEST, [manifest]);
+  return manifest;
+}
+
+function historyLatestRaw100Rows() {
+  const manifest = historyReadJson(HISTORY_DRIVE.top50Manifest);
+  const files = (manifest.raw_ranking_files || []).slice().sort(function(a, b) {
+    return String(b.latest_trade_date || '').localeCompare(String(a.latest_trade_date || ''));
+  });
+  if (!files.length) return [];
+  const latest = files[0].latest_trade_date || manifest.latest_successful_trade_date;
+  const lines = historyReadText(files[0].file_id).replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+  return lines.slice(1).map(historyParseCsvLine).filter(function(row) { return row[0] === latest; }).map(function(row) {
+    return { trade_date: row[0], rank: Number(row[1]), stock_code: row[2], stock_name: row[3] };
+  });
+}
+
+function historyQueueNewTop100(manifest, currentTop100, tradeDate) {
+  const originalStockCount = (manifest.stock_codes || []).length;
+  const originalPendingCount = (manifest.pending_backfill || []).length;
+  const known = {};
+  (manifest.stock_codes || []).forEach(function(code) {
+    if (historyIsListedCommonStock(String(code), '')) known[String(code)] = true;
+  });
+  const added = [];
+  manifest.pending_backfill = (manifest.pending_backfill || []).filter(function(item) {
+    return historyIsListedCommonStock(String(item.stock_code || ''), '');
+  });
+  (currentTop100 || []).forEach(function(row) {
+    const code = String(row.stock_code || '');
+    if (!/^\d{4}$/.test(code) || known[code]) return;
+    known[code] = true; added.push(code);
+    manifest.pending_backfill.push({ stock_code: code, detected_on: tradeDate, status: 'pending' });
+  });
+  if (added.length || Object.keys(known).length !== originalStockCount || manifest.pending_backfill.length !== originalPendingCount) {
+    manifest.stock_codes = Object.keys(known).sort();
+    manifest.stock_count = manifest.stock_codes.length;
+    manifest.generated_at = new Date().toISOString();
+  }
+  return added;
 }
 
 function historyFetchStockMonth(code, year, month) {
@@ -526,9 +664,10 @@ function historyParseMarketRows(json) {
     (table.data || []).forEach(function(raw) {
       const row = raw && raw.value ? raw.value : raw;
       const code = String(row[indexes.code] || '').trim();
-      if (!/^\d{4}$/.test(code)) return;
+      const name = String(row[indexes.name] || '').trim();
+      if (!historyIsListedCommonStock(code, name)) return;
       out.push({
-        stock_code: code, stock_name: String(row[indexes.name] || '').trim(),
+        stock_code: code, stock_name: name,
         trade_volume: historyNum(row, indexes.volume), trade_value: historyNum(row, indexes.value),
         transactions: historyNum(row, indexes.transactions), open: historyNum(row, indexes.open),
         high: historyNum(row, indexes.high), low: historyNum(row, indexes.low),
@@ -537,6 +676,10 @@ function historyParseMarketRows(json) {
     });
   });
   return out;
+}
+
+function historyIsListedCommonStock(code, name) {
+  return /^\d{4}$/.test(String(code || '')) && !/^0/.test(code) && !/^91/.test(code) && !/-DR\b/i.test(String(name || ''));
 }
 
 function historyFetchAlignedFlow(compactDate) {

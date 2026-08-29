@@ -58,6 +58,12 @@ const MOPS_ROLLING = Object.freeze({
   })
 });
 
+const ANALYSIS_UNIVERSE = Object.freeze({
+  folderId: '1zN3mhXleUSdg_zc3_pZRwXpn0J3dXmcL',
+  rowsName: 'analysis_universe.jsonl',
+  manifestName: 'analysis_universe_manifest.json'
+});
+
 function csvFields(line) {
   const fields = [];
   let value = '';
@@ -234,6 +240,32 @@ class DriveHistorySource {
     return this.cache.get(key);
   }
 
+  async analysisUniverse() {
+    const key = 'analysis:universe';
+    if (!this.cache.has(key)) {
+      const fileId = await this.findFile(ANALYSIS_UNIVERSE.folderId, ANALYSIS_UNIVERSE.rowsName);
+      this.cache.set(key, parseJsonl(await this.fetchText(fileId)));
+    }
+    return this.cache.get(key);
+  }
+
+  async analysisUniverseManifest() {
+    const key = 'analysis:manifest';
+    if (!this.cache.has(key)) {
+      const fileId = await this.findFile(ANALYSIS_UNIVERSE.folderId, ANALYSIS_UNIVERSE.manifestName);
+      const rows = parseJsonl(await this.fetchText(fileId));
+      if (rows.length !== 1) throw new Error('analysis universe manifest must contain one record');
+      this.cache.set(key, rows[0]);
+    }
+    return this.cache.get(key);
+  }
+
+  async analysisReady(symbol) {
+    const code = String(symbol);
+    const row = (await this.analysisUniverse()).find(item => item.stock_code === code);
+    return Boolean(row && row.analysis_ready);
+  }
+
   async analysisStatus() {
     const [top50, stockDaily, marketFlow, mops] = await Promise.all([
       this.manifest('top50'), this.manifest('stockDaily'), this.manifest('marketFlow'), this.mopsManifest()
@@ -268,4 +300,4 @@ class DriveHistorySource {
   }
 }
 
-module.exports = { DRIVE_DATASETS, MOPS_ROLLING, DriveHistorySource, createDriveFileFinder, createDriveTextFetcher, csvFields, parseCsv, parseJsonl, validBar, yearsBetween };
+module.exports = { ANALYSIS_UNIVERSE, DRIVE_DATASETS, MOPS_ROLLING, DriveHistorySource, createDriveFileFinder, createDriveTextFetcher, csvFields, parseCsv, parseJsonl, validBar, yearsBetween };
