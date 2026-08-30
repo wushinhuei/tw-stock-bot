@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildAnalysisUniverseIndex, buildUniverseManifest } = require('../src/analysis_universe');
+const { buildAnalysisUniverseIndex, buildUniverseManifest, isListedCommonStock } = require('../src/analysis_universe');
 
 test('analysis universe is the unique union of historical TOP50 and current TOP100', () => {
   const rows = buildAnalysisUniverseIndex({
@@ -23,6 +23,26 @@ test('analysis universe is the unique union of historical TOP50 and current TOP1
   assert.deepEqual(rows.map(row => row.stock_code), ['2317', '2330', '2603']);
   assert.equal(rows.find(row => row.stock_code === '2603').historical_top50, false);
   assert.equal(rows.find(row => row.stock_code === '2330').active_top100, false);
+  assert.equal(rows.find(row => row.stock_code === '2330').daily_update_active, false);
+  assert.equal(rows.find(row => row.stock_code === '2330').retained_in_master_index, true);
+});
+
+test('analysis universe accepts listed common stocks and rejects ETFs and DRs', () => {
+  assert.equal(isListedCommonStock('2330', '台積電'), true);
+  assert.equal(isListedCommonStock('9802', '鈺齊-KY'), true);
+  assert.equal(isListedCommonStock('0050', '元大台灣50'), false);
+  assert.equal(isListedCommonStock('9103', '美德醫療-DR'), false);
+  const rows = buildAnalysisUniverseIndex({
+    tradeDate: '2026-08-28',
+    currentTop100: [
+      { stock_code: '2330', stock_name: '台積電', rank: 1 },
+      { stock_code: '0050', stock_name: '元大台灣50', rank: 2 },
+      { stock_code: '9103', stock_name: '美德醫療-DR', rank: 3 }
+    ],
+    companyBasic: [{ stock_code: '2330', stock_name: '台積電' }],
+    mopsStatus: 'complete'
+  });
+  assert.deepEqual(rows.map(row => row.stock_code), ['2330']);
 });
 
 test('new rank 51-100 symbol remains blocked until its backfill completes', () => {
@@ -48,4 +68,5 @@ test('universe manifest reports readiness and pending symbols', () => {
   assert.equal(manifest.analysis_ready_count, 1);
   assert.deepEqual(manifest.pending_symbols, ['2603']);
   assert.equal(manifest.status, 'updating');
+  assert.match(manifest.definition, /only active_top100 receives rolling updates/);
 });

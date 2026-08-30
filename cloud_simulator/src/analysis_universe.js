@@ -5,10 +5,21 @@ function normalizeCode(value) {
   return /^\d{4}$/.test(code) ? code : '';
 }
 
+function isListedCommonStock(codeValue, stockName = '') {
+  const code = normalizeCode(codeValue);
+  return Boolean(code) && !/^0/.test(code) && !/^91/.test(code) && !/-DR\b/i.test(String(stockName || ''));
+}
+
+function stockEntries(rows) {
+  return (rows || [])
+    .filter(row => isListedCommonStock(row.stock_code, row.stock_name))
+    .map(row => [normalizeCode(row.stock_code), row]);
+}
+
 function buildAnalysisUniverseIndex(options = {}) {
-  const previous = new Map((options.previous || []).map(row => [normalizeCode(row.stock_code), row]).filter(item => item[0]));
-  const current = new Map((options.currentTop100 || []).map(row => [normalizeCode(row.stock_code), row]).filter(item => item[0]));
-  const historicalTop50 = new Set((options.historicalTop50Codes || []).map(normalizeCode).filter(Boolean));
+  const previous = new Map(stockEntries(options.previous));
+  const current = new Map(stockEntries(options.currentTop100));
+  const historicalTop50 = new Set((options.historicalTop50Codes || []).map(normalizeCode).filter(code => isListedCommonStock(code)));
   for (const [code, row] of previous) if (row.historical_top50) historicalTop50.add(code);
   const pending = new Map((options.pendingBackfill || []).map(row => [normalizeCode(row.stock_code), row]).filter(item => item[0]));
   const basic = new Map((options.companyBasic || []).map(row => [normalizeCode(row.stock_code), row]).filter(item => item[0]));
@@ -35,6 +46,8 @@ function buildAnalysisUniverseIndex(options = {}) {
       first_top100_date: old.first_top100_date || (current.has(code) ? tradeDate : ''),
       last_top100_date: current.has(code) ? tradeDate : (old.last_top100_date || ''),
       active_top100: current.has(code),
+      retained_in_master_index: true,
+      daily_update_active: current.has(code),
       current_top100_rank: current.has(code) ? Number(quote.rank || 0) : null,
       historical_top50: historicalTop50.has(code),
       daily_history_status: dailyComplete ? 'complete' : String(task.status || 'pending'),
@@ -52,7 +65,7 @@ function buildUniverseManifest(rows, options = {}) {
     dataset: 'TWSE_ANALYSIS_UNIVERSE',
     version: options.tradeDate || String(options.updatedAt || new Date().toISOString()).slice(0, 10),
     generated_at: options.updatedAt || new Date().toISOString(),
-    definition: 'historical TWSE_TOP50 union latest TWSE_TOP100',
+    definition: 'retained historical universe plus latest TWSE_TOP100; only active_top100 receives rolling updates',
     latest_successful_trade_date: options.tradeDate || '',
     symbol_count: rows.length,
     current_top100_count: rows.filter(row => row.active_top100).length,
@@ -63,4 +76,4 @@ function buildUniverseManifest(rows, options = {}) {
   };
 }
 
-module.exports = { buildAnalysisUniverseIndex, buildUniverseManifest, normalizeCode };
+module.exports = { buildAnalysisUniverseIndex, buildUniverseManifest, normalizeCode, isListedCommonStock };

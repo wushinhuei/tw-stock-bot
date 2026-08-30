@@ -333,7 +333,7 @@ function updateTenYearHistoryToLatestTradeDate() {
       const currentTop100 = marketRows.slice().sort(function(a, b) { return b.trade_volume - a.trade_volume; }).slice(0, 100);
       currentTop100.forEach(function(row, index) { row.rank = index + 1; });
       const currentRawFile = historyEnsureRaw100File(manifests.top50, Number(tradeDate.slice(0, 4)));
-      const correctedRawCsv = historyAppendRows(historyReadText(currentRawFile.file_id), HISTORY_TOP50_HEADER, tradeDate,
+      const correctedRawCsv = historyReplaceDateRows(historyReadText(currentRawFile.file_id), HISTORY_TOP50_HEADER, tradeDate,
         currentTop100.map(function(row) { return historyTop50Values(tradeDate, row); }));
       historyReplaceText(currentRawFile.file_id, correctedRawCsv, 'text/csv');
       const historicalCodes = (manifests.daily.stock_codes || []).slice();
@@ -467,7 +467,7 @@ function backfillNewTop50History() {
 }
 
 /**
- * 建立「歷史 TOP50 + 最新 TOP100」唯一母體索引。
+ * 建立「保留歷史母體 + 最新 TOP100」唯一索引；只有 active_top100 持續滾動更新。
  * 回填或 MOPS 尚未完整時 analysis_ready 維持 false，供後續 Cloud Run 接軌使用。
  */
 function rebuildAnalysisUniverseIndex(options) {
@@ -517,6 +517,8 @@ function rebuildAnalysisUniverseIndex(options) {
       first_top100_date: old.first_top100_date || (current[code] ? tradeDate : ''),
       last_top100_date: current[code] ? tradeDate : (old.last_top100_date || ''),
       active_top100: Boolean(current[code]),
+      retained_in_master_index: true,
+      daily_update_active: Boolean(current[code]),
       current_top100_rank: current[code] ? Number(current[code].rank || 0) : null,
       historical_top50: Boolean(historicalTop50[code] || old.historical_top50),
       daily_history_status: dailyComplete ? 'complete' : String(task.status || 'pending'),
@@ -528,7 +530,7 @@ function rebuildAnalysisUniverseIndex(options) {
   });
   const manifest = {
     dataset: 'TWSE_ANALYSIS_UNIVERSE', version: tradeDate || now.slice(0, 10), generated_at: now,
-    definition: 'historical TWSE_TOP50 union latest TWSE_TOP100', latest_successful_trade_date: tradeDate,
+    definition: 'retained historical universe plus latest TWSE_TOP100; only active_top100 receives rolling updates', latest_successful_trade_date: tradeDate,
     symbol_count: rows.length, current_top100_count: rows.filter(function(row) { return row.active_top100; }).length,
     analysis_ready_count: rows.filter(function(row) { return row.analysis_ready; }).length,
     pending_backfill_count: rows.filter(function(row) { return !row.analysis_ready; }).length,
@@ -826,6 +828,17 @@ function historyAppendRows(csv, expectedHeader, tradeDate, rows) {
   if (header.join(',') !== expectedHeader.join(',')) throw new Error('CSV 欄位與預期不一致：' + header.join(','));
   if (lines.some(function(line, index) { return index > 0 && line.slice(0, 10) === tradeDate; })) return csv;
   return lines.join('\n') + '\n' + rows.map(historyCsvLine).join('\n') + '\n';
+}
+
+function historyReplaceDateRows(csv, expectedHeader, tradeDate, rows) {
+  const lines = String(csv || '').replace(/^\uFEFF/, '').trimEnd().split(/\r?\n/);
+  const header = historyParseCsvLine(lines[0]);
+  if (header.join(',') !== expectedHeader.join(',')) throw new Error('CSV 欄位與預期不一致：' + header.join(','));
+  const kept = lines.slice(1).filter(function(line) {
+    return line && String(historyParseCsvLine(line)[0] || '') !== tradeDate;
+  });
+  const output = [lines[0]].concat(kept, rows.map(historyCsvLine));
+  return output.join('\n') + '\n';
 }
 
 function historyCsvCodes(csv) {
