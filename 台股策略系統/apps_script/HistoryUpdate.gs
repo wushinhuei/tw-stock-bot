@@ -268,7 +268,7 @@ function mopsMajorMessageRow(row) {
 function mopsFinancialRow(row, endpoint) {
   const selected = {};
   Object.keys(row).forEach(function(key) {
-    if (/出表日期|年度|季別|公司代號|公司名稱|營業收入|營業利益|稅前|本期淨利|每股盈餘|資產總額|負債總額|權益總額|毛利率|利益率|純益率/.test(key)) selected[key] = row[key];
+    if (/出表日期|年度|季別|公司代號|公司名稱|營業收入|營業利益|稅前|本期淨利|每股盈餘|資產總額|負債總額|權益總額|毛利率|利益率|純益率|營業活動.*現金流|營運現金流|取得不動產.*廠房.*設備|資本支出|流動資產|流動負債|非流動負債|營業費用/.test(key)) selected[key] = row[key];
   });
   const reportDate = mopsGregorianDate(mopsText(row, ['出表日期']));
   return {

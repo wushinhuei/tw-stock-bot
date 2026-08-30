@@ -228,12 +228,14 @@ test('MOPS XBRL archive URL uses the official bulk download path', () => {
 });
 
 test('MOPS XBRL parser filters core non-dimensional facts and requires filing time', () => {
-  const xml = `<?xml version="1.0"?><xbrl><context id="From20250101To20250331"><entity><identifier>2330</identifier></entity><period><startDate>2025-01-01</startDate><endDate>2025-03-31</endDate></period></context><context id="Dim"><entity><identifier>2330</identifier></entity><period><instant>2025-03-31</instant></period><scenario><member>segment</member></scenario></context><tifrs:Revenue contextRef="From20250101To20250331" unitRef="TWD" decimals="-3">1000</tifrs:Revenue><tifrs:Revenue contextRef="Dim" unitRef="TWD">99</tifrs:Revenue></xbrl>`;
+  const xml = `<?xml version="1.0"?><xbrl><context id="From20250101To20250331"><entity><identifier>2330</identifier></entity><period><startDate>2025-01-01</startDate><endDate>2025-03-31</endDate></period></context><context id="AsOf20250331"><entity><identifier>2330</identifier></entity><period><instant>2025-03-31</instant></period></context><context id="Dim"><entity><identifier>2330</identifier></entity><period><instant>2025-03-31</instant></period><scenario><member>segment</member></scenario></context><tifrs:Revenue contextRef="From20250101To20250331" unitRef="TWD" decimals="-3">1000</tifrs:Revenue><tifrs:NetCashFlowsFromUsedInOperatingActivities contextRef="From20250101To20250331" unitRef="TWD">600</tifrs:NetCashFlowsFromUsedInOperatingActivities><tifrs:PaymentsToAcquirePropertyPlantAndEquipment contextRef="From20250101To20250331" unitRef="TWD">200</tifrs:PaymentsToAcquirePropertyPlantAndEquipment><tifrs:OperatingExpenses contextRef="From20250101To20250331" unitRef="TWD">300</tifrs:OperatingExpenses><tifrs:CurrentAssets contextRef="AsOf20250331" unitRef="TWD">5000</tifrs:CurrentAssets><tifrs:CurrentLiabilities contextRef="AsOf20250331" unitRef="TWD">1800</tifrs:CurrentLiabilities><tifrs:NoncurrentLiabilities contextRef="AsOf20250331" unitRef="TWD">1200</tifrs:NoncurrentLiabilities><tifrs:Revenue contextRef="Dim" unitRef="TWD">99</tifrs:Revenue></xbrl>`;
   const identity = archiveEntryIdentity('tifrs-fr1-m1-ci-cr-2330-2025Q1.xml');
   const parsed = parseXbrlInstance(xml, identity, 'https://example.invalid/official.zip');
   assert.equal(parsed.stock_code, '2330');
-  assert.equal(parsed.facts.length, 1);
-  assert.equal(parsed.facts[0].metric, 'revenue');
+  assert.deepEqual(new Set(parsed.facts.map(fact => fact.metric)), new Set([
+    'revenue', 'operating_cash_flow', 'capital_expenditure', 'operating_expenses',
+    'current_assets', 'current_liabilities', 'noncurrent_liabilities'
+  ]));
   assert.equal(validateMopsCompleteness({ expectedArchives: 1, archives: [{}], financials: [parsed], monthlyRevenueComplete: true, majorMessagesComplete: true }).passed, false);
   const [enriched] = attachFilingTimes([parsed], [{ stock_code: '2330', fiscal_year: 2025, quarter: 1, filing_date: '2025-05-08', filing_time: '14:31:00', source_url: 'https://mops.twse.com.tw/' }]);
   assert.equal(enriched.available_from, '2025-05-08T14:31:00');

@@ -95,7 +95,12 @@ const CORE_FACT_PATTERNS = Object.freeze({
   liabilities: /(?:^|:)(?:Liabilities|TotalLiabilities)$/i,
   equity: /(?:^|:)(?:Equity|EquityAttributableToOwnersOfParent|TotalEquity)$/i,
   cash: /(?:^|:)(?:CashAndCashEquivalents|CashAndCashEquivalentsAtCarryingValue)$/i,
-  operating_cash_flow: /(?:^|:)(?:NetCashFlowsFromUsedInOperatingActivities|NetCashProvidedByUsedInOperatingActivities)$/i
+  operating_cash_flow: /(?:^|:)(?:NetCashFlowsFromUsedInOperatingActivities|NetCashProvidedByUsedInOperatingActivities|CashFlowsFromUsedInOperatingActivities)$/i,
+  capital_expenditure: /(?:^|:)(?:PaymentsToAcquirePropertyPlantAndEquipment|AcquisitionOfPropertyPlantAndEquipment|PurchaseOfPropertyPlantAndEquipment)$/i,
+  current_assets: /(?:^|:)(?:CurrentAssets|TotalCurrentAssets)$/i,
+  current_liabilities: /(?:^|:)(?:CurrentLiabilities|TotalCurrentLiabilities)$/i,
+  noncurrent_liabilities: /(?:^|:)(?:NoncurrentLiabilities|NonCurrentLiabilities|TotalNoncurrentLiabilities|TotalNonCurrentLiabilities)$/i,
+  operating_expenses: /(?:^|:)(?:OperatingExpenses|TotalOperatingExpenses)$/i
 });
 
 function archiveEntryIdentity(name) {
