@@ -5,6 +5,7 @@ steps:
     args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA']
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
+    secretEnv: ['GITHUB_STATIC_BACKUP_TOKEN']
     args:
       - run
       - jobs
@@ -13,7 +14,8 @@ steps:
       - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA
       - --region=${_REGION}
       - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
-      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},RUN_MODE=tick,CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL}
+      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},RUN_MODE=tick,CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL},STATIC_BACKUP_ON_TRADE=1,GITHUB_STATIC_BACKUP_REPOSITORY=wushinhuei/tw-stock-bot,GITHUB_STATIC_BACKUP_WORKFLOW=update-static-dashboard.yml,GITHUB_STATIC_BACKUP_REF=main,STATIC_BACKUP_COOLDOWN_MS=120000
+      - --update-secrets=GITHUB_STATIC_BACKUP_TOKEN=github-static-backup-token:latest
       - --tasks=1
       - --max-retries=0
       - --task-timeout=55s
@@ -25,5 +27,9 @@ substitutions:
   _GCS_BUCKET: project-aef205b5-5c27-4084-94c-tw-stock-data
   _RUNTIME_SERVICE_ACCOUNT: tw-stock-runtime@project-aef205b5-5c27-4084-94c.iam.gserviceaccount.com
   _CANDIDATE_SNAPSHOT_URL: 'https://script.google.com/macros/s/AKfycbxMSe1WvXNjTbAzxZSP8mD_9wt11BIGQSyaFTktoet_v7WQ1KujUu19pflwS6zHfhqt/exec?action=refresh&force=1'
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/github-static-backup-token/versions/latest
+      env: GITHUB_STATIC_BACKUP_TOKEN
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA'
