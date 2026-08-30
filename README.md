@@ -28,6 +28,8 @@ Firestore / Storage → Apps Script 唯讀代理 → GitHub Pages
 
 日線、週線、OBV 與歷史籌碼使用 Google Drive 已驗證且交易日期一致的資料；盤中 5 分鐘、15 分鐘線使用 Yahoo Finance Chart API 作為技術分析補充，模擬成交價格只採 TWSE MIS 買賣價。Drive manifest 不完整或日期未對齊時阻擋新交易。
 
+Yahoo歷史補充資料可用 `npm run download:yahoo-supplement -- --symbols=2330,2303` 下載至 `tmp/yahoo-supplement`。它抓取5年日線及最近60日5分鐘線，產生15分鐘線與manifest；加上 `--compare-drive` 才會使用Cloud Run／ADC身分讀取Drive官方日線進行缺日與價格差異查核。這批資料永遠只作技術分析補充，不覆寫TWSE資料，也不作模擬成交價。
+
 台灣媒體查核來源包含中央通訊社、經濟日報、工商時報、MoneyDJ 與 DIGITIMES。媒體證據只在官方消息 15 分內作 -3 至 +3 分修正：單一媒體只提示，至少兩個獨立來源或一個媒體加官方事件識別碼一致才計分，而且媒體加分不能單獨把 B 級升為 A 級。中央社可使用其公開 RSS；其他來源只接受人工輸入或已取得授權的 RSS/API，不爬取全文。
 
 Investing.com 僅透過允許的 RSS 保存標題、摘要、時間、分類及原文連結；內容只作國際風險提示，不進入正式 100 分、不直接觸發交易，失敗也不會中斷持倉管理。

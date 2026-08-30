@@ -31,14 +31,59 @@ async function fetchChart(symbol, range, interval, fetchImpl = fetch) {
 
 function chartBars(result) {
   const quote = result?.indicators?.quote?.[0] || {};
+  const adjusted = result?.indicators?.adjclose?.[0]?.adjclose || [];
   return (result?.timestamp || []).map((timestamp, index) => ({
     timestamp: new Date(Number(timestamp) * 1000).toISOString(),
     open: Number(quote.open?.[index]),
     high: Number(quote.high?.[index]),
     low: Number(quote.low?.[index]),
     close: Number(quote.close?.[index]),
+    adjustedClose: adjusted[index] != null && Number.isFinite(Number(adjusted[index])) ? Number(adjusted[index]) : null,
     volume: Number(quote.volume?.[index] || 0)
   })).filter(row => [row.open, row.high, row.low, row.close].every(Number.isFinite));
+}
+
+function chartEvents(result) {
+  const events = result?.events || {};
+  return [
+    ...Object.values(events.dividends || {}).map(item => ({
+      type: 'DIVIDEND', timestamp: new Date(Number(item.date) * 1000).toISOString(), amount: Number(item.amount)
+    })),
+    ...Object.values(events.splits || {}).map(item => ({
+      type: 'SPLIT', timestamp: new Date(Number(item.date) * 1000).toISOString(), numerator: Number(item.numerator), denominator: Number(item.denominator), splitRatio: item.splitRatio || ''
+    }))
+  ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function fetchChartWithRetry(symbol, range, interval, options = {}) {
+  const attempts = Math.max(1, Number(options.attempts || 3));
+  const baseDelayMs = Math.max(0, Number(options.baseDelayMs ?? 500));
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try { return await fetchChart(symbol, range, interval, options.fetchImpl || fetch); }
+    catch (error) {
+      lastError = error;
+      if (attempt < attempts && baseDelayMs) await delay(baseDelayMs * (2 ** (attempt - 1)));
+    }
+  }
+  throw lastError;
+}
+
+async function fetchSupplementalHistory(symbol, options = {}) {
+  const yahooSymbol = String(symbol).includes('.') ? String(symbol) : `${symbol}.TW`;
+  const [daily, intraday] = await Promise.all([
+    fetchChartWithRetry(yahooSymbol, options.dailyRange || '5y', '1d', options),
+    fetchChartWithRetry(yahooSymbol, options.intradayRange || '60d', '5m', options)
+  ]);
+  const dailyBars = chartBars(daily);
+  const bars5m = chartBars(intraday);
+  return {
+    symbol: String(symbol).replace(/\.TW$/i, ''), yahooSymbol,
+    dailyBars, bars5m, bars15m: aggregateBars(bars5m, 15 * 60 * 1000),
+    events: chartEvents(daily), provider: 'Yahoo Finance Chart API', fetchedAt: new Date().toISOString()
+  };
 }
 
 function aggregateBars(bars, bucketMs) {
@@ -109,4 +154,4 @@ async function fetchIntradayBars(symbol, fetchImpl = fetch) {
   };
 }
 
-module.exports = { aggregateBars, chartBars, fetchChart, fetchIntradayBars, fetchTechnicalBars, weeklyBars };
+module.exports = { aggregateBars, chartBars, chartEvents, fetchChart, fetchChartWithRetry, fetchIntradayBars, fetchSupplementalHistory, fetchTechnicalBars, weeklyBars };

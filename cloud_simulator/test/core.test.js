@@ -19,7 +19,8 @@ const { closedDatesFromSchedule, rocCompactToYmd } = require('../src/trading_cal
 const { createMonthlyArchive, previousTaipeiMonth } = require('../src/monthly_archive');
 const { fetchQuotes } = require('../src/twse');
 const { driveChipSignals, enrichCandidatesWithLiveScores, fetchDriveTechnicalBars } = require('../src/live_scoring');
-const { aggregateBars, fetchChart, weeklyBars } = require('../src/yahoo');
+const { aggregateBars, chartBars, chartEvents, fetchChart, fetchSupplementalHistory, weeklyBars } = require('../src/yahoo');
+const { compareDailyBars, isRecent, mapLimited } = require('../scripts/download_yahoo_supplement');
 const { executionRiskReasons, scoreChipSignals } = require('../src/chip');
 const { DRIVE_DATASETS, MOPS_ROLLING, DriveHistorySource, parseCsv, parseJsonl } = require('../src/drive_history');
 const { fee, technicalProxy } = require('../src/drive_backtest');
@@ -126,6 +127,53 @@ test('Yahoo chart requests bypass caches and bar aggregation preserves OHLCV', a
   ], 15 * 60 * 1000);
   assert.deepEqual({ open: grouped[0].open, high: grouped[0].high, low: grouped[0].low, close: grouped[0].close, volume: grouped[0].volume },
     { open: 100, high: 103, low: 99, close: 102, volume: 30 });
+});
+
+test('Yahoo supplement preserves adjusted close and reports official date and price differences', async () => {
+  const parsed = chartBars({ timestamp: [1787587200], indicators: { quote: [{ open: [100], high: [102], low: [99], close: [101], volume: [1000] }], adjclose: [{ adjclose: [98.5] }] } });
+  assert.equal(parsed[0].adjustedClose, 98.5);
+  const missingAdjusted = chartBars({ timestamp: [1787587200], indicators: { quote: [{ open: [100], high: [102], low: [99], close: [101], volume: [1000] }], adjclose: [{ adjclose: [null] }] } });
+  assert.equal(missingAdjusted[0].adjustedClose, null);
+  assert.equal(chartEvents({ events: { dividends: { a: { date: 1787587200, amount: 2 } } } })[0].type, 'DIVIDEND');
+  const result = compareDailyBars([
+    { tradeDate: '2026-08-24', close: 100, volume: 1000 }, { tradeDate: '2026-08-25', close: 102, volume: 1000 }
+  ], [
+    { timestamp: '2026-08-24T00:00:00.000Z', close: 101, volume: 700 }, { timestamp: '2026-08-26T00:00:00.000Z', close: 103, volume: 1000 }
+  ]);
+  assert.deepEqual(result.missingDates, ['2026-08-25']);
+  assert.deepEqual(result.extraDates, ['2026-08-26']);
+  assert.equal(result.priceDifferences.length, 1);
+  assert.equal(result.volumeDifferences.length, 1);
+  assert.equal(result.passed, false);
+});
+
+test('Yahoo supplement fetches five-year daily and sixty-day intraday without becoming an execution quote', async () => {
+  const calls = [];
+  const payload = await fetchSupplementalHistory('2330', { attempts: 1, baseDelayMs: 0, fetchImpl: async url => {
+    calls.push(url);
+    return { ok: true, async json() { return { chart: { error: null, result: [{ timestamp: [1787587200], indicators: { quote: [{ open: [100], high: [101], low: [99], close: [100], volume: [10] }] } }] } }; } };
+  } });
+  assert.equal(calls.length, 2);
+  assert.ok(calls.some(url => /range=5y&interval=1d/.test(url)));
+  assert.ok(calls.some(url => /range=60d&interval=5m/.test(url)));
+  assert.equal(payload.provider, 'Yahoo Finance Chart API');
+  assert.equal(payload.bars15m.length, 1);
+  assert.equal(Object.hasOwn(payload, 'bid'), false);
+});
+
+test('Yahoo supplement helpers enforce bounded concurrency and stale timestamps', async () => {
+  let active = 0;
+  let maximum = 0;
+  const rows = await mapLimited(['1', '2', '3'], 2, async symbol => {
+    active += 1; maximum = Math.max(maximum, active);
+    await new Promise(resolve => setTimeout(resolve, 2));
+    active -= 1;
+    return symbol;
+  });
+  assert.deepEqual(rows, ['1', '2', '3']);
+  assert.equal(maximum, 2);
+  assert.equal(isRecent('2026-08-25T00:00:00Z', 10, new Date('2026-08-30T00:00:00Z')), true);
+  assert.equal(isRecent('2026-08-01T00:00:00Z', 10, new Date('2026-08-30T00:00:00Z')), false);
 });
 
 test('Drive history uses fixed TOP50 and STOCK_DAILY files and rejects missing prices', async () => {
