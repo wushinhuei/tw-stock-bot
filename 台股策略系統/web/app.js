@@ -516,6 +516,40 @@ function sellReason(candidate, marketState, position) {
   return '規則賣出';
 }
 
+function renderPnlSummary(result, day) {
+  const positions = Array.isArray(result?.positions) ? result.positions : [];
+  const unrealized = positions.reduce((summary, position) => {
+    const candidate = findCandidate(day, position.symbol);
+    const shares = Number(position.shares ?? position.quantity) || 0;
+    const cost = Number(position.totalCost || shares * Number(position.avgCost ?? position.averagePrice) || 0);
+    const grossValue = shares * positionMarkPrice(position, candidate);
+    const netValue = netSellProceeds(grossValue, false);
+    summary.cost += cost;
+    summary.pnl += netValue - cost;
+    return summary;
+  }, { cost: 0, pnl: 0 });
+  const trades = Array.isArray(result?.trades) ? result.trades : [];
+  const realizedCount = trades.filter(trade => {
+    const action = String(trade.action || trade.side || '').toUpperCase();
+    return action === 'SELL' || action === 'DAYTRADE' || action === '賣出' || action === '當沖';
+  }).length;
+  const realizedPnl = Number(result?.realizedPnl || 0);
+  const initialCapital = Number(result?.initialCapital || CONFIG.initialCapital || 0);
+
+  const update = (selector, text, signedValue = null) => {
+    const element = document.querySelector(selector);
+    if (!element) return;
+    element.textContent = text;
+    if (signedValue !== null) element.className = Number(signedValue) >= 0 ? 'gain' : 'loss';
+  };
+  update('#realizedPnl', currency(realizedPnl), realizedPnl);
+  update('#realizedPnlPct', pct(initialCapital ? realizedPnl / initialCapital : 0), realizedPnl);
+  update('#tradeCount', `${realizedCount} 筆已結案；費稅 ${currency((result?.totalFees || 0) + (result?.totalTaxes || 0))}`);
+  update('#unrealizedPnl', currency(unrealized.pnl), unrealized.pnl);
+  update('#unrealizedPnlPct', pct(unrealized.cost ? unrealized.pnl / unrealized.cost : 0), unrealized.pnl);
+  update('#unrealizedPositionCount', `${positions.length} 檔持倉；稅費後估值`);
+}
+
 function render(result) {
   activeResult = result;
   const latestDay = scenario.filter(day => day.date >= CONFIG.simulationStartDate).at(-1)
@@ -546,6 +580,10 @@ function render(result) {
   renderTrades(result.trades, todayTaipeiDate());
   renderCurve(result.daily);
   if (typeof window.renderPnlCards === 'function') window.renderPnlCards(result, latestDay);
+  renderPnlSummary(result, latestDay);
+  window.setTimeout(() => {
+    if (activeResult === result) renderPnlSummary(result, latestDay);
+  }, 0);
 }
 
 function renderLastUpdated(result, latestDay) {
