@@ -5,7 +5,7 @@ const CONFIG = Object.freeze({
   timezone: 'Asia/Taipei',
   initialCapital: 100000,
   rawVolumeReviewLimit: 100,
-  topVolumeLimit: 50,
+  topVolumeLimit: 30,
   maxCandidates: 30,
   schedulerIntervalMinutes: 5,
   rssPollMs: 15 * 60 * 1000,

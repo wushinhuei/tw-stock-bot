@@ -832,7 +832,7 @@ function renderAGradeCandidates(day) {
     target.innerHTML = `
       <div class="empty-candidates">
         <strong>今日尚無 A 級候選股</strong>
-        <span>${dateMessage} 系統已先過濾成交量前 ${source.topVolumeLimit || 50} 名與指定族群；無完整評分、未達 80 分或交易計畫不允許進場時，不列為 A 級候選。</span>
+        <span>${dateMessage} 系統已先過濾成交量前 ${source.topVolumeLimit || 30} 名與指定族群；無完整評分、未達 80 分或交易計畫不允許進場時，不列為 A 級候選。</span>
       </div>
     `;
     return;
@@ -899,7 +899,8 @@ function renderCandidateUniverse(universe) {
   const target = document.querySelector('#candidateUniverse');
   const summary = document.querySelector('#candidateUniverseSummary');
   if (!target) return;
-  const items = Array.isArray(universe?.items) ? universe.items.slice(0, 50) : [];
+  const candidateLimit = Number(universe?.limit || 30);
+  const items = Array.isArray(universe?.items) ? universe.items.slice(0, candidateLimit) : [];
   if (summary && universe?.tradeDate) {
     summary.textContent = `${universe.tradeDate} 檢討成交量前 ${universe.reviewedCount || 100} 名，取出 ${items.length} 檔；這是追蹤母體，不代表已符合買進條件。`;
   }

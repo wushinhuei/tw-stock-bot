@@ -73,17 +73,18 @@ test('score totals 100 points at most and maps A/B/C thresholds', () => {
   assert.equal(result.metrics.obv.bullish, true);
 });
 
-test('scanner uses only TWSE common stocks within the top 50 across industries', () => {
+test('scanner uses only TWSE common stocks within the top 30 across industries', () => {
+  assert.equal(CONFIG.topVolumeLimit, 30);
   const rows = Array.from({ length: 60 }, (_, i) => ({
     symbol: String(1000 + i), volume: 10000 - i, market: 'TWSE',
     securityType: i === 0 ? 'ETF' : 'COMMON_STOCK', group: i % 2 ? '半導體' : '金融'
   }));
   const result = buildUniverse(rows, {});
-  assert.ok(result.length <= 30);
+  assert.equal(result.length, 30);
   assert.ok(result.every(row => row.market === 'TWSE' && row.securityType === 'COMMON_STOCK'));
   assert.ok(result.some(row => row.group === '金融'));
   assert.ok(result.some(row => row.group === '半導體'));
-  assert.ok(result.every(row => Number(row.symbol) < 1050));
+  assert.ok(result.every(row => Number(row.symbol) < 1031));
 });
 
 test('TWSE MIS quotes bypass intermediary caches', async () => {
@@ -336,17 +337,18 @@ test('Cloud live scoring computes OBV and blocks incomplete technical data', asy
   assert.match(incomplete.blockedReasons.join(','), /OBV不足/);
 });
 
-test('Apps Script scenario adapter enforces top 50 and creates 100-point components', () => {
+test('Apps Script scenario adapter enforces top 30 and creates 100-point components', () => {
   const candidate = rank => ({
     symbol: String(2300 + rank), name: '測試股', group: '半導體', price: 100, bidPrice: 99.9, askPrice: 100,
     grade: 'A', dayTradeOk: false, overnightOk: false, industryOk: true, fundamentalOk: true,
     chipOk: true, trendOk: true, volumePriceOk: true, momentumOk: true,
     executionPlan: { spreadPct: 0.001 }, metrics: { volumeRank: rank, volumeRatio: 1.6, ma20: 95, ma50: 90, latestQuoteTime: '2026-08-21T03:52:00Z' }
   });
-  const result = adaptCandidatePayload({ generatedAt: '2026-08-21T03:52:52Z', scenario: [{ date: '2026-08-21', candidates: [candidate(5), candidate(55)] }] }, { time: '11:52' });
+  const result = adaptCandidatePayload({ generatedAt: '2026-08-21T03:52:52Z', scenario: [{ date: '2026-08-21', candidates: [candidate(5), candidate(30), candidate(31)] }] }, { time: '11:52' });
   assert.equal(result.mode, 'APPS_SCRIPT_SCENARIO');
-  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates.length, 2);
   assert.equal(result.candidates[0].metrics.volumeRank, 5);
+  assert.equal(result.candidates[1].metrics.volumeRank, 30);
   assert.equal(Object.values(result.candidates[0].components).reduce((a, b) => a + b, 0), result.candidates[0].score);
   assert.equal(result.candidates[0].strategy, 'SWING');
 });

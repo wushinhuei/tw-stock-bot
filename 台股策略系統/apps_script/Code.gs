@@ -37,7 +37,7 @@ const CONFIG = {
   maxMarketOrderSpreadPct: 0.002,
   maxLimitOrderSpreadPct: 0.006,
   rawVolumeReviewLimit: 100,
-  topVolumeLimit: 50,
+  topVolumeLimit: 30,
   maxScanCandidates: 30,
   monthlyTargetReturnMin: 0.03,
   monthlyTargetReturnMax: 0.05,
@@ -80,7 +80,7 @@ const STRATEGY_SETTINGS = [
   ['maxMarketOrderSpreadPct', '市價允許價差', 'number', CONFIG.maxMarketOrderSpreadPct, '價差小於此值才允許類市價'],
   ['maxLimitOrderSpreadPct', '限價最大價差', 'number', CONFIG.maxLimitOrderSpreadPct, '價差超過此值不進場'],
   ['rawVolumeReviewLimit', '成交量原始檢討筆數', 'number', CONFIG.rawVolumeReviewLimit, '每日先檢討成交量前 100 名'],
-  ['topVolumeLimit', '成交量入選筆數', 'number', CONFIG.topVolumeLimit, '由原始排名取前 50 名'],
+  ['topVolumeLimit', '成交量入選筆數', 'number', CONFIG.topVolumeLimit, '由原始排名取前 30 名'],
   ['maxScanCandidates', '掃描候選上限', 'number', CONFIG.maxScanCandidates, '最多分析幾檔'],
   ['allowDayTrade', '是否允許當沖', 'boolean', CONFIG.allowDayTrade, 'TRUE/FALSE'],
   ['allowOvernight', '是否允許隔日沖', 'boolean', CONFIG.allowOvernight, 'TRUE/FALSE'],
@@ -206,10 +206,11 @@ function readLatestCandidateUniverse() {
   const header = historyParseCsvLine(lines[0]);
   const rows = lines.slice(1).map(historyParseCsvLine).filter(function(row) {
     return row[header.indexOf('trade_date')] === latest.latest_trade_date;
-  }).slice(0, 50);
+  }).slice(0, CONFIG.topVolumeLimit);
   return {
     ok: true, tradeDate: latest.latest_trade_date,
     reviewedCount: Number(manifest.selection_source_count || 100), selectedCount: rows.length,
+    limit: CONFIG.topVolumeLimit,
     generatedAt: latest.updated_at || manifest.generated_at,
     items: rows.map(function(row) {
       const value = function(name) { return row[header.indexOf(name)]; };
@@ -446,8 +447,11 @@ function ensureStrategySettingsSheet(workbook) {
     const key = setting[0];
     const current = existingByKey[key];
     const row = current ? current.row : [];
-    const value = row[2] !== '' && row[2] != null ? row[2] : setting[3];
-    const output = [key, setting[1], value, setting[2], setting[3], setting[4], row[6] || now];
+    const migrateCandidateLimit = key === 'topVolumeLimit' && Number(row[2]) === 50 && Number(row[4]) === 50;
+    const value = migrateCandidateLimit
+      ? setting[3]
+      : (row[2] !== '' && row[2] != null ? row[2] : setting[3]);
+    const output = [key, setting[1], value, setting[2], setting[3], setting[4], migrateCandidateLimit ? now : (row[6] || now)];
     if (current) sheet.getRange(current.index, 1, 1, headers.length).setValues([output]);
     else sheet.appendRow(output);
   });

@@ -9,7 +9,7 @@ async function main() {
   if (!response.ok) throw new Error(`Candidate endpoint HTTP ${response.status}`);
   const payload = await response.json();
   const adapted = adaptCandidatePayload(payload, { time: '11:52' });
-  if (!adapted.candidates.length) throw new Error('No top-50 candidates after adaptation');
+  if (!adapted.candidates.length) throw new Error('No top-30 candidates after adaptation');
   const invalid = adapted.candidates.filter(row => !row.symbol || !row.strategy || !row.components || !Number.isFinite(row.score));
   if (invalid.length) throw new Error(`${invalid.length} invalid candidates`);
   console.log(JSON.stringify({
