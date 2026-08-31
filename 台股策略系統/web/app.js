@@ -1034,7 +1034,12 @@ function markToMarketResult(result, day) {
     daily: Array.isArray(result.daily) ? [...result.daily] : [],
   };
   const positionValue = marketValue(marked.positions, day);
-  const finalEquity = Number(marked.cash || 0) + positionValue;
+  const accounting = window.TWStockAccounting;
+  const reconciled = accounting && typeof accounting.markToMarket === 'function'
+    ? accounting.markToMarket(marked, positionValue)
+    : { cash: Number(marked.cash || 0), finalEquity: Number(marked.cash || 0) + positionValue };
+  const finalEquity = reconciled.finalEquity;
+  marked.cash = reconciled.cash;
   const previousDaily = marked.daily.length > 1 ? marked.daily[marked.daily.length - 2] : null;
   const previousEquity = previousDaily ? previousDaily.equity : marked.initialCapital || CONFIG.initialCapital;
   const lastDaily = marked.daily.at(-1);
