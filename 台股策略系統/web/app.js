@@ -469,11 +469,36 @@ function executionSellPrice(candidate) {
   return Number(candidate?.bidPrice || candidate?.price || 0);
 }
 
+function positionMarkPrice(position, candidate) {
+  const quote = candidate ? executionSellPrice(candidate) : 0;
+  if (Number.isFinite(quote) && quote > 0) return quote;
+
+  const shares = Number(position?.shares ?? position?.quantity) || 0;
+  const accounting = window.TWStockAccounting;
+  const storedValue = accounting && typeof accounting.positionMarketValue === 'function'
+    ? accounting.positionMarketValue(position, null)
+    : Number(position?.marketValue || 0);
+  if (shares > 0 && Number.isFinite(storedValue) && storedValue > 0) return storedValue / shares;
+  return Number(position?.avgCost ?? position?.averagePrice) || 0;
+}
+
 function marketValue(positions, day) {
   return positions.reduce((sum, position) => {
     const candidate = findCandidate(day, position.symbol);
-    const grossValue = position.shares * (candidate ? executionSellPrice(candidate) : position.avgCost);
+    const grossValue = position.shares * positionMarkPrice(position, candidate);
     return sum + netSellProceeds(grossValue, false);
+  }, 0);
+}
+
+function markedPositionValue(positions, day) {
+  const accounting = window.TWStockAccounting;
+  return positions.reduce((sum, position) => {
+    const candidate = findCandidate(day, position.symbol);
+    const quote = candidate ? executionSellPrice(candidate) : 0;
+    if (accounting && typeof accounting.positionMarketValue === 'function') {
+      return sum + accounting.positionMarketValue(position, quote);
+    }
+    return sum + position.shares * positionMarkPrice(position, candidate);
   }, 0);
 }
 
@@ -482,8 +507,10 @@ function findCandidate(day, symbol) {
 }
 
 function sellReason(candidate, marketState, position) {
-  if (candidate.price <= position.stopPrice) return '跌破停損，強制賣出';
-  if (candidate.price >= position.targetPrice) return '達目標價，強制停利';
+  const current = executionSellPrice(candidate);
+  if (!(current > 0)) return '報價無效，暫不交易';
+  if (current <= position.stopPrice) return '跌破停損，強制賣出';
+  if (current >= position.targetPrice) return '達目標價，強制停利';
   if (candidate.grade === 'BLOCKED') return '訊號轉為禁止交易，防守賣出';
   if (marketState.mode === 'DEFENSIVE') return '大盤跌破 50MA，防守賣出';
   return '規則賣出';
@@ -624,8 +651,11 @@ function renderTodayDecision(result, day) {
 function renderPositions(result, day) {
   const rows = result.positions.map(position => {
     const candidate = findCandidate(day, position.symbol);
-    const current = candidate ? executionSellPrice(candidate) : position.avgCost;
-    const quoteSession = candidate ? sessionLabel(candidate.session || day.session) : sessionLabel(day.session);
+    const liveQuote = candidate ? executionSellPrice(candidate) : 0;
+    const current = positionMarkPrice(position, candidate);
+    const quoteSession = liveQuote > 0
+      ? sessionLabel(candidate.session || day.session)
+      : '最後有效';
     const value = position.shares * current;
     const netValue = netSellProceeds(value, false);
     const pnl = netValue - position.totalCost;
@@ -654,8 +684,10 @@ function renderPositions(result, day) {
 
 function positionStatus(candidate, position) {
   if (!candidate) return '無今日資料';
-  if (candidate.price <= position.stopPrice) return '跌破停損，下一日賣出';
-  if (candidate.price >= position.targetPrice) return '達目標價，下一日停利';
+  const current = executionSellPrice(candidate);
+  if (!(current > 0)) return '報價無效，暫不交易';
+  if (current <= position.stopPrice) return '跌破停損，下一日賣出';
+  if (current >= position.targetPrice) return '達目標價，下一日停利';
   return candidate.grade === 'A' || candidate.grade === 'B' ? '續抱' : '防守觀察';
 }
 
@@ -675,7 +707,7 @@ function openPositionStatus(symbol) {
 
 function positionStatusDetail(position, candidate) {
   const status = positionStatus(candidate, position);
-  const current = candidate ? executionSellPrice(candidate) : position.avgCost;
+  const current = positionMarkPrice(position, candidate);
   const netValue = netSellProceeds(position.shares * current, false);
   const pnl = netValue - position.totalCost;
   const checks = candidate ? [
@@ -1033,7 +1065,7 @@ function markToMarketResult(result, day) {
     positions: Array.isArray(result.positions) ? result.positions : [],
     daily: Array.isArray(result.daily) ? [...result.daily] : [],
   };
-  const positionValue = marketValue(marked.positions, day);
+  const positionValue = markedPositionValue(marked.positions, day);
   const accounting = window.TWStockAccounting;
   const reconciled = accounting && typeof accounting.markToMarket === 'function'
     ? accounting.markToMarket(marked, positionValue)

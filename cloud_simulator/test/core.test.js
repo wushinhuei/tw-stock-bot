@@ -22,7 +22,7 @@ const { driveChipSignals, enrichCandidatesWithLiveScores, fetchDriveTechnicalBar
 const { aggregateBars, chartBars, chartEvents, fetchChart, fetchSupplementalHistory, weeklyBars } = require('../src/yahoo');
 const { compareDailyBars, isRecent, mapLimited } = require('../scripts/download_yahoo_supplement');
 const { executionRiskReasons, scoreChipSignals } = require('../src/chip');
-const { economicCash, markToMarket } = require('../../台股策略系統/web/accounting');
+const { economicCash, markToMarket, positionMarketValue } = require('../../台股策略系統/web/accounting');
 const { DRIVE_DATASETS, MOPS_ROLLING, DriveHistorySource, parseCsv, parseJsonl } = require('../src/drive_history');
 const { fee, technicalProxy } = require('../src/drive_backtest');
 const { archiveEntryIdentity, attachFilingTimes, MopsClient, parseHtmlTables, parseXbrlInstance,
@@ -546,6 +546,21 @@ test('front-end mark-to-market derives economic cash from server equity', () => 
   assert.deepEqual(markToMarket(result, 4805), {
     cash: 85528, positionValue: 4805, finalEquity: 90333, totalReturn: -0.09667000000000003
   });
+});
+
+test('front-end zero quote preserves the last valid position value', () => {
+  const positions = [
+    { symbol: '3037', shares: 8, averagePrice: 1191.75, marketValue: 9534 },
+    { symbol: '2303', shares: 38, averagePrice: 127, marketValue: 4826 },
+  ];
+  assert.equal(positionMarketValue(positions[0], 0), 9534);
+  assert.equal(positionMarketValue(positions[1], 127), 4826);
+  const result = { initialCapital: 100000, cash: 100000, finalEquity: 99889, positions };
+  const marked = markToMarket(result, 14360);
+  assert.equal(marked.cash, 85529);
+  assert.equal(marked.positionValue, 14360);
+  assert.equal(marked.finalEquity, 99889);
+  assert.ok(Math.abs(marked.totalReturn - (-0.00111)) < 1e-12);
 });
 
 test('zero-price sell repair removes the fake trade and restores the position', () => {
