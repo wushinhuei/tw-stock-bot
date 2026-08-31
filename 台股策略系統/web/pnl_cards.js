@@ -177,13 +177,7 @@
       if (event.key === 'Escape' && !modal.hidden) close();
     });
 
-    const originalRender = window.render;
-    if (typeof originalRender === 'function') {
-      window.render = function renderWithPnlCards(result) {
-        originalRender(result);
-        renderCards(result, latestScenarioDay());
-      };
-    }
+    window.renderPnlCards = renderCards;
     renderCards(typeof currentSimulation === 'function' ? currentSimulation() : window.PRECOMPUTED_SIMULATION, latestScenarioDay());
   }
 
