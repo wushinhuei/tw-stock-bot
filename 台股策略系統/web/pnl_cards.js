@@ -22,9 +22,12 @@
   function unrealizedSummary(result, day) {
     const rows = (Array.isArray(result?.positions) ? result.positions : []).map(position => {
       const candidate = candidateFor(day, position.symbol);
-      const current = candidate && typeof executionSellPrice === 'function'
+      const liveQuote = candidate && typeof executionSellPrice === 'function'
         ? executionSellPrice(candidate)
-        : Number(position.avgCost || position.averagePrice || 0);
+        : 0;
+      const current = typeof positionMarkPrice === 'function'
+        ? positionMarkPrice(position, candidate)
+        : (liveQuote > 0 ? liveQuote : Number(position.avgCost || position.averagePrice || 0));
       const shares = Number(position.shares || position.quantity || 0);
       const cost = Number(position.totalCost || shares * Number(position.avgCost || position.averagePrice || 0));
       const grossValue = shares * current;
@@ -38,7 +41,9 @@
         netValue,
         pnl,
         pnlPct: cost ? pnl / cost : 0,
-        quoteSession: typeof sessionLabel === 'function' ? sessionLabel(candidate?.session || day?.session) : '-',
+        quoteSession: liveQuote > 0 && typeof sessionLabel === 'function'
+          ? sessionLabel(candidate?.session || day?.session)
+          : '最後有效',
       };
     });
     return {
