@@ -11,14 +11,21 @@
     return Number.isFinite(out) ? out : null;
   }
 
+  function positionMarketValue(position, quotePrice) {
+    const shares = Math.max(0, finiteNumber(position?.shares ?? position?.quantity) || 0);
+    const quote = finiteNumber(quotePrice);
+    if (quote !== null && quote > 0) return shares * quote;
+
+    const stored = finiteNumber(position?.marketValue);
+    if (stored !== null && stored > 0) return stored;
+
+    const cost = finiteNumber(position?.avgCost ?? position?.averagePrice);
+    return shares * Math.max(0, cost || 0);
+  }
+
   function storedPositionValue(positions) {
-    return (Array.isArray(positions) ? positions : []).reduce((sum, position) => {
-      const stored = finiteNumber(position.marketValue);
-      if (stored !== null && stored >= 0) return sum + stored;
-      const shares = finiteNumber(position.shares ?? position.quantity) || 0;
-      const price = finiteNumber(position.avgCost ?? position.averagePrice) || 0;
-      return sum + shares * price;
-    }, 0);
+    return (Array.isArray(positions) ? positions : [])
+      .reduce((sum, position) => sum + positionMarketValue(position, null), 0);
   }
 
   function economicCash(result) {
@@ -40,5 +47,5 @@
     };
   }
 
-  return { economicCash, markToMarket, storedPositionValue };
+  return { economicCash, markToMarket, positionMarketValue, storedPositionValue };
 });
