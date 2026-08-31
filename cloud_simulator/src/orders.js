@@ -19,6 +19,7 @@ class OrderManager {
     order.idempotencyKey = orderKey(order);
     if (existing.some(item => ACTIVE.has(item.status) && item.idempotencyKey === order.idempotencyKey)) return null;
     if (order.quantity < 1 || order.quantity > 999) throw new Error('盤中零股數量必須為 1–999 股');
+    if (!Number.isFinite(Number(order.price)) || Number(order.price) <= 0) return null;
     return order;
   }
 
@@ -50,8 +51,9 @@ class OrderManager {
     if (!['NEW', 'OPEN', 'PARTIAL'].includes(order.status)) return order;
     if (!quote || !quote.timestamp || new Date(quote.timestamp) <= new Date(order.createdAt)) return order;
     const marketPrice = order.side === 'BUY' ? Number(quote.askPrice) : Number(quote.bidPrice);
+    const validMarketPrice = Number.isFinite(marketPrice) && marketPrice > 0;
     const crosses = order.side === 'BUY' ? Number(order.price) >= marketPrice : Number(order.price) <= marketPrice;
-    if (!crosses || !Number.isFinite(marketPrice)) return { ...order, status: order.filledQuantity ? 'PARTIAL' : 'OPEN' };
+    if (!validMarketPrice || !crosses) return { ...order, status: order.filledQuantity ? 'PARTIAL' : 'OPEN' };
     const available = Math.max(0, Number(quote.availableQuantity || 0));
     const fill = Math.min(order.quantity - order.filledQuantity, available);
     if (!fill) return { ...order, status: order.filledQuantity ? 'PARTIAL' : 'OPEN' };

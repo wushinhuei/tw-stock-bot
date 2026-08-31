@@ -1,7 +1,16 @@
 'use strict';
 
-function number(value) { const out = Number(String(value ?? '').replace(/,/g, '')); return Number.isFinite(out) ? out : null; }
-function bestPrice(item) { return number(item.z) ?? number(String(item.a || '').split('_')[0]) ?? number(String(item.b || '').split('_')[0]) ?? number(item.y); }
+function number(value) {
+  const text = String(value ?? '').replace(/,/g, '').trim();
+  if (!text || text === '-' || text === '--') return null;
+  const out = Number(text);
+  return Number.isFinite(out) ? out : null;
+}
+function positiveNumber(value) {
+  const out = number(value);
+  return out !== null && out > 0 ? out : null;
+}
+function bestPrice(item) { return positiveNumber(item.z) ?? positiveNumber(String(item.a || '').split('_')[0]) ?? positiveNumber(String(item.b || '').split('_')[0]) ?? positiveNumber(item.y); }
 
 async function fetchJson(url, fetchImpl = fetch, referer = 'https://www.twse.com.tw/') {
   const response = await fetchImpl(url, {
@@ -24,8 +33,8 @@ async function fetchQuotes(symbols, fetchImpl = fetch) {
   const quotes = {};
   for (const item of json.msgArray || []) {
     const price = bestPrice(item);
-    const bidPrice = number(String(item.b || '').split('_')[0]) ?? price;
-    const askPrice = number(String(item.a || '').split('_')[0]) ?? price;
+    const bidPrice = positiveNumber(String(item.b || '').split('_')[0]) ?? price;
+    const askPrice = positiveNumber(String(item.a || '').split('_')[0]) ?? price;
     quotes[item.c] = {
       symbol: item.c, name: item.n, price, bidPrice, askPrice,
       availableQuantity: Math.max(0, Math.floor((number(String(item.f || '').split('_')[0]) || 0) * 1000)),

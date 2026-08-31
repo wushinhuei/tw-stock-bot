@@ -142,8 +142,11 @@ class SimulationEngine {
     for (const position of [...this.account.positions]) {
       const candidate = candidates.find(row => row.symbol === position.symbol);
       if (!candidate) continue;
-      position.marketValue = position.quantity * Number(candidate.bidPrice || candidate.price);
-      position.highestPrice = Math.max(Number(position.highestPrice || 0), Number(candidate.price || 0));
+      const markPrice = Number(candidate.bidPrice || candidate.price);
+      if (Number.isFinite(markPrice) && markPrice > 0) {
+        position.marketValue = position.quantity * markPrice;
+        position.highestPrice = Math.max(Number(position.highestPrice || 0), markPrice);
+      }
       const exit = exitDecision(position, candidate, context, this.config);
       if (exit.exit && !this.account.orders.some(order => order.symbol === position.symbol && order.side === 'SELL' && ['NEW', 'OPEN', 'PARTIAL'].includes(order.status))) {
         const quantity = exit.partial ? Math.max(1, Math.floor(position.quantity / 2)) : position.quantity;
@@ -206,11 +209,16 @@ class SimulationEngine {
   markToMarket(quotes) {
     const marketValue = this.account.positions.reduce((sum, position) => {
       const quote = quotes[position.symbol];
-      return sum + position.quantity * Number(quote ? quote.bidPrice : position.averagePrice);
+      const quotedPrice = Number(quote && (quote.bidPrice || quote.price));
+      const fallbackValue = Number(position.marketValue || position.quantity * position.averagePrice || 0);
+      return sum + (Number.isFinite(quotedPrice) && quotedPrice > 0
+        ? position.quantity * quotedPrice
+        : fallbackValue);
     }, 0);
     const unsettledNet = (this.account.settlements || []).reduce((sum, row) => sum + Number(row.netPayable || 0), 0);
     // T+2 前銀行餘額不動；應付款扣除、應收款加回，避免買進後重複計入資產。
-    this.account.equity = this.account.bankCash - unsettledNet + marketValue;
+    this.account.cash = this.account.bankCash - unsettledNet;
+    this.account.equity = this.account.cash + marketValue;
   }
 
   dashboard(candidates = []) {
@@ -233,8 +241,9 @@ class SimulationEngine {
         date: taipeiDate(), source: 'google-cloud-simulator', candidates,
         internationalNews: this.news.slice(0, 30), market: { mode: risk.allowNewRisk ? 'NORMAL' : 'DEFENSIVE' }
       }],
+      // cash is economic cash after unsettled payables/receivables, not the unchanged bank balance.
       simulation: {
-        initialCapital: this.account.initialCapital, cash: this.account.bankCash,
+        initialCapital: this.account.initialCapital, cash: this.account.cash,
         positions, trades, daily: this.account.daily || [],
         finalEquity: this.account.equity, realizedPnl: this.account.realizedPnl,
         totalReturn: this.account.equity / this.account.initialCapital - 1, maxDrawdown: this.account.maxDrawdown || 0,

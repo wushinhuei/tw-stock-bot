@@ -22,12 +22,14 @@ const { driveChipSignals, enrichCandidatesWithLiveScores, fetchDriveTechnicalBar
 const { aggregateBars, chartBars, chartEvents, fetchChart, fetchSupplementalHistory, weeklyBars } = require('../src/yahoo');
 const { compareDailyBars, isRecent, mapLimited } = require('../scripts/download_yahoo_supplement');
 const { executionRiskReasons, scoreChipSignals } = require('../src/chip');
+const { economicCash, markToMarket } = require('../../台股策略系統/web/accounting');
 const { DRIVE_DATASETS, MOPS_ROLLING, DriveHistorySource, parseCsv, parseJsonl } = require('../src/drive_history');
 const { fee, technicalProxy } = require('../src/drive_backtest');
 const { archiveEntryIdentity, attachFilingTimes, MopsClient, parseHtmlTables, parseXbrlInstance,
   rowsFromTable, toCsv, validateMopsCompleteness, validateOfficialBatch, xbrlArchiveUrl } = require('../src/mops_history');
 const { parse0050, parseTaiex, rocDate, validateBenchmarks } = require('../src/benchmark_history');
 const { adjustBars, buildCumulativeFactors, parseCorporateActions } = require('../src/corporate_actions');
+const { repairZeroPriceSellState } = require('../src/state_repair');
 
 function bars(count, start = 100) {
   return Array.from({ length: count }, (_, i) => ({
@@ -71,14 +73,16 @@ test('score totals 100 points at most and maps A/B/C thresholds', () => {
   assert.equal(result.metrics.obv.bullish, true);
 });
 
-test('scanner uses only TWSE common stocks, top 50 and target industries', () => {
+test('scanner uses only TWSE common stocks within the top 50 across industries', () => {
   const rows = Array.from({ length: 60 }, (_, i) => ({
     symbol: String(1000 + i), volume: 10000 - i, market: 'TWSE',
     securityType: i === 0 ? 'ETF' : 'COMMON_STOCK', group: i % 2 ? '半導體' : '金融'
   }));
   const result = buildUniverse(rows, {});
   assert.ok(result.length <= 30);
-  assert.ok(result.every(row => row.market === 'TWSE' && row.securityType === 'COMMON_STOCK' && row.group === '半導體'));
+  assert.ok(result.every(row => row.market === 'TWSE' && row.securityType === 'COMMON_STOCK'));
+  assert.ok(result.some(row => row.group === '金融'));
+  assert.ok(result.some(row => row.group === '半導體'));
   assert.ok(result.every(row => Number(row.symbol) < 1050));
 });
 
@@ -100,6 +104,19 @@ test('TWSE MIS quotes bypass intermediary caches', async () => {
   assert.match(requestedOptions.headers['Cache-Control'], /no-cache/);
   assert.equal(requestedOptions.headers.Pragma, 'no-cache');
   assert.equal(quotes['2330'].timestamp, '2026-08-25T11:08:10+08:00');
+});
+
+test('TWSE MIS blank quote fields remain missing instead of becoming zero', async () => {
+  const quotes = await fetchQuotes(['3037'], async () => ({
+    ok: true,
+    json: async () => ({ msgArray: [{
+      c: '3037', n: '欣興', z: '-', a: '-', b: '', y: '-', f: '78_', d: '20260831', t: '09:14:52'
+    }] })
+  }));
+  assert.equal(quotes['3037'].price, null);
+  assert.equal(quotes['3037'].bidPrice, null);
+  assert.equal(quotes['3037'].askPrice, null);
+  assert.equal(quotes['3037'].availableQuantity, 78000);
 });
 
 test('Apps Script candidate source always requests a forced fresh daily scan', () => {
@@ -476,6 +493,20 @@ test('conservative matching waits for a later quote and supports partial fills',
   assert.equal(partial.filledQuantity, 2);
 });
 
+test('zero-price orders and zero-price market quotes never fill', () => {
+  const manager = new OrderManager(CONFIG);
+  const rejected = manager.create({ tradeDate: '2026-08-31', strategy: 'SWING', symbol: '3037', side: 'SELL', quantity: 8, price: 0, signalTimestamp: 'zero' });
+  assert.equal(rejected, null);
+
+  const valid = manager.create({
+    tradeDate: '2026-08-31', strategy: 'SWING', symbol: '3037', side: 'SELL', quantity: 8,
+    price: 1110, signalTimestamp: 'valid', createdAt: '2026-08-31T01:00:00Z'
+  });
+  const matched = manager.match(valid, { timestamp: '2026-08-31T01:14:52Z', bidPrice: 0, availableQuantity: 78000 });
+  assert.equal(matched.status, 'OPEN');
+  assert.equal(matched.filledQuantity, 0);
+});
+
 test('T+2 skips weekends and ledger does not count open orders', () => {
   assert.equal(settlementDate('2026-08-21', new Set()), '2026-08-25');
   const ledger = buildSettlementLedger([
@@ -495,6 +526,49 @@ test('40% cash reserve and settlement reserve constrain entry budget', () => {
   assert.equal(maxEntryBudget(account, 'SWING', CONFIG), 5000);
   account.settlements = [{ date: '2026-08-25', netPayable: 5000 }];
   assert.equal(availableToBuy(account, CONFIG), 35000);
+});
+
+test('dashboard cash reconciles unsettled trades with reported equity', () => {
+  const engine = new SimulationEngine({ repository: new MemoryRepository() });
+  engine.account.bankCash = 100000;
+  engine.account.positions = [{ symbol: '2303', strategy: 'SWING', quantity: 38, averagePrice: 127, marketValue: 4826 }];
+  engine.account.settlements = [{ date: '2026-09-01', netPayable: 14472 }];
+  engine.markToMarket({ '2303': { bidPrice: 127 } });
+  const simulation = engine.dashboard([]).simulation;
+  assert.equal(simulation.cash, 85528);
+  assert.equal(simulation.finalEquity, 90354);
+  assert.equal(simulation.cash + simulation.positions[0].marketValue, simulation.finalEquity);
+});
+
+test('front-end mark-to-market derives economic cash from server equity', () => {
+  const result = { initialCapital: 100000, cash: 100000, finalEquity: 90354, positions: [{ marketValue: 4826 }] };
+  assert.equal(economicCash(result), 85528);
+  assert.deepEqual(markToMarket(result, 4805), {
+    cash: 85528, positionValue: 4805, finalEquity: 90333, totalReturn: -0.09667000000000003
+  });
+});
+
+test('zero-price sell repair removes the fake trade and restores the position', () => {
+  const account = createAccount(100000);
+  account.trades = [
+    { tradeDate: '2026-08-27', symbol: '3037', strategy: 'SWING', side: 'BUY', status: 'FILLED', filledQuantity: 4, averagePrice: 1190, fee: 7, tax: 0, orderId: 'buy-1' },
+    { tradeDate: '2026-08-27', symbol: '3037', strategy: 'SWING', side: 'BUY', status: 'FILLED', filledQuantity: 4, averagePrice: 1190, fee: 7, tax: 0, orderId: 'buy-2' },
+    { tradeDate: '2026-08-31', symbol: '3037', strategy: 'SWING', side: 'SELL', status: 'FILLED', filledQuantity: 8, averagePrice: 0, fee: 1, tax: 0, orderId: 'bad-sell' },
+  ];
+  account.orders = [{ id: 'buy-1' }, { id: 'buy-2' }, { id: 'bad-sell' }];
+  account.realizedPnl = -9535;
+  account.totalFees = 15;
+  account.equity = 90465;
+  const result = repairZeroPriceSellState(account, { symbol: '3037' });
+  assert.equal(result.audit.removedTrades.length, 1);
+  assert.equal(result.account.trades.length, 2);
+  assert.equal(result.account.orders.some(order => order.id === 'bad-sell'), false);
+  assert.equal(result.account.realizedPnl, 0);
+  assert.equal(result.account.totalFees, 14);
+  assert.equal(result.account.positions.length, 1);
+  assert.equal(result.account.positions[0].symbol, '3037');
+  assert.equal(result.account.positions[0].quantity, 8);
+  assert.equal(result.account.positions[0].averagePrice, 1191.75);
 });
 
 test('daily -2% and weekly -5% stop new risk', () => {
@@ -518,7 +592,7 @@ test('strategy windows and exits enforce day trade and overnight rules', () => {
 
 test('engine ignores duplicate entry signal and preserves one active order', () => {
   const engine = new SimulationEngine({ config: CONFIG, repository: new MemoryRepository(), account: createAccount(100000) });
-  const candidate = { symbol: '2330', grade: 'A', score: 90, strategy: 'SWING', blockedReasons: [] };
+  const candidate = { symbol: '2330', grade: 'A', score: 90, strategy: 'SWING', price: 100, askPrice: 100, blockedReasons: [] };
   const context = { date: '2026-08-20', time: '10:00', signalTimestamp: 'same', marketMode: 'NORMAL' };
   engine.processCandidates([candidate], context);
   engine.processCandidates([candidate], context);
@@ -532,6 +606,13 @@ test('after-market refresh cannot duplicate the same order', () => {
   engine.processCandidates([candidate], context);
   engine.processCandidates([candidate], context);
   assert.equal(engine.account.orders.length, 1);
+});
+
+test('missing or zero execution quote cannot trigger a stop-loss exit', () => {
+  const position = { strategy: 'SWING', averagePrice: 1191.75, stopPrice: 1118.6, highestPrice: 1190 };
+  const result = exitDecision(position, { symbol: '3037', price: null, bidPrice: null }, { time: '09:15' }, CONFIG);
+  assert.equal(result.exit, false);
+  assert.match(result.reason, /無有效執行報價/);
 });
 
 test('profitable OBV-confirmed swing position permits only one 5% add-on', () => {

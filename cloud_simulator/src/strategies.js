@@ -31,6 +31,7 @@ function entryDecision(candidate, strategy, context, config) {
 
 function exitDecision(position, candidate, context, config) {
   const price = Number(candidate.bidPrice || candidate.price || 0);
+  if (!Number.isFinite(price) || price <= 0) return { exit: false, emergency: false, reason: '無有效執行報價' };
   const pnlPct = position.averagePrice ? price / position.averagePrice - 1 : 0;
   if (position.strategy === 'DAY_TRADE') {
     if (pnlPct <= -0.01) return { exit: true, emergency: true, reason: '當沖停損-1%' };
