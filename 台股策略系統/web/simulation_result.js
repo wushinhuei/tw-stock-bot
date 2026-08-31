@@ -1,7 +1,25 @@
 window.PRECOMPUTED_SIMULATION = {
   "initialCapital": 100000,
-  "cash": 100000,
+  "cash": 85529,
   "positions": [
+    {
+      "symbol": "3037",
+      "strategy": "SWING",
+      "quantity": 8,
+      "averagePrice": 1191.75,
+      "lastEntryPrice": 1190,
+      "stopPrice": 1118.6,
+      "highestPrice": 1190,
+      "holdingDays": 0,
+      "addOnCount": 1,
+      "partialTaken": false,
+      "marketValue": 9534,
+      "shares": 8,
+      "avgCost": 1191.75,
+      "totalCost": 9534,
+      "name": "3037",
+      "targetPrice": 1287.0900000000001
+    },
     {
       "symbol": "2303",
       "strategy": "SWING",
@@ -13,7 +31,7 @@ window.PRECOMPUTED_SIMULATION = {
       "holdingDays": 0,
       "addOnCount": 1,
       "partialTaken": false,
-      "marketValue": 4750,
+      "marketValue": 4826,
       "shares": 38,
       "avgCost": 127.4342105263158,
       "totalCost": 4842.5,
@@ -116,39 +134,20 @@ window.PRECOMPUTED_SIMULATION = {
       "price": 125.5,
       "name": "2303",
       "pnl": 0
-    },
-    {
-      "tradeDate": "2026-08-31",
-      "symbol": "3037",
-      "strategy": "SWING",
-      "side": "SELL",
-      "status": "FILLED",
-      "filledQuantity": 8,
-      "averagePrice": 0,
-      "fee": 1,
-      "tax": 0,
-      "reason": "波段初始停損",
-      "orderId": "e50a717b-a166-4f5a-a98c-cd5bfcf70423",
-      "date": "2026-08-31",
-      "action": "SELL",
-      "shares": 8,
-      "price": 0,
-      "name": "3037",
-      "pnl": 0
     }
   ],
   "daily": [],
-  "finalEquity": 90278,
-  "realizedPnl": -9629.5,
-  "totalReturn": -0.09721999999999997,
+  "finalEquity": 99889,
+  "realizedPnl": -94.5,
+  "totalReturn": -0.0011100000000000554,
   "maxDrawdown": 0,
-  "totalFees": 36,
+  "totalFees": 35,
   "totalTaxes": 14,
-  "dailyStopped": true,
-  "weeklyLimited": true,
+  "dailyStopped": false,
+  "weeklyLimited": false,
   "source": {
     "staticBackupProvider": "cloud-dashboard",
-    "staticBackupUpdatedAt": "2026-08-31T01:16:09.736Z",
+    "staticBackupUpdatedAt": "2026-08-31T12:41:57.062Z",
     "newestScenarioDate": "2026-08-31"
   }
 };
