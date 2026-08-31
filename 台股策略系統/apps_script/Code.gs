@@ -447,7 +447,9 @@ function ensureStrategySettingsSheet(workbook) {
     const key = setting[0];
     const current = existingByKey[key];
     const row = current ? current.row : [];
-    const migrateCandidateLimit = key === 'topVolumeLimit' && Number(row[2]) === 50 && Number(row[4]) === 50;
+    const migrateCandidateLimit = key === 'topVolumeLimit'
+      && Number(row[2]) > Number(setting[3])
+      && Number(row[4]) >= Number(setting[3]);
     const value = migrateCandidateLimit
       ? setting[3]
       : (row[2] !== '' && row[2] != null ? row[2] : setting[3]);
