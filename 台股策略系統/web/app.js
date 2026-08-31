@@ -545,6 +545,7 @@ function render(result) {
   renderPositions(result, latestDay);
   renderTrades(result.trades, todayTaipeiDate());
   renderCurve(result.daily);
+  if (typeof window.renderPnlCards === 'function') window.renderPnlCards(result, latestDay);
 }
 
 function renderLastUpdated(result, latestDay) {
