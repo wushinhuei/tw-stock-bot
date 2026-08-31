@@ -832,7 +832,7 @@ function renderAGradeCandidates(day) {
     target.innerHTML = `
       <div class="empty-candidates">
         <strong>今日尚無 A 級候選股</strong>
-        <span>${dateMessage} 系統已先過濾成交量前 ${source.topVolumeLimit || 30} 名與指定族群；無完整評分、未達 80 分或交易計畫不允許進場時，不列為 A 級候選。</span>
+        <span>${dateMessage} 系統先從成交量前 ${source.candidateSelectionPoolLimit || 50} 名，以籌碼 50%、成交量／流動性 30%、價格動能 20% 選出 30 檔；無完整評分、未達 80 分或交易計畫不允許進場時，不列為 A 級候選。</span>
       </div>
     `;
     return;

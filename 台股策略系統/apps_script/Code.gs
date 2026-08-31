@@ -37,8 +37,12 @@ const CONFIG = {
   maxMarketOrderSpreadPct: 0.002,
   maxLimitOrderSpreadPct: 0.006,
   rawVolumeReviewLimit: 100,
+  candidateSelectionPoolLimit: 50,
   topVolumeLimit: 30,
   maxScanCandidates: 30,
+  candidateChipWeight: 0.50,
+  candidateVolumeWeight: 0.30,
+  candidateMomentumWeight: 0.20,
   monthlyTargetReturnMin: 0.03,
   monthlyTargetReturnMax: 0.05,
   allowDayTrade: false,
@@ -80,8 +84,12 @@ const STRATEGY_SETTINGS = [
   ['maxMarketOrderSpreadPct', '市價允許價差', 'number', CONFIG.maxMarketOrderSpreadPct, '價差小於此值才允許類市價'],
   ['maxLimitOrderSpreadPct', '限價最大價差', 'number', CONFIG.maxLimitOrderSpreadPct, '價差超過此值不進場'],
   ['rawVolumeReviewLimit', '成交量原始檢討筆數', 'number', CONFIG.rawVolumeReviewLimit, '每日先檢討成交量前 100 名'],
-  ['topVolumeLimit', '成交量入選筆數', 'number', CONFIG.topVolumeLimit, '由原始排名取前 30 名'],
+  ['candidateSelectionPoolLimit', '候選篩選母體筆數', 'number', CONFIG.candidateSelectionPoolLimit, '由成交量前 50 名進行籌碼加權篩選'],
+  ['topVolumeLimit', '最終候選筆數', 'number', CONFIG.topVolumeLimit, '籌碼加權後保留 30 名'],
   ['maxScanCandidates', '掃描候選上限', 'number', CONFIG.maxScanCandidates, '最多分析幾檔'],
+  ['candidateChipWeight', '候選籌碼權重', 'number', CONFIG.candidateChipWeight, '候選排序占 50%，不改正式籌碼 15 分'],
+  ['candidateVolumeWeight', '候選成交量權重', 'number', CONFIG.candidateVolumeWeight, '候選排序占 30%'],
+  ['candidateMomentumWeight', '候選價格動能權重', 'number', CONFIG.candidateMomentumWeight, '候選排序占 20%'],
   ['allowDayTrade', '是否允許當沖', 'boolean', CONFIG.allowDayTrade, 'TRUE/FALSE'],
   ['allowOvernight', '是否允許隔日沖', 'boolean', CONFIG.allowOvernight, 'TRUE/FALSE'],
   ['allowChasing', '是否允許追價', 'boolean', CONFIG.allowChasing, 'TRUE/FALSE'],
@@ -197,6 +205,29 @@ function cloudDashboardUrl() {
 }
 
 function readLatestCandidateUniverse() {
+  const saved = PropertiesService.getScriptProperties().getProperty(STATE_KEY);
+  if (saved) {
+    const payload = JSON.parse(saved);
+    const day = payload && Array.isArray(payload.scenario) && payload.scenario.length ? last(payload.scenario) : null;
+    const candidates = day && Array.isArray(day.candidates)
+      ? day.candidates.filter(function(item) { return !item.heldSupplement; }).slice(0, CONFIG.topVolumeLimit)
+      : [];
+    if (candidates.length) {
+      return {
+        ok: true, tradeDate: day.date, reviewedCount: CONFIG.candidateSelectionPoolLimit,
+        selectedCount: candidates.length, limit: CONFIG.topVolumeLimit,
+        generatedAt: day.source && day.source.generatedAt ? day.source.generatedAt : payload.generatedAt,
+        selectionWeights: { chip: CONFIG.candidateChipWeight, volume: CONFIG.candidateVolumeWeight, momentum: CONFIG.candidateMomentumWeight },
+        items: candidates.map(function(candidate, index) {
+          return {
+            rank: index + 1, volumeRank: candidate.metrics && candidate.metrics.volumeRank,
+            symbol: candidate.symbol, name: candidate.name, volume: candidate.metrics && candidate.metrics.screeningVolume,
+            close: candidate.price, selectionScore: candidate.metrics && candidate.metrics.selectionScore
+          };
+        })
+      };
+    }
+  }
   const manifest = historyReadJson(HISTORY_DRIVE.top50Manifest);
   const latest = (manifest.raw_ranking_files || []).slice().sort(function(a, b) {
     return String(b.latest_trade_date || '').localeCompare(String(a.latest_trade_date || ''));
@@ -712,14 +743,17 @@ function buildScenario(existingPositions, targetDate) {
 
   const scannerDate = targetDate || latestMarket.date;
   const universeResult = buildTradingUniverse(scannerDate, existingPositions || []);
-  const universe = universeResult.items;
+  const universePool = universeResult.items;
   const candidates = [];
-  const twseQuotes = safeFetchTwseQuotes(universe);
   const analysisDate = universeResult.meta && universeResult.meta.date
     ? universeResult.meta.date
     : latestMarket.date;
+  const chipData = safeFetchOfficialChipData(analysisDate, universePool);
+  const selection = selectCandidateUniverse(universePool, chipData, CONFIG.maxScanCandidates);
+  const universe = selection.items;
+  universeResult.meta.selection = selection.meta;
+  const twseQuotes = safeFetchTwseQuotes(universe);
   const afterMarketTrades = safeFetchAfterMarketTrades(analysisDate, universe);
-  const chipData = safeFetchOfficialChipData(analysisDate, universe);
   universe.forEach(function(stockInfo) {
     try {
       const result = fetchChart(stockInfo.symbol, '1y', '1d');
@@ -771,11 +805,10 @@ function buildTradingUniverse(targetDate, existingPositions) {
 
   try {
     const rawRanked = fetchTopVolumeStocks(targetDate, CONFIG.rawVolumeReviewLimit);
-    const ranked = rawRanked.slice(0, CONFIG.topVolumeLimit);
+    const ranked = rawRanked.slice(0, CONFIG.candidateSelectionPoolLimit);
     let selected = ranked
       .map(function(row) { return classifyTargetStock(row); })
-      .filter(Boolean)
-      .slice(0, CONFIG.maxScanCandidates);
+      .filter(Boolean);
     selected = mergeUniverseItems(selected, heldItems);
 
     if (!selected.length) {
@@ -791,6 +824,7 @@ function buildTradingUniverse(targetDate, existingPositions) {
         source: 'TWSE MI_INDEX top volume',
         date: ranked[0] && ranked[0].sourceDate ? ranked[0].sourceDate : targetDate,
         topVolumeLimit: CONFIG.topVolumeLimit,
+        candidateSelectionPoolLimit: CONFIG.candidateSelectionPoolLimit,
         rawVolumeReviewLimit: CONFIG.rawVolumeReviewLimit,
         scannedLimit: CONFIG.maxScanCandidates,
         rawRankedCount: rawRanked.length,
@@ -882,6 +916,8 @@ function parseTopVolumeRows(json, limit) {
     const nameIndex = fieldIndex(fields, /證券名稱/);
     const volumeIndex = fieldIndex(fields, /成交股數|成交量/);
     const closeIndex = fieldIndex(fields, /收盤價|成交價/);
+    const signIndex = fieldIndex(fields, /漲跌\(\+\/-\)|漲跌符號/);
+    const changeIndex = fieldIndex(fields, /漲跌價差/);
     if (codeIndex < 0 || nameIndex < 0 || volumeIndex < 0) return;
 
     rows = rows.concat(data.map(function(rowObject) {
@@ -889,11 +925,18 @@ function parseTopVolumeRows(json, limit) {
       if (!Array.isArray(row)) return null;
       const code = String(row[codeIndex] || '').trim();
       if (!/^\d{4}$/.test(code)) return null;
+      const close = closeIndex >= 0 ? parseTwseNumber(row[closeIndex]) : null;
+      const rawChange = changeIndex >= 0 ? Math.abs(parseTwseNumber(row[changeIndex]) || 0) : 0;
+      const signText = signIndex >= 0 ? String(row[signIndex] || '').toLowerCase() : '';
+      const signedChange = /-|green|down/.test(signText) ? -rawChange : rawChange;
+      const previousClose = close != null ? close - signedChange : null;
       return {
         code: code,
         name: String(row[nameIndex] || '').trim(),
         volume: parseTwseNumber(row[volumeIndex]) || 0,
-        close: closeIndex >= 0 ? parseTwseNumber(row[closeIndex]) : null
+        close: close,
+        priceChange: signedChange,
+        priceChangePct: previousClose ? signedChange / previousClose : null
       };
     }).filter(Boolean));
   });
@@ -908,8 +951,7 @@ function parseTopVolumeRows(json, limit) {
 
 function classifyTargetStock(row) {
   const inherited = FALLBACK_UNIVERSE_BY_CODE[row.code] || null;
-  const group = inherited ? inherited.group : detectTargetGroup(row);
-  if (!group) return null;
+  const group = inherited ? inherited.group : (detectTargetGroup(row) || '其他產業');
   return {
     symbol: row.code + '.TW',
     code: row.code,
@@ -920,7 +962,66 @@ function classifyTargetStock(row) {
     chipOk: inherited ? inherited.chipOk : false,
     volumeRank: row.volumeRank,
     screeningVolume: row.volume,
-    screeningClose: row.close
+    screeningClose: row.close,
+    priceChangePct: row.priceChangePct
+  };
+}
+
+function selectionClamp(value) { return Math.max(0, Math.min(1, Number(value) || 0)); }
+
+function chipSelectionFraction(item, signal) {
+  signal = signal || {};
+  const institutional = signal.institutional;
+  const margin = signal.margin;
+  const hasDetails = Boolean(institutional || margin || signal.shortLending || signal.dayTrade);
+  if (!hasDetails) return 0.5;
+  let institutionalPoints = 3;
+  if (institutional) {
+    institutionalPoints = institutional.totalNet > 0 ? 4 : institutional.totalNet < 0 ? 1 : 2;
+    if ((institutional.foreignNet || 0) > 0 || (institutional.trustNet || 0) > 0) institutionalPoints += 1;
+    if (item.screeningVolume && institutional.totalNet / item.screeningVolume >= 0.03) institutionalPoints += 1;
+  }
+  institutionalPoints = Math.min(6, institutionalPoints);
+  const marginRatio = margin ? signal.marginChangeRatio : null;
+  const marginPoints = marginRatio == null ? 2 : marginRatio <= 0 ? 3 : marginRatio <= 0.02 ? 2 : marginRatio <= 0.05 ? 1 : 0;
+  const shortValues = [signal.shortChangeRatio, signal.securitiesLendingChangeRatio].filter(function(value) {
+    return value != null && Number.isFinite(Number(value));
+  });
+  const shortRatio = shortValues.length ? Math.max.apply(null, shortValues) : null;
+  const shortPoints = shortRatio == null ? 2 : shortRatio <= 0 ? 3 : shortRatio <= 0.03 ? 2 : shortRatio <= 0.08 ? 1 : 0;
+  const dayTradeRatio = item.screeningVolume && signal.dayTradeVolume != null ? signal.dayTradeVolume / item.screeningVolume : null;
+  const dayTradePoints = dayTradeRatio == null ? 2 : dayTradeRatio <= 0.35 ? 3 : dayTradeRatio <= 0.50 ? 2 : dayTradeRatio <= 0.60 ? 1 : 0;
+  return selectionClamp((institutionalPoints + marginPoints + shortPoints + dayTradePoints) / 15);
+}
+
+function candidateSelectionScore(item, signal) {
+  const chip = chipSelectionFraction(item, signal);
+  const volume = selectionClamp((CONFIG.candidateSelectionPoolLimit - Number(item.volumeRank || CONFIG.candidateSelectionPoolLimit) + 1) / CONFIG.candidateSelectionPoolLimit);
+  const changePct = Number(item.priceChangePct);
+  const momentum = Number.isFinite(changePct) ? selectionClamp((changePct + 0.05) / 0.10) : 0.5;
+  return {
+    total: round2(100 * (CONFIG.candidateChipWeight * chip + CONFIG.candidateVolumeWeight * volume + CONFIG.candidateMomentumWeight * momentum)),
+    chip: round2(50 * chip), volume: round2(30 * volume), momentum: round2(20 * momentum)
+  };
+}
+
+function selectCandidateUniverse(items, chipData, limit) {
+  const held = (items || []).filter(function(item) { return item.heldSupplement; });
+  const pool = (items || []).filter(function(item) { return !item.heldSupplement; }).map(function(item) {
+    return Object.assign({}, item, { selectionScore: candidateSelectionScore(item, chipData[item.code]) });
+  });
+  const aligned = !(chipData._meta && chipData._meta.alignedToUniverseDate === false);
+  pool.sort(aligned
+    ? function(a, b) { return b.selectionScore.total - a.selectionScore.total || a.volumeRank - b.volumeRank; }
+    : function(a, b) { return a.volumeRank - b.volumeRank; });
+  const selected = pool.slice(0, limit || CONFIG.topVolumeLimit);
+  return {
+    items: mergeUniverseItems(selected, held),
+    meta: {
+      mode: aligned ? 'chip-50-volume-30-momentum-20' : 'volume-fallback-chip-date-mismatch',
+      poolCount: pool.length, selectedCount: selected.length,
+      weights: { chip: CONFIG.candidateChipWeight, volume: CONFIG.candidateVolumeWeight, momentum: CONFIG.candidateMomentumWeight }
+    }
   };
 }
 
@@ -1784,6 +1885,7 @@ function gradeCandidate(base, rows, latestQuote, officialChip) {
       volumeRank: base.volumeRank || null,
       screeningVolume: base.screeningVolume || null,
       screeningClose: base.screeningClose || null,
+      selectionScore: base.selectionScore || null,
       heldSupplement: Boolean(base.heldSupplement),
       sourceSymbol: base.symbol,
       latestQuoteTime: latestQuote && latestQuote.time ? latestQuote.time : null,

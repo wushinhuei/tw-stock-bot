@@ -11,7 +11,7 @@ const { availableToBuy, buildSettlementLedger, settlementDate } = require('../sr
 const { entryDecision, exitDecision } = require('../src/strategies');
 const { gradeWithMedia, scoreCandidate } = require('../src/scoring');
 const { MemoryRepository } = require('../src/repository');
-const { buildUniverse } = require('../src/scanner');
+const { buildUniverse, candidateSelectionScore } = require('../src/scanner');
 const { adaptCandidatePayload } = require('../src/candidate_adapter');
 const { candidateSourceUrl, runTick, tickDecision } = require('../src/main');
 const { createDashboardServer } = require('../src/api');
@@ -73,18 +73,26 @@ test('score totals 100 points at most and maps A/B/C thresholds', () => {
   assert.equal(result.metrics.obv.bullish, true);
 });
 
-test('scanner uses only TWSE common stocks within the top 30 across industries', () => {
+test('scanner selects final 30 from volume top 50 using 50% chip weight across industries', () => {
   assert.equal(CONFIG.topVolumeLimit, 30);
+  assert.equal(CONFIG.candidateSelectionPoolLimit, 50);
+  assert.deepEqual(CONFIG.candidateSelectionWeights, { chip: 0.50, volume: 0.30, momentum: 0.20 });
   const rows = Array.from({ length: 60 }, (_, i) => ({
     symbol: String(1000 + i), volume: 10000 - i, market: 'TWSE',
     securityType: i === 0 ? 'ETF' : 'COMMON_STOCK', group: i % 2 ? '半導體' : '金融'
   }));
-  const result = buildUniverse(rows, {});
+  const enrichment = Object.fromEntries(rows.map(row => [row.symbol, { chipOk: false, changePct: 0 }]));
+  enrichment['1040'] = { chipOk: true, changePct: 0.05 };
+  const result = buildUniverse(rows, enrichment);
   assert.equal(result.length, 30);
   assert.ok(result.every(row => row.market === 'TWSE' && row.securityType === 'COMMON_STOCK'));
   assert.ok(result.some(row => row.group === '金融'));
   assert.ok(result.some(row => row.group === '半導體'));
-  assert.ok(result.every(row => Number(row.symbol) < 1031));
+  assert.ok(result.some(row => row.symbol === '1040'));
+  assert.ok(result.every(row => row.volumeRank <= 50));
+  assert.ok(result.every(row => row.symbol !== '1051'));
+  const score = candidateSelectionScore({ chipOk: true, changePct: 0.05 }, 1, 50);
+  assert.deepEqual(score, { total: 100, chip: 50, volume: 30, momentum: 20 });
 });
 
 test('TWSE MIS quotes bypass intermediary caches', async () => {
@@ -337,18 +345,21 @@ test('Cloud live scoring computes OBV and blocks incomplete technical data', asy
   assert.match(incomplete.blockedReasons.join(','), /OBV不足/);
 });
 
-test('Apps Script scenario adapter enforces top 30 and creates 100-point components', () => {
+test('Apps Script scenario adapter accepts weighted selections from ranks 31-50 and enforces final 30', () => {
   const candidate = rank => ({
     symbol: String(2300 + rank), name: '測試股', group: '半導體', price: 100, bidPrice: 99.9, askPrice: 100,
     grade: 'A', dayTradeOk: false, overnightOk: false, industryOk: true, fundamentalOk: true,
     chipOk: true, trendOk: true, volumePriceOk: true, momentumOk: true,
     executionPlan: { spreadPct: 0.001 }, metrics: { volumeRank: rank, volumeRatio: 1.6, ma20: 95, ma50: 90, latestQuoteTime: '2026-08-21T03:52:00Z' }
   });
-  const result = adaptCandidatePayload({ generatedAt: '2026-08-21T03:52:52Z', scenario: [{ date: '2026-08-21', candidates: [candidate(5), candidate(30), candidate(31)] }] }, { time: '11:52' });
+  const rows = [candidate(5), candidate(30), candidate(40), candidate(51), ...Array.from({ length: 28 }, (_, i) => candidate(i + 1))];
+  const result = adaptCandidatePayload({ generatedAt: '2026-08-21T03:52:52Z', scenario: [{ date: '2026-08-21', candidates: rows }] }, { time: '11:52' });
   assert.equal(result.mode, 'APPS_SCRIPT_SCENARIO');
-  assert.equal(result.candidates.length, 2);
+  assert.equal(result.candidates.length, 30);
   assert.equal(result.candidates[0].metrics.volumeRank, 5);
   assert.equal(result.candidates[1].metrics.volumeRank, 30);
+  assert.equal(result.candidates[2].metrics.volumeRank, 40);
+  assert.ok(result.candidates.every(item => item.metrics.volumeRank <= 50));
   assert.equal(Object.values(result.candidates[0].components).reduce((a, b) => a + b, 0), result.candidates[0].score);
   assert.equal(result.candidates[0].strategy, 'SWING');
 });

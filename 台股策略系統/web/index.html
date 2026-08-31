@@ -64,8 +64,8 @@
     <section class="panel scanner-panel">
       <div class="section-title">
         <div>
-          <h2>今日成交量候選30檔</h2>
-          <p id="candidateUniverseSummary">每日檢討 TWSE 上市普通股成交量前100名，再取前30名作為追蹤母體。</p>
+          <h2>今日加權候選30檔</h2>
+          <p id="candidateUniverseSummary">每日從 TWSE 上市普通股成交量前50名，以籌碼50%、成交量／流動性30%、價格動能20%選出30檔。</p>
         </div>
       </div>
       <div id="candidateUniverse" class="candidate-universe" aria-live="polite"></div>
@@ -75,7 +75,7 @@
       <div class="section-title">
         <div>
           <h2>今日 A 級候選股</h2>
-          <p>只從上市普通股成交量前 30 名，依資料完整性、評分與風控條件篩選；80 分以上才進入交易判斷。</p>
+          <p>從上市普通股成交量前 50 名加權選出 30 檔，再依資料完整性、正式評分與風控條件篩選；80 分以上才進入交易判斷。</p>
         </div>
       </div>
       <div id="aGradeCandidates" class="candidate-grid"></div>
@@ -341,7 +341,8 @@
         <section>
           <h3>技術與動能</h3>
           <ul>
-            <li>每日從上市普通股成交量前 30 名建立母體，不限定特定產業；只要資料完整、評分與風控條件符合，即可納入完整分析。</li>
+            <li>每日從上市普通股成交量前 50 名建立母體，不限定特定產業；以籌碼 50%、成交量／流動性 30%、價格動能 20% 選出 30 檔完整分析。</li>
+            <li>上述權重只用於 30 檔候選排序；正式 100 分交易評分仍維持籌碼 15 分，不重複放大籌碼影響。</li>
             <li>A 級可依交易計畫使用標準首次部位；75–79 分僅允許一次 5% 小額試單，65–74 分 B 級與 C 級只觀察。</li>
             <li>有效突破需站上魔王線、景線或前高，且成交量放大到平均量 2 倍以上。</li>
             <li>MACD 快慢線在零軸上、柱狀圖翻紅，代表多頭動能較強。</li>

@@ -73,7 +73,7 @@ function adaptCandidatePayload(payload, context = {}) {
     generatedAt: payload.generatedAt || source.generatedAt,
     date: source.date,
     candidates: rows
-      .filter(row => !row.metrics?.volumeRank || Number(row.metrics.volumeRank) <= CONFIG.topVolumeLimit)
+      .filter(row => !row.metrics?.volumeRank || Number(row.metrics.volumeRank) <= CONFIG.candidateSelectionPoolLimit)
       .slice(0, CONFIG.maxCandidates)
       .map(row => adaptCandidate(row, context))
   };
