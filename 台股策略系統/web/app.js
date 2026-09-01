@@ -107,6 +107,9 @@ rememberStockNames(
   scenario.map(day => day?.candidates || []),
   window.CANDIDATE_UNIVERSE?.items || [],
 );
+Object.entries(window.STOCK_NAME_LOOKUP || {}).forEach(([symbol, name]) => {
+  rememberStockNames({ symbol, name });
+});
 
 function stock(symbol, name, group, price, stopPrice, targetPrice, grade, dayTradeOk, intradayReturnPct) {
   const allA = grade === 'A';
@@ -533,7 +536,9 @@ function resolvedStockName(symbol, suppliedName) {
   const match = sources.find(item => String(item?.symbol || '').replace(/\.TW$/i, '') === code
     && item?.name && String(item.name).trim() !== code);
   if (match) rememberStockNames(match);
-  return match ? String(match.name).trim() : (stockNameBySymbol.get(code) || '名稱待補');
+  return match
+    ? String(match.name).trim()
+    : (stockNameBySymbol.get(code) || window.STOCK_NAME_LOOKUP?.[code] || '名稱待補');
 }
 
 function sellReason(candidate, marketState, position) {
