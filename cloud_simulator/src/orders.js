@@ -63,6 +63,7 @@ class OrderManager {
       ...order, filledQuantity,
       averagePrice: (previousValue + marketPrice * fill) / filledQuantity,
       status: filledQuantity === order.quantity ? 'FILLED' : 'PARTIAL',
+      filledAt: quote.timestamp,
       updatedAt: new Date().toISOString()
     };
   }

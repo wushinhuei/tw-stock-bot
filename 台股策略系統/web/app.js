@@ -185,6 +185,29 @@ function formatTaipeiDateTime(value) {
   }).format(date);
 }
 
+function tradeTimeLabel(trade) {
+  const value = trade?.filledAt || trade?.executedAt || trade?.timestamp || null;
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '時間未記錄';
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(date);
+}
+
+function tradePnlLabel(trade) {
+  const action = String(trade?.action || trade?.side || '').toUpperCase();
+  if (action === 'BUY' || action === '買進') return '未實現';
+  const value = Number(trade?.pnl);
+  return Number.isFinite(value) ? currency(value) : '待核算';
+}
+
+function tradePnlClass(trade) {
+  const value = Number(trade?.pnl);
+  if (trade?.pnl == null || !Number.isFinite(value)) return '';
+  return value >= 0 ? 'gain' : 'loss';
+}
+
 function todayTaipeiDate() {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Taipei',
@@ -699,15 +722,15 @@ function renderHistoryTradeRows(trades, selectedDate) {
   const filteredTrades = selectedDate ? trades.filter(trade => trade.date === selectedDate) : [];
   document.querySelector('#historyTradeRows').innerHTML = filteredTrades.slice().reverse().map(trade => `
     <tr>
-      <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
+      <td>${trade.date}<br><strong>${tradeTimeLabel(trade)}</strong><br><span>${sessionLabel(trade.session)}</span></td>
       <td><span class="badge ${actionBadgeClass(trade.action)}">${displayTradeAction(trade.action)}</span></td>
       <td><strong>${trade.symbol}</strong><br><span>${resolvedStockName(trade.symbol, trade.name)}</span></td>
       <td>${Number(trade.shares || 0).toLocaleString('zh-TW')}</td>
       <td>${price(trade.price)}</td>
-      <td>${currency(trade.grossAmount || 0)}</td>
+      <td>${currency(Number(trade.grossAmount) || Number(trade.shares || 0) * Number(trade.price || 0))}</td>
       <td>${currency(trade.fee || 0)}</td>
       <td>${currency(trade.tax || 0)}</td>
-      <td class="${(trade.pnl || 0) >= 0 ? 'gain' : 'loss'}">${currency(trade.pnl || 0)}</td>
+      <td class="${tradePnlClass(trade)}">${tradePnlLabel(trade)}</td>
       <td class="reason">${displayTradeReason(trade.reason)}</td>
     </tr>
   `).join('') || '<tr><td colspan="10">該日期尚無交易明細</td></tr>';
@@ -995,14 +1018,14 @@ function renderTrades(trades, currentDate) {
   const todayTrades = trades.filter(trade => trade.date === currentDate);
   document.querySelector('#tradeRows').innerHTML = todayTrades.slice().reverse().map(trade => `
     <tr>
-      <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
+      <td>${trade.date}<br><strong>${tradeTimeLabel(trade)}</strong><br><span>${sessionLabel(trade.session)}</span></td>
       <td><span class="badge ${actionBadgeClass(trade.action)}">${displayTradeAction(trade.action)}</span></td>
       <td><strong>${trade.symbol}</strong><br><span>${resolvedStockName(trade.symbol, trade.name)}</span></td>
       <td>${trade.shares.toLocaleString('zh-TW')}</td>
       <td>${price(trade.price)}</td>
       <td>${currency(trade.fee || 0)}</td>
       <td>${currency(trade.tax || 0)}</td>
-      <td class="${trade.pnl >= 0 ? 'gain' : 'loss'}">${currency(trade.pnl)}</td>
+      <td class="${tradePnlClass(trade)}">${tradePnlLabel(trade)}</td>
       <td class="reason">${displayTradeReason(trade.reason)}</td>
     </tr>
   `).join('') || '<tr><td colspan="9">今日暫無交易。</td></tr>';

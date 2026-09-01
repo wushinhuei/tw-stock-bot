@@ -563,6 +563,22 @@ test('dashboard cash reconciles unsettled trades with reported equity', () => {
   assert.equal(simulation.cash + simulation.positions[0].marketValue, simulation.finalEquity);
 });
 
+test('dashboard reconstructs fee-and-tax-adjusted realized pnl and execution time', () => {
+  const account = createAccount(100000);
+  account.trades = [
+    { tradeDate: '2026-08-28', symbol: '2303', side: 'BUY', status: 'FILLED', filledQuantity: 38, averagePrice: 128.5, fee: 7, tax: 0, orderId: 'buy-1' },
+    { tradeDate: '2026-08-28', symbol: '2303', side: 'BUY', status: 'FILLED', filledQuantity: 38, averagePrice: 126, fee: 7, tax: 0, orderId: 'buy-2' },
+    { tradeDate: '2026-08-28', symbol: '2303', side: 'SELL', status: 'FILLED', filledQuantity: 38, averagePrice: 125.5, fee: 7, tax: 14, orderId: 'sell-1' },
+  ];
+  account.orders = [{ id: 'sell-1', filledAt: '2026-08-28T05:00:00.000Z' }];
+  const result = new SimulationEngine({ account }).dashboard([{ symbol: '2303', name: '聯電' }]);
+  assert.equal(result.simulation.trades[0].grossAmount, 4883);
+  assert.equal(result.simulation.trades[0].pnl, null);
+  assert.equal(result.simulation.trades[2].grossAmount, 4769);
+  assert.equal(result.simulation.trades[2].pnl, -94.5);
+  assert.equal(result.simulation.trades[2].filledAt, '2026-08-28T05:00:00.000Z');
+});
+
 test('front-end mark-to-market derives economic cash from server equity', () => {
   const result = { initialCapital: 100000, cash: 100000, finalEquity: 90354, positions: [{ marketValue: 4826 }] };
   assert.equal(economicCash(result), 85528);

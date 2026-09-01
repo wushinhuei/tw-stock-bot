@@ -98,17 +98,17 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>日期</th><th>動作</th><th>股票</th><th>股數</th><th>價格</th><th>手續費</th><th>交易稅</th><th>損益</th><th>原因</th></tr></thead>
+          <thead><tr><th>日期／時間</th><th>動作</th><th>股票</th><th>股數</th><th>價格</th><th>手續費</th><th>交易稅</th><th>損益</th><th>原因</th></tr></thead>
           <tbody>${rows.map(trade => `
             <tr>
-              <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
+              <td>${trade.date}<br><strong>${tradeTimeLabel(trade)}</strong><br><span>${sessionLabel(trade.session)}</span></td>
               <td><span class="badge ${actionBadgeClass(trade.action)}">${displayTradeAction(trade.action)}</span></td>
               <td><strong>${trade.symbol}</strong><br><span>${resolvedStockName(trade.symbol, trade.name)}</span></td>
               <td>${Number(trade.shares || 0).toLocaleString('zh-TW')}</td>
               <td>${price(trade.price)}</td>
               <td>${currency(trade.fee || 0)}</td>
               <td>${currency(trade.tax || 0)}</td>
-              <td class="${Number(trade.pnl || 0) >= 0 ? 'gain' : 'loss'}">${currency(trade.pnl || 0)}</td>
+              <td class="${tradePnlClass(trade)}">${tradePnlLabel(trade)}</td>
               <td class="reason">${displayTradeReason(trade.reason)}</td>
             </tr>
           `).join('') || '<tr><td colspan="9">尚無已實現損益紀錄。</td></tr>'}</tbody>

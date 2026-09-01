@@ -57,7 +57,7 @@ function createEntryOrder(engine, candidate, strategy, context) {
   const quantity = Math.min(999, Math.floor((budget - engine.config.minBrokerFee) / price));
   if (quantity <= 0) return { order: null, reasons: ['可用資金不足'] };
   const order = engine.orderManager.create({
-    tradeDate: context.date, strategy, symbol: candidate.symbol, side: 'BUY', quantity, price,
+    tradeDate: context.date, strategy, symbol: candidate.symbol, name: candidate.name, side: 'BUY', quantity, price,
     signalTimestamp: context.signalTimestamp, reason: trial ? `${strategy} 75–79分小額試單` : `${strategy} A級進場`
   }, engine.account.orders);
   if (order) {
@@ -113,7 +113,7 @@ class SimulationEngine {
         const quantity = Math.min(999, Math.floor((budget - this.config.minBrokerFee) / price));
         if (quantity > 0) {
           const order = this.orderManager.create({
-            tradeDate: context.date, strategy, symbol: candidate.symbol, side: 'BUY', quantity, price,
+            tradeDate: context.date, strategy, symbol: candidate.symbol, name: candidate.name, side: 'BUY', quantity, price,
             signalTimestamp: context.signalTimestamp, reason: `${strategy} 一次策略加碼`
           }, this.account.orders);
           if (order) {
@@ -151,7 +151,7 @@ class SimulationEngine {
       if (exit.exit && !this.account.orders.some(order => order.symbol === position.symbol && order.side === 'SELL' && ['NEW', 'OPEN', 'PARTIAL'].includes(order.status))) {
         const quantity = exit.partial ? Math.max(1, Math.floor(position.quantity / 2)) : position.quantity;
         const order = this.orderManager.create({
-          tradeDate: context.date, strategy: position.strategy, symbol: position.symbol, side: 'SELL', quantity,
+          tradeDate: context.date, strategy: position.strategy, symbol: position.symbol, name: candidate.name || position.name, side: 'SELL', quantity,
           price: Number(candidate.bidPrice || candidate.price), signalTimestamp: context.signalTimestamp,
           reason: exit.reason, emergencyExit: exit.emergency
         }, this.account.orders);
@@ -170,6 +170,7 @@ class SimulationEngine {
     this.account.totalFees += tradeFee;
     this.account.totalTaxes += tradeTax;
     this.account.dailyTurnover += gross;
+    let realizedPnl = null;
     if (filled.side === 'BUY') {
       this.account.dailyNewCapital += gross + tradeFee;
       this.account.reservedForOrders = Math.max(0, this.account.reservedForOrders - gross - tradeFee);
@@ -182,7 +183,7 @@ class SimulationEngine {
         position.addOnCount += 1;
       } else {
         this.account.positions.push({
-          symbol: filled.symbol, strategy: filled.strategy, quantity: delta,
+          symbol: filled.symbol, name: filled.name, strategy: filled.strategy, quantity: delta,
           averagePrice: (gross + tradeFee) / delta, lastEntryPrice: filled.averagePrice,
           stopPrice: filled.strategy === 'SWING' ? filled.averagePrice * 0.94 : filled.averagePrice * (filled.strategy === 'OVERNIGHT' ? 0.98 : 0.99),
           highestPrice: filled.averagePrice, holdingDays: 0, addOnCount: 0, partialTaken: false
@@ -193,7 +194,8 @@ class SimulationEngine {
       if (position) {
         position.quantity -= delta;
         const cost = position.averagePrice * delta;
-        this.account.realizedPnl += gross - tradeFee - tradeTax - cost;
+        realizedPnl = gross - tradeFee - tradeTax - cost;
+        this.account.realizedPnl += realizedPnl;
         if (filled.reason && filled.reason.includes('+8%')) position.partialTaken = true;
         if (position.quantity <= 0) this.account.positions = this.account.positions.filter(row => row !== position);
       }
@@ -201,7 +203,8 @@ class SimulationEngine {
     this.account.trades.push({
       tradeDate: filled.tradeDate, symbol: filled.symbol, strategy: filled.strategy, side: filled.side,
       status: filled.status, filledQuantity: delta, averagePrice: filled.averagePrice, fee: tradeFee, tax: tradeTax,
-      reason: filled.reason, orderId: filled.id
+      grossAmount: gross, pnl: realizedPnl, filledAt: filled.filledAt || filled.updatedAt || new Date().toISOString(),
+      name: filled.name, reason: filled.reason, orderId: filled.id
     });
     this.account.settlements = buildSettlementLedger(this.account.trades);
   }
@@ -228,10 +231,39 @@ class SimulationEngine {
       totalCost: position.quantity * position.averagePrice, name: position.name || position.symbol,
       targetPrice: position.strategy === 'SWING' ? position.averagePrice * 1.08 : position.averagePrice * (position.strategy === 'OVERNIGHT' ? 1.03 : 1.015)
     }));
-    const trades = this.account.trades.map(trade => ({
-      ...trade, date: trade.tradeDate, action: trade.side, shares: trade.filledQuantity,
-      price: trade.averagePrice, name: trade.name || trade.symbol, pnl: trade.pnl || 0
-    }));
+    const ordersById = new Map(this.account.orders.map(order => [order.id, order]));
+    const namesBySymbol = new Map(candidates.map(candidate => [candidate.symbol, candidate.name]));
+    const costBasis = new Map();
+    const trades = this.account.trades.map(trade => {
+      const shares = Number(trade.filledQuantity || trade.shares || 0);
+      const price = Number(trade.averagePrice ?? trade.price ?? 0);
+      const grossAmount = Number(trade.grossAmount || shares * price);
+      const tradeFee = Number(trade.fee || 0);
+      const tradeTax = Number(trade.tax || 0);
+      const side = String(trade.side || trade.action || '').toUpperCase();
+      const current = costBasis.get(trade.symbol) || { quantity: 0, totalCost: 0 };
+      let pnl = trade.pnl == null ? null : Number(trade.pnl);
+      if (side === 'BUY') {
+        current.quantity += shares;
+        current.totalCost += grossAmount + tradeFee;
+        costBasis.set(trade.symbol, current);
+        pnl = null;
+      } else if (side === 'SELL' && current.quantity >= shares && shares > 0) {
+        const averageCost = current.totalCost / current.quantity;
+        const soldCost = averageCost * shares;
+        pnl = grossAmount - tradeFee - tradeTax - soldCost;
+        current.quantity -= shares;
+        current.totalCost -= soldCost;
+        if (current.quantity > 0) costBasis.set(trade.symbol, current);
+        else costBasis.delete(trade.symbol);
+      }
+      const order = ordersById.get(trade.orderId) || {};
+      return {
+        ...trade, date: trade.tradeDate, action: side, shares, price, grossAmount, pnl,
+        filledAt: trade.filledAt || order.filledAt || order.updatedAt || order.createdAt || null,
+        name: trade.name || namesBySymbol.get(trade.symbol) || trade.symbol
+      };
+    });
     return {
       ok: true, source: 'google-cloud-simulator', generatedAt: new Date().toISOString(),
       strategyMode: this.config.strategyMode,
