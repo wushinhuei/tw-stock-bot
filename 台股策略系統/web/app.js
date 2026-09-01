@@ -94,6 +94,10 @@ let refreshTimerId = null;
 let tradeWatchTimerId = null;
 let activeTradeSignature = '';
 const stockNameBySymbol = new Map();
+const legacyTradeStockNames = Object.freeze({
+  '2303': '聯電',
+  '3037': '欣興',
+});
 
 function rememberStockNames(...collections) {
   collections.flat(Infinity).forEach(item => {
@@ -538,7 +542,10 @@ function resolvedStockName(symbol, suppliedName) {
   if (match) rememberStockNames(match);
   return match
     ? String(match.name).trim()
-    : (stockNameBySymbol.get(code) || window.STOCK_NAME_LOOKUP?.[code] || '名稱待補');
+    : (stockNameBySymbol.get(code)
+      || window.STOCK_NAME_LOOKUP?.[code]
+      || legacyTradeStockNames[code]
+      || '名稱待補');
 }
 
 function sellReason(candidate, marketState, position) {
