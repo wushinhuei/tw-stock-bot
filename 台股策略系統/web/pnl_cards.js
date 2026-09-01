@@ -132,7 +132,7 @@
             const candidate = candidateFor(day, row.symbol);
             return `
               <tr>
-                <td><strong>${row.symbol}</strong><br><span>${row.name || '-'}</span></td>
+                <td><strong>${row.symbol}</strong><br><span>${resolvedStockName(row.symbol, row.name)}</span></td>
                 <td>${row.shares.toLocaleString('zh-TW')}</td>
                 <td>${currency(row.cost)}<br><span>${price(row.avgCost || row.averagePrice)}</span></td>
                 <td>${price(row.current)}<br><span>${row.quoteSession}</span></td>
