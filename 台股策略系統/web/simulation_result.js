@@ -27,11 +27,11 @@ window.PRECOMPUTED_SIMULATION = {
       "averagePrice": 127.4342105263158,
       "lastEntryPrice": 126,
       "stopPrice": 120.78999999999999,
-      "highestPrice": 130,
+      "highestPrice": 136,
       "holdingDays": 0,
       "addOnCount": 1,
       "partialTaken": false,
-      "marketValue": 4826,
+      "marketValue": 5016,
       "shares": 38,
       "avgCost": 127.4342105263158,
       "totalCost": 4842.5,
@@ -137,9 +137,9 @@ window.PRECOMPUTED_SIMULATION = {
     }
   ],
   "daily": [],
-  "finalEquity": 99889,
+  "finalEquity": 98353,
   "realizedPnl": -94.5,
-  "totalReturn": -0.0011100000000000554,
+  "totalReturn": -0.016469999999999985,
   "maxDrawdown": 0,
   "totalFees": 35,
   "totalTaxes": 14,
@@ -147,7 +147,7 @@ window.PRECOMPUTED_SIMULATION = {
   "weeklyLimited": false,
   "source": {
     "staticBackupProvider": "cloud-dashboard",
-    "staticBackupUpdatedAt": "2026-08-31T15:28:21.456Z",
-    "newestScenarioDate": "2026-08-31"
+    "staticBackupUpdatedAt": "2026-09-01T12:44:40.784Z",
+    "newestScenarioDate": "2026-09-01"
   }
 };
