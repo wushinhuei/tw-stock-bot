@@ -743,7 +743,7 @@ function renderPositions(result, day) {
     const pnlPct = position.totalCost ? pnl / position.totalCost : 0;
     return `
       <tr>
-        <td><strong>${position.symbol}</strong><br><span>${position.name}</span></td>
+        <td><strong>${position.symbol}</strong><br><span>${resolvedStockName(position.symbol, position.name)}</span></td>
         <td>${position.shares.toLocaleString('zh-TW')}</td>
         <td>${price(position.avgCost)}</td>
         <td>${price(current)}<br><span>${quoteSession}</span></td>
@@ -803,7 +803,7 @@ function positionStatusDetail(position, candidate) {
 
   return `
     <section>
-      <h3>${position.symbol} ${position.name}：${status}</h3>
+      <h3>${position.symbol} ${resolvedStockName(position.symbol, position.name)}：${status}</h3>
       <div class="status-summary">
         <div><span>持股</span><strong>${position.shares.toLocaleString('zh-TW')} 股</strong></div>
         <div><span>成本</span><strong>${price(position.avgCost)}</strong></div>
