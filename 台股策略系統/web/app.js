@@ -208,6 +208,35 @@ function tradePnlClass(trade) {
   return value >= 0 ? 'gain' : 'loss';
 }
 
+function enrichTradeDisplayData(trades) {
+  const costBasis = new Map();
+  return (Array.isArray(trades) ? trades : []).map(trade => {
+    const action = String(trade.action || trade.side || '').toUpperCase();
+    const shares = Number(trade.shares || trade.filledQuantity || 0);
+    const tradePrice = Number(trade.price ?? trade.averagePrice ?? 0);
+    const grossAmount = Number(trade.grossAmount) || shares * tradePrice;
+    const tradeFee = Number(trade.fee || 0);
+    const tradeTax = Number(trade.tax || 0);
+    const current = costBasis.get(trade.symbol) || { shares: 0, totalCost: 0 };
+    let pnl = trade.pnl == null ? null : Number(trade.pnl);
+    if (action === 'BUY' || action === '買進') {
+      current.shares += shares;
+      current.totalCost += grossAmount + tradeFee;
+      costBasis.set(trade.symbol, current);
+      pnl = null;
+    } else if ((action === 'SELL' || action === '賣出') && shares > 0 && current.shares >= shares) {
+      const averageCost = current.totalCost / current.shares;
+      const soldCost = averageCost * shares;
+      pnl = grossAmount - tradeFee - tradeTax - soldCost;
+      current.shares -= shares;
+      current.totalCost -= soldCost;
+      if (current.shares > 0) costBasis.set(trade.symbol, current);
+      else costBasis.delete(trade.symbol);
+    }
+    return { ...trade, shares, price: tradePrice, grossAmount, pnl };
+  });
+}
+
 function todayTaipeiDate() {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Taipei',
@@ -616,6 +645,7 @@ function renderPnlSummary(result, day) {
 }
 
 function render(result) {
+  result = { ...result, trades: enrichTradeDisplayData(result?.trades) };
   activeResult = result;
   const latestDay = scenario.filter(day => day.date >= CONFIG.simulationStartDate).at(-1)
     || scenario.at(-1)
