@@ -93,6 +93,23 @@ let refreshInFlight = false;
 let refreshTimerId = null;
 let tradeWatchTimerId = null;
 let activeTradeSignature = '';
+const stockNameBySymbol = new Map();
+
+function rememberStockNames(...collections) {
+  collections.flat(Infinity).forEach(item => {
+    const code = String(item?.symbol || '').replace(/\.TW$/i, '').trim();
+    const name = String(item?.name || '').trim();
+    if (code && name && name !== code) stockNameBySymbol.set(code, name);
+  });
+}
+
+rememberStockNames(
+  scenario.map(day => day?.candidates || []),
+  window.CANDIDATE_UNIVERSE?.items || [],
+);
+Object.entries(window.STOCK_NAME_LOOKUP || {}).forEach(([symbol, name]) => {
+  rememberStockNames({ symbol, name });
+});
 
 function stock(symbol, name, group, price, stopPrice, targetPrice, grade, dayTradeOk, intradayReturnPct) {
   const allA = grade === 'A';
@@ -518,7 +535,10 @@ function resolvedStockName(symbol, suppliedName) {
   ];
   const match = sources.find(item => String(item?.symbol || '').replace(/\.TW$/i, '') === code
     && item?.name && String(item.name).trim() !== code);
-  return match ? String(match.name).trim() : '名稱待補';
+  if (match) rememberStockNames(match);
+  return match
+    ? String(match.name).trim()
+    : (stockNameBySymbol.get(code) || window.STOCK_NAME_LOOKUP?.[code] || '名稱待補');
 }
 
 function sellReason(candidate, marketState, position) {
@@ -1233,6 +1253,7 @@ async function loadCloudDashboardPayload() {
   if (!payload.simulation.generatedAt && payload.generatedAt) {
     payload.simulation.generatedAt = payload.generatedAt;
   }
+  rememberStockNames(payload.scenario.map(day => day?.candidates || []), payload.simulation.positions || []);
   window.ACTUAL_SCENARIO = payload.scenario;
   window.PRECOMPUTED_SIMULATION = payload.simulation;
   return true;
@@ -1297,6 +1318,11 @@ async function loadAppsScriptPayload(action, options = {}) {
   if (!payload.simulation.generatedAt && payload.generatedAt) {
     payload.simulation.generatedAt = payload.generatedAt;
   }
+  rememberStockNames(
+    payload.scenario.map(day => day?.candidates || []),
+    payload.candidateUniverse?.items || [],
+    payload.simulation.positions || [],
+  );
   window.CANDIDATE_UNIVERSE = payload.candidateUniverse || null;
   if (Array.isArray(payload.internationalNews) && payload.scenario.length) {
     payload.scenario[payload.scenario.length - 1].internationalNews = payload.internationalNews;
@@ -1317,6 +1343,10 @@ async function loadAppsScriptStatus() {
 async function loadStaticPayload() {
   window.ACTUAL_SCENARIO = await loadWindowAssignment('actual_data.js', 'ACTUAL_SCENARIO');
   window.PRECOMPUTED_SIMULATION = await loadWindowAssignment('simulation_result.js', 'PRECOMPUTED_SIMULATION');
+  rememberStockNames(
+    window.ACTUAL_SCENARIO.map(day => day?.candidates || []),
+    window.PRECOMPUTED_SIMULATION?.positions || [],
+  );
 }
 
 function taipeiNowParts() {
