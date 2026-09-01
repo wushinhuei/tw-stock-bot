@@ -103,7 +103,7 @@
             <tr>
               <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
               <td><span class="badge ${actionBadgeClass(trade.action)}">${displayTradeAction(trade.action)}</span></td>
-              <td><strong>${trade.symbol}</strong><br><span>${trade.name || '-'}</span></td>
+              <td><strong>${trade.symbol}</strong><br><span>${resolvedStockName(trade.symbol, trade.name)}</span></td>
               <td>${Number(trade.shares || 0).toLocaleString('zh-TW')}</td>
               <td>${price(trade.price)}</td>
               <td>${currency(trade.fee || 0)}</td>
