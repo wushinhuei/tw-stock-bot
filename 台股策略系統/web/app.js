@@ -506,6 +506,21 @@ function findCandidate(day, symbol) {
   return (day?.candidates || []).find(candidate => candidate.symbol === symbol);
 }
 
+function resolvedStockName(symbol, suppliedName) {
+  const code = String(symbol || '').replace(/\.TW$/i, '').trim();
+  const provided = String(suppliedName || '').trim();
+  if (provided && provided !== code && provided !== String(symbol || '').trim()) return provided;
+  const sources = [
+    ...(activeLatestDay?.candidates || []),
+    ...(activeResult?.positions || []),
+    ...(window.CANDIDATE_UNIVERSE?.items || []),
+    ...scenario.flatMap(day => day?.candidates || []),
+  ];
+  const match = sources.find(item => String(item?.symbol || '').replace(/\.TW$/i, '') === code
+    && item?.name && String(item.name).trim() !== code);
+  return match ? String(match.name).trim() : '名稱待補';
+}
+
 function sellReason(candidate, marketState, position) {
   const current = executionSellPrice(candidate);
   if (!(current > 0)) return '報價無效，暫不交易';
@@ -659,7 +674,7 @@ function renderHistoryTradeRows(trades, selectedDate) {
     <tr>
       <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
       <td><span class="badge ${actionBadgeClass(trade.action)}">${displayTradeAction(trade.action)}</span></td>
-      <td><strong>${trade.symbol}</strong><br><span>${trade.name}</span></td>
+      <td><strong>${trade.symbol}</strong><br><span>${resolvedStockName(trade.symbol, trade.name)}</span></td>
       <td>${Number(trade.shares || 0).toLocaleString('zh-TW')}</td>
       <td>${price(trade.price)}</td>
       <td>${currency(trade.grossAmount || 0)}</td>
@@ -955,7 +970,7 @@ function renderTrades(trades, currentDate) {
     <tr>
       <td>${trade.date}<br><span>${sessionLabel(trade.session)}</span></td>
       <td><span class="badge ${actionBadgeClass(trade.action)}">${displayTradeAction(trade.action)}</span></td>
-      <td><strong>${trade.symbol}</strong><br><span>${trade.name}</span></td>
+      <td><strong>${trade.symbol}</strong><br><span>${resolvedStockName(trade.symbol, trade.name)}</span></td>
       <td>${trade.shares.toLocaleString('zh-TW')}</td>
       <td>${price(trade.price)}</td>
       <td>${currency(trade.fee || 0)}</td>
