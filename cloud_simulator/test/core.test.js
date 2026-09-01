@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const test = require('node:test');
 const { CONFIG } = require('../src/config');
 const { SimulationEngine, createAccount, maxEntryBudget, riskState } = require('../src/engine');
@@ -93,6 +94,15 @@ test('scanner selects final 30 from volume top 50 using 50% chip weight across i
   assert.ok(result.every(row => row.symbol !== '1051'));
   const score = candidateSelectionScore({ chipOk: true, changePct: 0.05 }, 1, 50);
   assert.deepEqual(score, { total: 100, chip: 50, volume: 30, momentum: 20 });
+});
+
+test('Apps Script volume universe rejects ETF codes before candidate weighting', () => {
+  const source = fs.readFileSync('台股策略系統/apps_script/Code.gs', 'utf8');
+  const api = new Function(source + '; return { isListedCommonStockCode };')();
+  assert.equal(api.isListedCommonStockCode('0050'), false);
+  assert.equal(api.isListedCommonStockCode('0056'), false);
+  assert.equal(api.isListedCommonStockCode('2330'), true);
+  assert.equal(api.isListedCommonStockCode('6770'), true);
 });
 
 test('TWSE MIS quotes bypass intermediary caches', async () => {

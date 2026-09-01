@@ -929,7 +929,7 @@ function parseTopVolumeRows(json, limit) {
       const row = rowObject && rowObject.value ? rowObject.value : rowObject;
       if (!Array.isArray(row)) return null;
       const code = String(row[codeIndex] || '').trim();
-      if (!/^\d{4}$/.test(code)) return null;
+      if (!isListedCommonStockCode(code)) return null;
       const close = closeIndex >= 0 ? parseTwseNumber(row[closeIndex]) : null;
       const rawChange = changeIndex >= 0 ? Math.abs(parseTwseNumber(row[changeIndex]) || 0) : 0;
       const signText = signIndex >= 0 ? String(row[signIndex] || '').toLowerCase() : '';
@@ -952,6 +952,11 @@ function parseTopVolumeRows(json, limit) {
     .map(function(row, index) {
       return Object.assign({}, row, { volumeRank: index + 1 });
     });
+}
+
+function isListedCommonStockCode(code) {
+  const normalized = String(code || '').trim();
+  return /^\d{4}$/.test(normalized) && !/^00/.test(normalized);
 }
 
 function classifyTargetStock(row) {
