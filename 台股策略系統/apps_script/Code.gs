@@ -628,7 +628,7 @@ function refreshDashboard(options) {
 
   try {
     const previous = readOrSeedPayload();
-    const scenario = buildScenarioForRefresh(previous, schedule);
+    const scenario = buildScenarioForRefresh(previous, schedule, options);
     const latestDay = last(scenario);
     const previousSimulation = previous && previous.simulation ? previous.simulation : null;
     const simulation = nextSimulation(previousSimulation, latestDay);
@@ -648,7 +648,8 @@ function refreshDashboard(options) {
   }
 }
 
-function buildScenarioForRefresh(previous, schedule) {
+function buildScenarioForRefresh(previous, schedule, options) {
+  options = options || {};
   const previousDay = previous && Array.isArray(previous.scenario) ? last(previous.scenario) : null;
   const positions = previous && previous.simulation ? previous.simulation.positions : [];
   const hasScannerUniverse = Boolean(previousDay && previousDay.source && previousDay.source.universe && previousDay.source.universe.mode);
@@ -656,6 +657,10 @@ function buildScenarioForRefresh(previous, schedule) {
 
   if (shouldResetForStartDate) {
     return buildScenario([], schedule.date);
+  }
+
+  if (options.force) {
+    return buildScenario(positions, schedule.date);
   }
 
   const isNewTradingDate = previousDay && previousDay.date !== schedule.date;
