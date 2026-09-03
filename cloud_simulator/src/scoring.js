@@ -1,7 +1,7 @@
 'use strict';
 
 const { CONFIG } = require('./config');
-const { analyzeObv, atr, clamp, emaSeries, macd, rsi, sma, vwap } = require('./indicators');
+const { analyzeObv, atr, breakoutRetest, clamp, emaSeries, macd, rsi, sma, supportResistance, vwap } = require('./indicators');
 const { scoreTaiwanMedia } = require('./news');
 const { executionRiskReasons, scoreChipSignals } = require('./chip');
 
@@ -30,16 +30,54 @@ function timeframeScore(bars, maxScore) {
   const rsi14 = rsi(closes, 14);
   const currentAtr = atr(bars, 14);
   const currentVwap = vwap(bars.slice(-78));
+  const levels = supportResistance(bars, 40, 0.03);
+  const retest = breakoutRetest(bars, 20, 5, 0.015);
   let points = 0;
   const reasons = [];
-  if (ma20 && current > ma20) { points += 0.22; reasons.push('站上MA20'); }
-  if (ma50 && current > ma50) { points += 0.18; reasons.push('站上MA50'); }
-  if (ema9 && ema20 && ema9 >= ema20) { points += 0.15; reasons.push('EMA9高於EMA20'); }
-  if (momentum.histogram != null && momentum.histogram >= 0) { points += 0.15; reasons.push('MACD動能偏多'); }
-  if (rsi14 != null && rsi14 >= 50 && rsi14 <= 75) { points += 0.12; reasons.push('RSI位於多方區'); }
-  if (currentVwap && current >= currentVwap) { points += 0.10; reasons.push('價格高於VWAP'); }
-  if (currentAtr && currentAtr / current >= 0.006) { points += 0.08; reasons.push('波動足以覆蓋成本'); }
-  return { score: Math.round(clamp(points, 0, 1) * maxScore), reasons, metrics: { ma20, ma50, ema9, ema20, rsi14, atr14: currentAtr, vwap: currentVwap, macdHistogram: momentum.histogram } };
+
+  // 技術面仍維持每個時間框架最高100%權重；新增支撐／壓力與突破回測後，重新分配原有權重。
+  if (ma20 && current > ma20) { points += 0.18; reasons.push('站上MA20'); }
+  if (ma50 && current > ma50) { points += 0.14; reasons.push('站上MA50'); }
+  if (ema9 && ema20 && ema9 >= ema20) { points += 0.12; reasons.push('EMA9高於EMA20'); }
+  if (momentum.histogram != null && momentum.histogram >= 0) { points += 0.12; reasons.push('MACD動能偏多'); }
+  if (rsi14 != null && rsi14 >= 50 && rsi14 <= 75) { points += 0.10; reasons.push('RSI位於多方區'); }
+  if (currentVwap && current >= currentVwap) { points += 0.08; reasons.push('價格高於VWAP'); }
+  if (currentAtr && currentAtr / current >= 0.006) { points += 0.06; reasons.push('波動足以覆蓋成本'); }
+  if (levels.nearSupport || levels.aboveResistance) {
+    points += 0.08;
+    reasons.push(levels.nearSupport ? '接近有效支撐' : '站上近期壓力');
+  }
+  if (retest.retestConfirmed) {
+    points += 0.12;
+    reasons.push('突破壓力後回測守穩');
+  }
+
+  return {
+    score: Math.round(clamp(points, 0, 1) * maxScore),
+    reasons,
+    metrics: {
+      ma20,
+      ma50,
+      ema9,
+      ema20,
+      rsi14,
+      atr14: currentAtr,
+      vwap: currentVwap,
+      macdHistogram: momentum.histogram,
+      support: levels.support,
+      resistance: levels.resistance,
+      nearSupport: levels.nearSupport,
+      nearResistance: levels.nearResistance,
+      aboveResistance: levels.aboveResistance,
+      distanceToSupportPct: levels.distanceToSupportPct,
+      distanceToResistancePct: levels.distanceToResistancePct,
+      breakout: retest.breakout,
+      breakoutLevel: retest.breakoutLevel,
+      breakoutRetestConfirmed: retest.retestConfirmed,
+      breakoutIndex: retest.breakoutIndex,
+      retestIndex: retest.retestIndex
+    }
+  };
 }
 
 function scoreCandidate(input) {
