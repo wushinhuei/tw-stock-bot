@@ -33,6 +33,7 @@ function main() {
     ['node', ['cloud_simulator/scripts/backfill_q2_twse_mcp.js'], 'TWSE MCP Q2 backfill'],
     ['node', ['cloud_simulator/scripts/build_q2_point_in_time_dataset.js'], 'Q2 TWSE point-in-time dataset'],
     ['node', ['cloud_simulator/scripts/build_q2_mops_point_in_time.js'], 'Q2 MOPS point-in-time dataset'],
+    ['node', ['cloud_simulator/scripts/materialize_q2_historical_factors.js'], 'Strict Q2 point-in-time factor materialization'],
     ['node', ['cloud_simulator/scripts/prepare_q2_intraday_universe.js'], 'Q2 intraday acquisition universe'],
     ['node', ['cloud_simulator/scripts/backfill_q2_twse_warmup.js'], 'TWSE MCP daily/weekly indicator warmup']
   ];
@@ -70,6 +71,7 @@ function main() {
       dataSource: 'TWSE_MCP_PRIMARY',
       fallbackOnlyWhenTwseUnavailable: true,
       strategyFrozen: true,
+      historicalFactors: 'explicit point-in-time values only',
       predictionForbidden: true,
       futureLeakageForbidden: true,
       resultPublishedOnlyAfterStrictGate: true
