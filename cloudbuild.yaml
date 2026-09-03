@@ -120,6 +120,25 @@ steps:
       - --memory=512Mi
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - tw-stock-growth-top10-sync
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA
+      - --region=${_REGION}
+      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
+      - --command=node
+      - --args=cloud_simulator/scripts/sync_growth_candidates_to_drive.js
+      - --set-env-vars=DATA_SOURCE_POLICY=MCP_FIRST_DAILY_DRIVE_PERSISTENCE,MOPS_SOURCE_POLICY=MOPS_MCP_PRIMARY,GCS_BUCKET=${_GCS_BUCKET},GROWTH_DRIVE_PARENT_FOLDER_ID=${_MOPS_DRIVE_PARENT_FOLDER_ID},GROWTH_DRIVE_FOLDER_NAME=GROWTH_CANDIDATES_TOP10,DEPLOY_COMMIT_SHA=$COMMIT_SHA
+      - --tasks=1
+      - --max-retries=1
+      - --task-timeout=2400s
+      - --cpu=1
+      - --memory=512Mi
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
       - -ceu
@@ -152,11 +171,13 @@ steps:
         TWSE_SYNC_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-twse-drive-sync:run"
         MOPS_SYNC_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-mops-drive-sync:run"
         MCP_DAILY_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-mcp-daily-sync:run"
+        GROWTH_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-growth-top10-sync:run"
         upsert_scheduler tw-stock-pretrade-after-close '0 14 * * 1-5' "$PREP_URI"
         upsert_scheduler tw-stock-pretrade-0800 '0 8 * * 1-5' "$PREP_URI"
         upsert_scheduler tw-stock-twse-drive-sync-after-close '5 14 * * 1-5' "$TWSE_SYNC_URI"
         upsert_scheduler tw-stock-mops-drive-sync-evening '30 20 * * 1-5' "$MOPS_SYNC_URI"
         upsert_scheduler tw-stock-mcp-daily-sync-evening '45 20 * * 1-5' "$MCP_DAILY_URI"
+        upsert_scheduler tw-stock-growth-top10-evening '0 21 * * 1-5' "$GROWTH_URI"
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
@@ -164,12 +185,12 @@ steps:
       - -ceu
       - |
         EXPECTED_IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA"
-        for JOB in tw-stock-simulator tw-stock-pretrade-prepare tw-stock-twse-drive-sync tw-stock-mops-drive-sync tw-stock-mops-20q-backfill tw-stock-mcp-daily-sync; do
+        for JOB in tw-stock-simulator tw-stock-pretrade-prepare tw-stock-twse-drive-sync tw-stock-mops-drive-sync tw-stock-mops-20q-backfill tw-stock-mcp-daily-sync tw-stock-growth-top10-sync; do
           IMAGE="$(gcloud run jobs describe "$JOB" --region="${_REGION}" --format='value(template.template.containers[0].image)')"
           echo "$JOB -> $IMAGE"
           test "$IMAGE" = "$EXPECTED_IMAGE"
         done
-        for SCHEDULER in tw-stock-pretrade-after-close tw-stock-pretrade-0800 tw-stock-twse-drive-sync-after-close tw-stock-mops-drive-sync-evening tw-stock-mcp-daily-sync-evening; do
+        for SCHEDULER in tw-stock-pretrade-after-close tw-stock-pretrade-0800 tw-stock-twse-drive-sync-after-close tw-stock-mops-drive-sync-evening tw-stock-mcp-daily-sync-evening tw-stock-growth-top10-evening; do
           STATE="$(gcloud scheduler jobs describe "$SCHEDULER" --location="${_REGION}" --format='value(state)')"
           echo "$SCHEDULER -> $STATE"
           test "$STATE" = "ENABLED"
