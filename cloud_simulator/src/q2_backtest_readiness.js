@@ -16,6 +16,13 @@ function readJsonl(filePath) {
 }
 
 function unique(values) { return [...new Set(values)]; }
+function finiteFactor(row, paths) {
+  for (const name of paths) {
+    const value = name.split('.').reduce((obj, key) => obj?.[key], row);
+    if (value !== '' && value != null && Number.isFinite(Number(value))) return true;
+  }
+  return false;
+}
 
 function auditQ2BacktestReadiness(options = {}) {
   const root = path.resolve(options.root || 'data/backtest');
@@ -23,11 +30,13 @@ function auditQ2BacktestReadiness(options = {}) {
   const pitDir = path.resolve(options.pitDir || path.join(root, 'q2-point-in-time'));
   const mopsDir = path.resolve(options.mopsDir || path.join(root, 'q2-mops-point-in-time'));
   const intradayDir = path.resolve(options.intradayDir || path.join(root, '2026Q2/intraday'));
+  const warmupDir = path.resolve(options.warmupDir || path.join(root, '2026Q2/twse-daily-warmup'));
 
   const twseManifest = readJson(path.join(twseDir, 'manifest.json'));
   const pitManifest = readJson(path.join(pitDir, 'manifest.json'));
   const mopsManifest = readJson(path.join(mopsDir, 'manifest.json'));
   const intradayManifest = readJson(path.join(intradayDir, 'manifest.json'));
+  const warmupManifest = readJson(path.join(warmupDir, 'manifest.json'));
   const pitRows = readJsonl(path.join(mopsDir, 'q2_pit_with_mops.jsonl'));
   const strategyLock = verifyStrategyLock(options.repoRoot || process.cwd());
 
@@ -43,6 +52,16 @@ function auditQ2BacktestReadiness(options = {}) {
     return sum + (value ? 1 : 0);
   }, 0) / pitRows.length : 0;
 
+  const factorCompleteCount = pitRows.filter(row =>
+    finiteFactor(row, ['historicalFactors.fundamentalScore', 'fundamentalScore', 'mops.fundamentalScore', 'components.fundamental'])
+    && finiteFactor(row, ['historicalFactors.officialNewsScore', 'officialNewsScore', 'mops.officialNewsScore', 'components.officialNews'])
+  ).length;
+  const factorCoverage = pitRows.length ? factorCompleteCount / pitRows.length : 0;
+
+  const completeWarmupSymbols = new Set(warmupManifest?.completeSymbols || []);
+  const warmupCoverage = symbols.length ? symbols.filter(symbol => completeWarmupSymbols.has(symbol)).length / symbols.length : 0;
+  const warmupFilesComplete = symbols.length > 0 && symbols.every(symbol => fs.existsSync(path.join(warmupDir, `${symbol}.json`)));
+
   const completeIntradaySymbols = new Set(intradayManifest?.completeSymbols || []);
   const intradayCoverage = symbols.length ? symbols.filter(symbol => completeIntradaySymbols.has(symbol)).length / symbols.length : 0;
   const intradayFilesComplete = symbols.length > 0 && symbols.every(symbol =>
@@ -55,6 +74,8 @@ function auditQ2BacktestReadiness(options = {}) {
     top100PointInTime: Boolean(pitManifest?.pointInTime?.enabled && pitManifest?.pointInTime?.sameSessionUseForbidden && top100Complete),
     institutionalComplete,
     mopsPointInTime: Boolean(mopsManifest?.pointInTimeRule && mopsAvailability >= 0.98),
+    historicalFactorsComplete: factorCoverage >= 0.98,
+    dailyWarmupComplete: Boolean(warmupManifest?.status === 'complete' && warmupCoverage === 1 && warmupFilesComplete),
     intradayComplete: Boolean(intradayManifest?.status === 'complete' && intradayCoverage === 1 && intradayFilesComplete),
     futureLeakageForbidden: Boolean(
       pitManifest?.pointInTime?.sameSessionUseForbidden
@@ -63,14 +84,15 @@ function auditQ2BacktestReadiness(options = {}) {
     )
   };
 
-  // Restoration score measures replay fidelity, not future-return confidence.
   const restorationScore = Math.round((
     (gates.strategyFrozen ? 5 : 0)
-    + (gates.twseDownloaded ? 15 : 0)
-    + (gates.top100PointInTime ? 15 : 0)
+    + (gates.twseDownloaded ? 10 : 0)
+    + (gates.top100PointInTime ? 10 : 0)
     + (gates.institutionalComplete ? 10 : 0)
-    + (Math.min(1, mopsAvailability) * 15)
-    + (Math.min(1, intradayCoverage) * 30)
+    + (Math.min(1, mopsAvailability) * 10)
+    + (Math.min(1, factorCoverage) * 15)
+    + (Math.min(1, warmupCoverage) * 10)
+    + (Math.min(1, intradayCoverage) * 20)
     + (gates.futureLeakageForbidden ? 10 : 0)
   ) * 10) / 10;
 
@@ -91,6 +113,8 @@ function auditQ2BacktestReadiness(options = {}) {
       pointInTimeRows: pitRows.length,
       symbols: symbols.length,
       mopsAvailabilityPct: Math.round(mopsAvailability * 10000) / 100,
+      historicalFactorCoveragePct: Math.round(factorCoverage * 10000) / 100,
+      dailyWarmupCoveragePct: Math.round(warmupCoverage * 10000) / 100,
       intradayCoveragePct: Math.round(intradayCoverage * 10000) / 100
     },
     strategyLock: {
