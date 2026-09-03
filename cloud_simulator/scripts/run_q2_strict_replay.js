@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { runStrictReplay } = require('../src/q2_strict_replay');
+const { runStrictReplayV2 } = require('../src/q2_strict_replay_v2');
 const { verify: verifyStrategyLock } = require('./verify_q2_strategy_lock');
 
 function writeJson(file, value) {
@@ -17,7 +17,7 @@ function writeJsonl(file, rows) {
 function main() {
   const lock = verifyStrategyLock(process.cwd());
   if (!lock.passed) throw new Error(`Q2 strategy lock failed: ${lock.changedFiles.join(', ')}`);
-  const result = runStrictReplay({
+  const result = runStrictReplayV2({
     root: process.env.Q2_BACKTEST_ROOT || 'data/backtest',
     slippagePct: Number(process.env.Q2_REPLAY_SLIPPAGE_PCT || 0.0015)
   });
