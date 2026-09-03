@@ -57,7 +57,7 @@ function compareRow(mcp, daily, flow) {
   const checked = Object.values(comparisons).filter(value => value !== null);
   return { comparisons, checked: checked.length, mismatches: checked.filter(value => value === false).length };
 }
-function buildPointInTimeRow(row, daily, flow) {
+function buildPointInTimeRow(row, daily, flow, crossCheckAvailable = true) {
   const cross = compareRow(row, daily, flow);
   return {
     tradeDate: row.tradeDate,
@@ -79,42 +79,56 @@ function buildPointInTimeRow(row, daily, flow) {
       margin: Boolean(row.marginAvailable)
     },
     driveCrossCheck: {
-      dailyPresent: Boolean(daily),
-      marketFlowPresent: Boolean(flow),
+      available: crossCheckAvailable,
+      dailyPresent: crossCheckAvailable ? Boolean(daily) : null,
+      marketFlowPresent: crossCheckAvailable ? Boolean(flow) : null,
       ...cross
     },
     provenance: {
       primary: 'TWSE_MCP_OFFICIAL',
-      crossCheck: 'GOOGLE_DRIVE_HISTORY',
+      crossCheck: crossCheckAvailable ? 'GOOGLE_DRIVE_HISTORY' : 'UNAVAILABLE_NON_BLOCKING',
       pointInTimeRule: 'TWSE daily market, institutional and margin data are treated as post-close data and cannot be used during the same trading session.'
     }
   };
 }
 
+async function loadOptionalDriveCrossCheck() {
+  if (process.env.SKIP_DRIVE_CROSSCHECK === '1') return { dailyRows: [], flowRows: [], available: false, error: 'SKIP_DRIVE_CROSSCHECK=1' };
+  try {
+    const source = new DriveHistorySource();
+    const [dailyRows, flowRows] = await Promise.all([
+      source.rows('stockDaily', 2026),
+      source.rows('marketFlow', 2026)
+    ]);
+    return { dailyRows, flowRows, available: true, error: null };
+  } catch (error) {
+    return { dailyRows: [], flowRows: [], available: false, error: String(error.message || error) };
+  }
+}
+
 async function main() {
   const mcpRows = readJsonl(path.join(MCP_DIR, 'top100.jsonl'))
     .filter(row => row.tradeDate >= START && row.tradeDate <= END);
-  const source = new DriveHistorySource();
-  const [dailyRows, flowRows] = await Promise.all([
-    source.rows('stockDaily', 2026),
-    source.rows('marketFlow', 2026)
-  ]);
-  const dailyByKey = driveDailyIndex(dailyRows);
-  const flowByKey = driveFlowIndex(flowRows);
+  const drive = await loadOptionalDriveCrossCheck();
+  const dailyByKey = driveDailyIndex(drive.dailyRows);
+  const flowByKey = driveFlowIndex(drive.flowRows);
 
   const output = mcpRows.map(row => buildPointInTimeRow(
     row,
     dailyByKey.get(key(row.tradeDate, row.symbol)),
-    flowByKey.get(key(row.tradeDate, row.symbol))
+    flowByKey.get(key(row.tradeDate, row.symbol)),
+    drive.available
   ));
 
   const discrepancies = [];
-  for (const row of output) {
-    const cc = row.driveCrossCheck;
-    if (!cc.dailyPresent) discrepancies.push({ tradeDate: row.tradeDate, symbol: row.symbol, type: 'DRIVE_DAILY_MISSING' });
-    if (!cc.marketFlowPresent) discrepancies.push({ tradeDate: row.tradeDate, symbol: row.symbol, type: 'DRIVE_MARKET_FLOW_MISSING' });
-    for (const [field, same] of Object.entries(cc.comparisons)) {
-      if (same === false) discrepancies.push({ tradeDate: row.tradeDate, symbol: row.symbol, type: 'VALUE_MISMATCH', field });
+  if (drive.available) {
+    for (const row of output) {
+      const cc = row.driveCrossCheck;
+      if (!cc.dailyPresent) discrepancies.push({ tradeDate: row.tradeDate, symbol: row.symbol, type: 'DRIVE_DAILY_MISSING' });
+      if (!cc.marketFlowPresent) discrepancies.push({ tradeDate: row.tradeDate, symbol: row.symbol, type: 'DRIVE_MARKET_FLOW_MISSING' });
+      for (const [field, same] of Object.entries(cc.comparisons)) {
+        if (same === false) discrepancies.push({ tradeDate: row.tradeDate, symbol: row.symbol, type: 'VALUE_MISMATCH', field });
+      }
     }
   }
 
@@ -122,8 +136,8 @@ async function main() {
   const symbols = [...new Set(output.map(row => row.symbol))].sort();
   const totalChecks = output.reduce((sum, row) => sum + row.driveCrossCheck.checked, 0);
   const totalMismatches = output.reduce((sum, row) => sum + row.driveCrossCheck.mismatches, 0);
-  const dailyMissing = output.filter(row => !row.driveCrossCheck.dailyPresent).length;
-  const flowMissing = output.filter(row => !row.driveCrossCheck.marketFlowPresent).length;
+  const dailyMissing = drive.available ? output.filter(row => !row.driveCrossCheck.dailyPresent).length : null;
+  const flowMissing = drive.available ? output.filter(row => !row.driveCrossCheck.marketFlowPresent).length : null;
   const institutionalMissing = output.filter(row => !row.availability.institutional).length;
   const marginMissing = output.filter(row => !row.availability.margin).length;
 
@@ -132,8 +146,9 @@ async function main() {
     return {
       tradeDate: date,
       top100Count: rows.length,
-      driveDailyMissing: rows.filter(row => !row.driveCrossCheck.dailyPresent).length,
-      driveMarketFlowMissing: rows.filter(row => !row.driveCrossCheck.marketFlowPresent).length,
+      driveCrossCheckAvailable: drive.available,
+      driveDailyMissing: drive.available ? rows.filter(row => !row.driveCrossCheck.dailyPresent).length : null,
+      driveMarketFlowMissing: drive.available ? rows.filter(row => !row.driveCrossCheck.marketFlowPresent).length : null,
       institutionalMissing: rows.filter(row => !row.availability.institutional).length,
       marginMissing: rows.filter(row => !row.availability.margin).length,
       valueMismatches: rows.reduce((sum, row) => sum + row.driveCrossCheck.mismatches, 0)
@@ -143,9 +158,12 @@ async function main() {
   const manifest = {
     generatedAt: new Date().toISOString(),
     period: { start: START, end: END },
-    status: discrepancies.length === 0 ? 'cross_check_clean' : 'cross_check_has_discrepancies',
+    status: drive.available ? (discrepancies.length === 0 ? 'cross_check_clean' : 'cross_check_has_discrepancies') : 'official_primary_complete_cross_check_unavailable',
     primarySource: 'TWSE MCP official historical interface',
-    crossCheckSource: 'Google Drive stockDaily + marketFlow',
+    crossCheckSource: drive.available ? 'Google Drive stockDaily + marketFlow' : null,
+    crossCheckAvailable: drive.available,
+    crossCheckError: drive.error,
+    crossCheckRequiredForReplay: false,
     pointInTime: {
       enabled: true,
       sourceAvailableAt: `trade date ${AVAILABLE_HOUR} Asia/Taipei`,
@@ -169,7 +187,8 @@ async function main() {
       manifest: 'manifest.json'
     },
     notes: [
-      'TWSE MCP is the primary source. Google Drive is only a cross-check and never overwrites the official row silently.',
+      'TWSE MCP is the primary source. Google Drive is only a non-blocking cross-check and never overwrites the official row silently.',
+      'If Drive credentials are absent, the official TWSE MCP row remains valid and the cross-check is recorded as unavailable rather than fabricating a mismatch.',
       'Margin absence is preserved because a stock may be ineligible for margin trading.',
       'This dataset contains post-close daily facts only; intraday bars are a separate dataset and are still required for high-fidelity signal replay.'
     ]
@@ -184,4 +203,4 @@ async function main() {
 
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
 
-module.exports = { buildPointInTimeRow, compareRow, driveDailyIndex, driveFlowIndex, near };
+module.exports = { buildPointInTimeRow, compareRow, driveDailyIndex, driveFlowIndex, loadOptionalDriveCrossCheck, near };
