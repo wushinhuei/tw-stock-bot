@@ -9,12 +9,10 @@ function readJson(filePath) {
   try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); }
   catch { return null; }
 }
-
 function readJsonl(filePath) {
   if (!fs.existsSync(filePath)) return [];
   return fs.readFileSync(filePath, 'utf8').split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
 }
-
 function unique(values) { return [...new Set(values)]; }
 function finiteFactor(row, paths) {
   for (const name of paths) {
@@ -47,35 +45,25 @@ function auditQ2BacktestReadiness(options = {}) {
   const symbols = unique(pitRows.map(row => String(row.symbol))).sort();
   const countsByDate = new Map();
   for (const row of pitRows) countsByDate.set(row.tradeDate, (countsByDate.get(row.tradeDate) || 0) + 1);
-
   const top100Complete = tradingDates.length > 0 && tradingDates.every(date => countsByDate.get(date) === 100);
   const institutionalComplete = pitRows.length > 0 && pitRows.every(row => row.availability?.institutional !== false);
-  const mopsAvailability = pitRows.length ? pitRows.reduce((sum, row) => {
-    const value = Boolean(row.mopsAvailability?.monthlyRevenue) && Boolean(row.mopsAvailability?.quarterlyFinancials);
-    return sum + (value ? 1 : 0);
-  }, 0) / pitRows.length : 0;
+  const mopsAvailability = pitRows.length ? pitRows.reduce((sum, row) => sum + (row.mopsAvailability?.monthlyRevenue && row.mopsAvailability?.quarterlyFinancials ? 1 : 0), 0) / pitRows.length : 0;
 
-  const factorCompleteCount = pitRows.filter(row =>
-    row.historicalFactors?.complete === true
+  const completeFactors = pitRows.filter(row => row.historicalFactors?.complete === true
     && finiteFactor(row, ['historicalFactors.fundamentalScore'])
-    && finiteFactor(row, ['historicalFactors.officialNewsScore'])
-  ).length;
-  const factorCoverage = pitRows.length ? factorCompleteCount / pitRows.length : 0;
-  const factorMaterializationComplete = Boolean(
-    factorManifest?.status === 'COMPLETE'
-    && Number(factorManifest?.blockerRows || 0) === 0
-    && factorCoverage === 1
-  );
+    && finiteFactor(row, ['historicalFactors.officialNewsScore']));
+  const factorCoverage = pitRows.length ? completeFactors.length / pitRows.length : 0;
+  const factorQuality = completeFactors.length
+    ? completeFactors.reduce((sum, row) => sum + Number(row.historicalFactors?.reconstructionQuality || 0), 0) / completeFactors.length : 0;
+  const factorMaterializationComplete = Boolean(factorManifest?.status === 'COMPLETE'
+    && Number(factorManifest?.blockerRows || 0) === 0 && factorCoverage === 1 && factorQuality >= 0.75);
 
   const completeWarmupSymbols = new Set(warmupManifest?.completeSymbols || []);
   const warmupCoverage = symbols.length ? symbols.filter(symbol => completeWarmupSymbols.has(symbol)).length / symbols.length : 0;
   const warmupFilesComplete = symbols.length > 0 && symbols.every(symbol => fs.existsSync(path.join(warmupDir, `${symbol}.json`)));
-
   const completeIntradaySymbols = new Set(intradayManifest?.completeSymbols || []);
   const intradayCoverage = symbols.length ? symbols.filter(symbol => completeIntradaySymbols.has(symbol)).length / symbols.length : 0;
-  const intradayFilesComplete = symbols.length > 0 && symbols.every(symbol =>
-    ['1m', '5m', '15m'].every(interval => fs.existsSync(path.join(intradayDir, interval, `${symbol}.csv.gz`)))
-  );
+  const intradayFilesComplete = symbols.length > 0 && symbols.every(symbol => ['1m', '5m', '15m'].every(interval => fs.existsSync(path.join(intradayDir, interval, `${symbol}.csv.gz`))));
 
   const gates = {
     strategyFrozen: strategyLock.passed,
@@ -86,24 +74,20 @@ function auditQ2BacktestReadiness(options = {}) {
     historicalFactorsComplete: factorMaterializationComplete,
     dailyWarmupComplete: Boolean(warmupManifest?.status === 'complete' && warmupCoverage === 1 && warmupFilesComplete),
     intradayComplete: Boolean(intradayManifest?.status === 'complete' && intradayCoverage === 1 && intradayFilesComplete),
-    futureLeakageForbidden: Boolean(
-      pitManifest?.pointInTime?.sameSessionUseForbidden
+    futureLeakageForbidden: Boolean(pitManifest?.pointInTime?.sameSessionUseForbidden
       && /No future|only MOPS records/i.test(String(mopsManifest?.pointInTimeRule || ''))
-      && /forbidden/i.test(String(intradayManifest?.policy?.futureLeakage || ''))
-    )
+      && /forbidden/i.test(String(intradayManifest?.policy?.futureLeakage || '')))
   };
 
-  const restorationScore = Math.round((
-    (gates.strategyFrozen ? 5 : 0)
+  const restorationScore = Math.round(((gates.strategyFrozen ? 5 : 0)
     + (gates.twseDownloaded ? 10 : 0)
     + (gates.top100PointInTime ? 10 : 0)
     + (gates.institutionalComplete ? 10 : 0)
-    + (Math.min(1, mopsAvailability) * 10)
-    + (Math.min(1, factorCoverage) * 15)
-    + (Math.min(1, warmupCoverage) * 10)
-    + (Math.min(1, intradayCoverage) * 20)
-    + (gates.futureLeakageForbidden ? 10 : 0)
-  ) * 10) / 10;
+    + Math.min(1, mopsAvailability) * 10
+    + Math.min(1, factorCoverage) * Math.min(1, factorQuality) * 15
+    + Math.min(1, warmupCoverage) * 10
+    + Math.min(1, intradayCoverage) * 20
+    + (gates.futureLeakageForbidden ? 10 : 0)) * 10) / 10;
 
   const blockers = Object.entries(gates).filter(([, passed]) => !passed).map(([name]) => name);
   return {
@@ -115,7 +99,7 @@ function auditQ2BacktestReadiness(options = {}) {
       predictionForbidden: true,
       futureLeakageForbidden: true,
       dataSource: 'TWSE_MCP_PRIMARY',
-      factorMaterialization: 'explicit point-in-time values only; no guessed historical factor score',
+      factorMaterialization: 'explicit historical values preferred; deterministic MOPS point-in-time reconstruction accepted at 0.75 fidelity',
       resultMustNotBePublishedWhenStrictGateFails: true
     },
     counts: {
@@ -124,19 +108,17 @@ function auditQ2BacktestReadiness(options = {}) {
       symbols: symbols.length,
       mopsAvailabilityPct: Math.round(mopsAvailability * 10000) / 100,
       historicalFactorCoveragePct: Math.round(factorCoverage * 10000) / 100,
+      historicalFactorQualityPct: Math.round(factorQuality * 10000) / 100,
       historicalFactorBlockers: Number(factorManifest?.blockerRows || 0),
       dailyWarmupCoveragePct: Math.round(warmupCoverage * 10000) / 100,
       intradayCoveragePct: Math.round(intradayCoverage * 10000) / 100
     },
-    strategyLock: {
-      passed: strategyLock.passed,
-      changedFiles: strategyLock.changedFiles
-    },
+    strategyLock: { passed: strategyLock.passed, changedFiles: strategyLock.changedFiles },
     gates,
     blockers,
     restorationScore,
     targetReached: restorationScore >= 85 && blockers.length === 0,
-    interpretation: 'restorationScore measures how faithfully historical decisions can be reconstructed. It is not a probability of future profit.'
+    interpretation: 'restorationScore measures historical replay fidelity, not future-profit probability.'
   };
 }
 
