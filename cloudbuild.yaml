@@ -1,8 +1,10 @@
 steps:
   - name: gcr.io/cloud-builders/docker
     args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA', '.']
+
   - name: gcr.io/cloud-builders/docker
     args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA']
+
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     secretEnv: ['GITHUB_STATIC_BACKUP_TOKEN']
@@ -21,15 +23,71 @@ steps:
       - --task-timeout=55s
       - --cpu=1
       - --memory=512Mi
+
+  # 專用盤前資料準備 Job：只刷新與檢核 Top100，不執行交易。
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - tw-stock-pretrade-prepare
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA
+      - --region=${_REGION}
+      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
+      - --command=node
+      - --args=cloud_simulator/src/pretrade_prepare_job.js
+      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL}
+      - --tasks=1
+      - --max-retries=1
+      - --task-timeout=1200s
+      - --cpu=1
+      - --memory=512Mi
+
+  # Cloud Scheduler 固定以台北時間在交易日 14:00 執行收盤後準備，08:00 再刷新一次。
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-pretrade-prepare:run"
+        upsert_scheduler() {
+          NAME="$1"
+          SCHEDULE="$2"
+          if gcloud scheduler jobs describe "$NAME" --location="${_REGION}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "$NAME" \
+              --location="${_REGION}" \
+              --schedule="$SCHEDULE" \
+              --time-zone="Asia/Taipei" \
+              --uri="$URI" \
+              --http-method=POST \
+              --oauth-service-account-email="${_RUNTIME_SERVICE_ACCOUNT}" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
+          else
+            gcloud scheduler jobs create http "$NAME" \
+              --location="${_REGION}" \
+              --schedule="$SCHEDULE" \
+              --time-zone="Asia/Taipei" \
+              --uri="$URI" \
+              --http-method=POST \
+              --oauth-service-account-email="${_RUNTIME_SERVICE_ACCOUNT}" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
+          fi
+        }
+        upsert_scheduler tw-stock-pretrade-after-close '0 14 * * 1-5'
+        upsert_scheduler tw-stock-pretrade-0800 '0 8 * * 1-5'
+
 substitutions:
   _REGION: asia-east1
   _REPOSITORY: tw-stock
   _GCS_BUCKET: project-aef205b5-5c27-4084-94c-tw-stock-data
   _RUNTIME_SERVICE_ACCOUNT: tw-stock-runtime@project-aef205b5-5c27-4084-94c.iam.gserviceaccount.com
   _CANDIDATE_SNAPSHOT_URL: 'https://script.google.com/macros/s/AKfycbxMSe1WvXNjTbAzxZSP8mD_9wt11BIGQSyaFTktoet_v7WQ1KujUu19pflwS6zHfhqt/exec?action=refresh&force=1'
+
 availableSecrets:
   secretManager:
     - versionName: projects/$PROJECT_ID/secrets/github-static-backup-token/versions/latest
       env: GITHUB_STATIC_BACKUP_TOKEN
+
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA'
