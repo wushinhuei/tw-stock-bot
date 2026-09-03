@@ -38,23 +38,28 @@ test('MOPS quarterly public fallback merges statements by symbol and quarter', (
   assert.ok(rows[0].facts.some(item => item.metric === 'assets' && item.value === 5000));
 });
 
-test('MOPS MCP falls back to official public query when Drive ADC is unavailable', async () => {
-  const calls = [];
+test('MOPS MCP falls back to credentialless official sources when Drive ADC is unavailable', async () => {
   const drive = { async mopsRows() { throw new Error('Could not load default credentials'); } };
-  const client = {
-    async query(dataset, year, part) {
-      calls.push([dataset, year, part]);
-      if (dataset === 'majorMessages') return [{ stock_code: '2330', available_from: '2026-04-02T10:00:00+08:00', raw: { 主旨: '測試' } }];
-      if (dataset === 'monthlyRevenue' && part === 4) return [{ stock_code: '2330', fiscal_year: 2026, month: 4, available_from: '', raw: { '當月營收': '100' } }];
-      return [];
-    }
+  const mcp = new MopsMcpHistory({ drive });
+  const calls = [];
+
+  mcp.publicMajorMessages = async (year, symbol) => {
+    calls.push(['majorMessages', year, symbol]);
+    return [{ stock_code: '2330', available_from: '2026-04-02T10:00:00+08:00', raw: { 主旨: '測試' } }];
   };
-  const mcp = new MopsMcpHistory({ drive, client });
+  mcp.publicMonthlyRevenue = async (year, months) => {
+    calls.push(['monthlyRevenue', year, months]);
+    return [{ stock_code: '2330', fiscal_year: 2026, month: 4, available_from: '2026-05-11T00:00:00+08:00', raw: { '當月營收': '100' } }];
+  };
+
   const messages = await mcp.majorMessages({ year: 2026, symbol: '2330', asOf: '2026-04-03T08:59:59+08:00' });
-  assert.equal(messages.source, 'MOPS_PUBLIC_OFFICIAL_FALLBACK');
+  assert.equal(messages.source, 'MOPS_OFFICIAL_HISTORICAL_PAGE');
   assert.equal(messages.rows.length, 1);
-  const revenue = await mcp.monthlyRevenue({ year: 2026, symbol: '2330', asOf: '2026-05-12T08:59:59+08:00' });
+
+  const revenue = await mcp.monthlyRevenue({ year: 2026, symbol: '2330', asOf: '2026-05-12T08:59:59+08:00', months: [4] });
+  assert.equal(revenue.source, 'MOPS_OFFICIAL_MONTHLY_ARCHIVE');
   assert.equal(revenue.rows.length, 1);
   assert.equal(revenue.rows[0].available_from, '2026-05-11T00:00:00+08:00');
   assert.ok(calls.some(([dataset]) => dataset === 'majorMessages'));
+  assert.ok(calls.some(([dataset]) => dataset === 'monthlyRevenue'));
 });
