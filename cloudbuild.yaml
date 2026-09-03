@@ -179,13 +179,13 @@ steps:
       - -ceu
       - |
         upsert_scheduler() {
-          NAME="$1"
-          SCHEDULE="$2"
-          URI="$3"
-          if gcloud scheduler jobs describe "$NAME" --location="${_REGION}" >/dev/null 2>&1; then
-            gcloud scheduler jobs update http "$NAME" --location="${_REGION}" --schedule="$SCHEDULE" --time-zone="Asia/Taipei" --uri="$URI" --http-method=POST --oauth-service-account-email="${_RUNTIME_SERVICE_ACCOUNT}" --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
+          NAME="$$1"
+          SCHEDULE="$$2"
+          URI="$$3"
+          if gcloud scheduler jobs describe "$$NAME" --location="${_REGION}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "$$NAME" --location="${_REGION}" --schedule="$$SCHEDULE" --time-zone="Asia/Taipei" --uri="$$URI" --http-method=POST --oauth-service-account-email="${_RUNTIME_SERVICE_ACCOUNT}" --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
           else
-            gcloud scheduler jobs create http "$NAME" --location="${_REGION}" --schedule="$SCHEDULE" --time-zone="Asia/Taipei" --uri="$URI" --http-method=POST --oauth-service-account-email="${_RUNTIME_SERVICE_ACCOUNT}" --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
+            gcloud scheduler jobs create http "$$NAME" --location="${_REGION}" --schedule="$$SCHEDULE" --time-zone="Asia/Taipei" --uri="$$URI" --http-method=POST --oauth-service-account-email="${_RUNTIME_SERVICE_ACCOUNT}" --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
           fi
         }
         PREP_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-pretrade-prepare:run"
@@ -194,13 +194,13 @@ steps:
         MCP_DAILY_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-mcp-daily-sync:run"
         GROWTH_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-growth-top10-sync:run"
         HEALTH_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-data-health:run"
-        upsert_scheduler tw-stock-pretrade-after-close '0 14 * * 1-5' "$PREP_URI"
-        upsert_scheduler tw-stock-pretrade-0800 '0 8 * * 1-5' "$PREP_URI"
-        upsert_scheduler tw-stock-twse-drive-sync-after-close '5 14 * * 1-5' "$TWSE_SYNC_URI"
-        upsert_scheduler tw-stock-mops-drive-sync-evening '30 20 * * 1-5' "$MOPS_SYNC_URI"
-        upsert_scheduler tw-stock-mcp-daily-sync-evening '45 20 * * 1-5' "$MCP_DAILY_URI"
-        upsert_scheduler tw-stock-growth-top10-evening '0 21 * * 1-5' "$GROWTH_URI"
-        upsert_scheduler tw-stock-data-health-evening '15 21 * * 1-5' "$HEALTH_URI"
+        upsert_scheduler tw-stock-pretrade-after-close '0 14 * * 1-5' "$$PREP_URI"
+        upsert_scheduler tw-stock-pretrade-0800 '0 8 * * 1-5' "$$PREP_URI"
+        upsert_scheduler tw-stock-twse-drive-sync-after-close '5 14 * * 1-5' "$$TWSE_SYNC_URI"
+        upsert_scheduler tw-stock-mops-drive-sync-evening '30 20 * * 1-5' "$$MOPS_SYNC_URI"
+        upsert_scheduler tw-stock-mcp-daily-sync-evening '45 20 * * 1-5' "$$MCP_DAILY_URI"
+        upsert_scheduler tw-stock-growth-top10-evening '0 21 * * 1-5' "$$GROWTH_URI"
+        upsert_scheduler tw-stock-data-health-evening '15 21 * * 1-5' "$$HEALTH_URI"
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
@@ -208,18 +208,18 @@ steps:
       - -ceu
       - |
         EXPECTED_IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA"
-        SERVICE_IMAGE="$(gcloud run services describe tw-stock-dashboard-api --region="${_REGION}" --format='value(spec.template.spec.containers[0].image)')"
-        echo "tw-stock-dashboard-api -> $SERVICE_IMAGE"
-        test "$SERVICE_IMAGE" = "$EXPECTED_IMAGE"
+        SERVICE_IMAGE="$$(gcloud run services describe tw-stock-dashboard-api --region="${_REGION}" --format='value(spec.template.spec.containers[0].image)')"
+        echo "tw-stock-dashboard-api -> $$SERVICE_IMAGE"
+        test "$$SERVICE_IMAGE" = "$$EXPECTED_IMAGE"
         for JOB in tw-stock-simulator tw-stock-pretrade-prepare tw-stock-twse-drive-sync tw-stock-mops-drive-sync tw-stock-mops-20q-backfill tw-stock-mcp-daily-sync tw-stock-growth-top10-sync tw-stock-data-health; do
-          IMAGE="$(gcloud run jobs describe "$JOB" --region="${_REGION}" --format='value(template.template.containers[0].image)')"
-          echo "$JOB -> $IMAGE"
-          test "$IMAGE" = "$EXPECTED_IMAGE"
+          IMAGE="$$(gcloud run jobs describe "$$JOB" --region="${_REGION}" --format='value(template.template.containers[0].image)')"
+          echo "$$JOB -> $$IMAGE"
+          test "$$IMAGE" = "$$EXPECTED_IMAGE"
         done
         for SCHEDULER in tw-stock-pretrade-after-close tw-stock-pretrade-0800 tw-stock-twse-drive-sync-after-close tw-stock-mops-drive-sync-evening tw-stock-mcp-daily-sync-evening tw-stock-growth-top10-evening tw-stock-data-health-evening; do
-          STATE="$(gcloud scheduler jobs describe "$SCHEDULER" --location="${_REGION}" --format='value(state)')"
-          echo "$SCHEDULER -> $STATE"
-          test "$STATE" = "ENABLED"
+          STATE="$$(gcloud scheduler jobs describe "$$SCHEDULER" --location="${_REGION}" --format='value(state)')"
+          echo "$$SCHEDULER -> $$STATE"
+          test "$$STATE" = "ENABLED"
         done
         echo "Verified Cloud Run service, jobs and schedulers at commit $COMMIT_SHA"
 
