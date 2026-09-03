@@ -62,3 +62,23 @@ window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.a
   attach();
   window.addEventListener('load', attach);
 })();
+
+// 現有持倉不必進入每日30檔候選，也必須能被持倉畫面與風控查到。
+// Cloud tick 會另外回傳 day.positionMonitors；這裡只在一般候選找不到時才回退到持倉監控資料。
+(function installHoldingMonitorLookup() {
+  window.addEventListener('load', () => {
+    const originalFindCandidate = window.findCandidate;
+    if (typeof originalFindCandidate !== 'function' || originalFindCandidate.__holdingMonitorAware) return;
+
+    function holdingMonitorAwareFindCandidate(day, symbol) {
+      const candidate = originalFindCandidate(day, symbol);
+      if (candidate) return candidate;
+      const code = String(symbol || '').replace(/\.TW$/i, '');
+      const monitors = Array.isArray(day?.positionMonitors) ? day.positionMonitors : [];
+      return monitors.find(item => String(item?.symbol || '').replace(/\.TW$/i, '') === code) || null;
+    }
+
+    holdingMonitorAwareFindCandidate.__holdingMonitorAware = true;
+    window.findCandidate = holdingMonitorAwareFindCandidate;
+  });
+})();
