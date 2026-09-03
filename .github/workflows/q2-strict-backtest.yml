@@ -1,0 +1,105 @@
+name: q2 strict backtest
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/q2-strict-backtest.yml'
+
+permissions:
+  contents: read
+
+env:
+  START_DATE: '2026-04-01'
+  END_DATE: '2026-06-30'
+  Q2_BACKTEST_ROOT: data/backtest
+  SJ_API_KEY: ${{ secrets.SJ_API_KEY }}
+  SJ_SEC_KEY: ${{ secrets.SJ_SEC_KEY }}
+  GOOGLE_ADC_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON || secrets.GOOGLE_SERVICE_ACCOUNT_JSON || secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Configure Google application credentials when available
+        shell: bash
+        run: |
+          if [ -n "$GOOGLE_ADC_JSON" ]; then
+            printf '%s' "$GOOGLE_ADC_JSON" > "$RUNNER_TEMP/google-adc.json"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/google-adc.json" >> "$GITHUB_ENV"
+            echo "Google ADC secret detected."
+          else
+            echo "No Google ADC secret detected; Drive cross-check may block."
+          fi
+
+      - name: Install Shioaji fallback when credentials are configured
+        shell: bash
+        run: |
+          if [ -n "$SJ_API_KEY" ] && [ -n "$SJ_SEC_KEY" ]; then
+            python -m pip install --upgrade pip
+            python -m pip install shioaji pandas
+            echo "Shioaji credentials detected."
+          else
+            echo "No Shioaji credentials detected."
+          fi
+
+      - name: Verify frozen strategy and test suite
+        run: |
+          npm test
+          npm run check
+          npm run verify:q2:strategy
+
+      - name: Probe strict Q2 sources
+        run: npm run probe:q2:sources
+        continue-on-error: true
+
+      - name: Execute strict Q2 pipeline
+        id: pipeline
+        run: npm run q2:data-pipeline
+        continue-on-error: true
+
+      - name: Materialize final Q2 status
+        if: always()
+        run: npm run status:q2:result
+        continue-on-error: true
+
+      - name: Print final Q2 status
+        if: always()
+        shell: bash
+        run: |
+          if [ -f data/backtest/2026Q2/result/status.json ]; then
+            cat data/backtest/2026Q2/result/status.json
+          elif [ -f data/backtest/2026Q2/result/summary.json ]; then
+            cat data/backtest/2026Q2/result/summary.json
+          else
+            echo '{"status":"NO_RESULT_FILE"}'
+          fi
+
+      - name: Upload Q2 audit and replay artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q2-strict-backtest-${{ github.run_id }}
+          path: |
+            data/backtest/**
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail if strict replay did not complete
+        if: steps.pipeline.outcome != 'success'
+        run: exit 2
