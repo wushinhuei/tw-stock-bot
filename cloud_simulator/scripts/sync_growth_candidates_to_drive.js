@@ -27,6 +27,19 @@ function normalizeOfficialMessages(rows) {
   }).filter(row => row.relatedSymbols.length && row.title);
 }
 
+async function mirrorToGcs(payload) {
+  const bucketName = String(process.env.GCS_BUCKET || '').trim();
+  if (!bucketName) return { mirrored: false, reason: 'GCS_BUCKET_NOT_CONFIGURED' };
+  const { Storage } = require('@google-cloud/storage');
+  const file = new Storage().bucket(bucketName).file('public/growth_top10.json');
+  await file.save(`${JSON.stringify(payload, null, 2)}\n`, {
+    contentType: 'application/json; charset=utf-8',
+    metadata: { cacheControl: 'no-store' },
+    resumable: false
+  });
+  return { mirrored: true, object: 'public/growth_top10.json' };
+}
+
 async function main() {
   const now = new Date();
   const current = taipeiParts(now);
@@ -62,6 +75,7 @@ async function main() {
     generatedAt: now.toISOString(),
     asOf,
     methodology: 'Evidence-based growth screening. Fundamentals 60, verified news 30, growth-theme evidence 10. News must be official or corroborated by at least two independent sources before affecting score. Hard-risk events cap total score at 45.',
+    universePolicy: 'ALL_MOPS_LISTED_COMPANIES_WITH_CURRENT_YEAR_MONTHLY_REVENUE; NOT_RESTRICTED_BY_TOP100_TRADING_POOL',
     sourcePolicy: {
       fundamentals: 'MOPS_MCP_PRIMARY',
       officialEvents: 'MOPS_MCP_PRIMARY',
@@ -79,10 +93,11 @@ async function main() {
   });
   const filename = `growth_top10_${current.date}.json`;
   const saved = await writer.upsertText(filename, `${JSON.stringify(payload, null, 2)}\n`);
-  await writer.upsertText('manifest.json', `${JSON.stringify({ schemaVersion: 1, generatedAt: payload.generatedAt, latestDate: current.date, latestFile: filename, driveFileId: saved.id, count: top10.length, sourceStatus }, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ ok: true, date: current.date, filename, driveFileId: saved.id, count: top10.length, top10: top10.map(x => ({ symbol: x.symbol, score: x.score, confidence: x.confidence })) }, null, 2)}\n`);
+  const gcs = await mirrorToGcs(payload);
+  await writer.upsertText('manifest.json', `${JSON.stringify({ schemaVersion: 1, generatedAt: payload.generatedAt, latestDate: current.date, latestFile: filename, driveFileId: saved.id, count: top10.length, sourceStatus, gcs }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ ok: true, date: current.date, filename, driveFileId: saved.id, count: top10.length, gcs, top10: top10.map(x => ({ symbol: x.symbol, score: x.score, confidence: x.confidence })) }, null, 2)}\n`);
 }
 
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
 
-module.exports = { normalizeOfficialMessages, taipeiParts };
+module.exports = { mirrorToGcs, normalizeOfficialMessages, taipeiParts };
