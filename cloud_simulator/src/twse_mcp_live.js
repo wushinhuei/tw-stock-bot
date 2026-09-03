@@ -1,6 +1,6 @@
 'use strict';
 
-const { fetchQuotes } = require('./twse');
+const { fetchQuotes } = require('./twse_raw');
 
 async function callLiveTool(name, args = {}, options = {}) {
   if (name !== 'twse_live_quotes') throw new Error(`unknown live TWSE MCP tool: ${name}`);
