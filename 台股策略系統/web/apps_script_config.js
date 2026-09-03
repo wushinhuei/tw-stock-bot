@@ -88,7 +88,7 @@ window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.a
   function applyCopy() {
     const summary = document.querySelector('#candidateUniverseSummary');
     if (summary) {
-      summary.textContent = '由 TWSE 上市普通股成交量 Top100 建立股池，以籌碼50%、成交量／流動性30%、價格動能20%排序；每小時重新排序一次並顯示前30檔。此名單僅供觀察，不代表要進行任何買賣操作。';
+      summary.textContent = '先由 TWSE 上市普通股依流動性建立 Top100 可交易母池，再以籌碼30%、技術30%、基本面25%、新聞／事件15%做綜合排序；每小時重新排序一次並顯示前30檔。此名單僅供觀察，不代表要進行任何買賣操作。';
     }
 
     const panel = document.querySelector('#candidateUniverse')?.closest('.scanner-panel');
