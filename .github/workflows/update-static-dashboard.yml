@@ -11,6 +11,11 @@ on:
         description: Why the static backup should refresh
         required: false
         default: manual refresh
+  push:
+    branches: [main]
+    paths:
+      - '台股策略系統/web/**'
+      - 'scripts/update_static_dashboard_backup.js'
   schedule:
     - cron: '45 7 * * 1-5'
 
@@ -41,35 +46,37 @@ jobs:
         working-directory: main
         run: node scripts/update_static_dashboard_backup.js
 
-      - name: Copy backup data to GitHub Pages branch
+      - name: Sync full web app to GitHub Pages branch
         run: |
-          cp main/台股策略系統/web/actual_data.js pages/台股策略系統/web/actual_data.js
-          cp main/台股策略系統/web/simulation_result.js pages/台股策略系統/web/simulation_result.js
+          mkdir -p pages/台股策略系統/web
+          rsync -a --delete \
+            --exclude='.gitkeep' \
+            main/台股策略系統/web/ \
+            pages/台股策略系統/web/
 
       - name: Commit updated backup files to main
         working-directory: main
         run: |
           if git diff --quiet -- 台股策略系統/web/actual_data.js 台股策略系統/web/simulation_result.js; then
             echo "No main static backup changes."
-            exit 0
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add 台股策略系統/web/actual_data.js 台股策略系統/web/simulation_result.js
+            git commit -m "Update static dashboard backup"
+            git push
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add 台股策略系統/web/actual_data.js 台股策略系統/web/simulation_result.js
-          git commit -m "Update static dashboard backup"
-          git push
-
-      - name: Commit updated backup files to gh-pages
+      - name: Commit full web deployment to gh-pages
         working-directory: pages
         run: |
-          if git diff --quiet -- 台股策略系統/web/actual_data.js 台股策略系統/web/simulation_result.js; then
-            echo "No GitHub Pages static backup changes."
+          if git diff --quiet -- 台股策略系統/web; then
+            echo "GitHub Pages already matches main web app."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add 台股策略系統/web/actual_data.js 台股策略系統/web/simulation_result.js
-          git commit -m "Publish static dashboard backup"
+          git add -A 台股策略系統/web
+          git commit -m "Deploy full static dashboard from main"
           git push
