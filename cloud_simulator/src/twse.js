@@ -1,65 +1,19 @@
 'use strict';
 
-function number(value) {
-  const text = String(value ?? '').replace(/,/g, '').trim();
-  if (!text || text === '-' || text === '--') return null;
-  const out = Number(text);
-  return Number.isFinite(out) ? out : null;
-}
-function positiveNumber(value) {
-  const out = number(value);
-  return out !== null && out > 0 ? out : null;
-}
-function bestPrice(item) { return positiveNumber(item.z) ?? positiveNumber(String(item.a || '').split('_')[0]) ?? positiveNumber(String(item.b || '').split('_')[0]) ?? positiveNumber(item.y); }
+const { liveQuotes, twsePrimary } = require('./data_source_policy');
 
-async function fetchJson(url, fetchImpl = fetch, referer = 'https://www.twse.com.tw/') {
-  const response = await fetchImpl(url, {
-    cache: 'no-store',
-    headers: {
-      Referer: referer,
-      'User-Agent': 'tw-stock-cloud-simulator/1.0',
-      'Cache-Control': 'no-cache, no-store, max-age=0',
-      Pragma: 'no-cache'
-    }
-  });
-  if (!response.ok) throw new Error(`TWSE HTTP ${response.status}: ${url}`);
-  return response.json();
+async function fetchQuotes(symbols) {
+  return liveQuotes(symbols);
 }
 
-async function fetchQuotes(symbols, fetchImpl = fetch) {
-  const channels = symbols.map(symbol => `tse_${symbol}.tw`).join('|');
-  const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${encodeURIComponent(channels)}&json=1&delay=0&_=${Date.now()}`;
-  const json = await fetchJson(url, fetchImpl, 'https://mis.twse.com.tw/stock/index.jsp');
-  const quotes = {};
-  for (const item of json.msgArray || []) {
-    const price = bestPrice(item);
-    const bidPrice = positiveNumber(String(item.b || '').split('_')[0]) ?? price;
-    const askPrice = positiveNumber(String(item.a || '').split('_')[0]) ?? price;
-    quotes[item.c] = {
-      symbol: item.c, name: item.n, price, bidPrice, askPrice,
-      availableQuantity: Math.max(0, Math.floor((number(String(item.f || '').split('_')[0]) || 0) * 1000)),
-      timestamp: `${item.d.slice(0, 4)}-${item.d.slice(4, 6)}-${item.d.slice(6, 8)}T${item.t}+08:00`,
-      provider: 'TWSE MIS'
-    };
-  }
-  return quotes;
-}
-
-function findTopVolumeTable(json) {
-  return (json.tables || []).find(table => (table.fields || []).some(field => String(field).includes('證券代號'))
-    && (table.fields || []).some(field => String(field).includes('成交股數')));
-}
-
-async function fetchTopVolume(dateCompact, limit = 50, fetchImpl = fetch) {
-  const url = `https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=${dateCompact}&type=ALLBUT0999`;
-  const json = await fetchJson(url, fetchImpl);
-  const table = findTopVolumeTable(json);
-  if (!table) throw new Error('TWSE MI_INDEX沒有可用個股成交量表');
-  const codeIndex = table.fields.findIndex(field => String(field).includes('證券代號'));
-  const nameIndex = table.fields.findIndex(field => String(field).includes('證券名稱'));
-  const volumeIndex = table.fields.findIndex(field => String(field).includes('成交股數'));
-  return table.data.map(row => ({ symbol: String(row[codeIndex]).trim(), name: String(row[nameIndex]).trim(), volume: number(row[volumeIndex]) || 0 }))
-    .filter(row => /^\d{4}$/.test(row.symbol)).sort((a, b) => b.volume - a.volume).slice(0, limit);
+async function fetchTopVolume(dateCompact, limit = 50) {
+  const date = `${dateCompact.slice(0, 4)}-${dateCompact.slice(4, 6)}-${dateCompact.slice(6, 8)}`;
+  const result = await twsePrimary('twse_market_daily', { date });
+  return (result.rows || [])
+    .filter(row => /^\d{4}$/.test(String(row.symbol || '')) && Number(row.volume) > 0)
+    .sort((a, b) => Number(b.volume) - Number(a.volume))
+    .slice(0, limit)
+    .map(row => ({ symbol: row.symbol, name: row.name, volume: Number(row.volume || 0), provider: result.dataSource || 'TWSE_MCP' }));
 }
 
 module.exports = { fetchQuotes, fetchTopVolume };
