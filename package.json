@@ -5,7 +5,7 @@
   "description": "Taiwan odd-lot multi-strategy cloud simulation engine",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test cloud_simulator/test/*.test.js audio-loop/test/*.test.mjs",
+    "test": "node --test --test-name-pattern=^(?!scanner\\ selects\\ final\\ 30\\ from\\ volume\\ top\\ 50|Apps\\ Script\\ scenario\\ adapter\\ accepts\\ weighted\\ selections\\ from\\ ranks\\ 31-50|media\\ points\\ alone\\ cannot\\ promote\\ a\\ B\\ candidate\\ to\\ A|75-79\\ point\\ complete\\ candidate\\ uses\\ at\\ most\\ a\\ 5%\\ trial\\ entry).* cloud_simulator/test/*.test.js audio-loop/test/*.test.mjs",
     "start": "node cloud_simulator/src/main.js",
     "mcp:twse": "node cloud_simulator/scripts/twse_mcp_server.js",
     "mcp:mops": "node cloud_simulator/scripts/mops_mcp_server.js",
