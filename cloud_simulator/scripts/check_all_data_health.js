@@ -3,15 +3,14 @@
 const { Storage } = require('@google-cloud/storage');
 const { DriveHistorySource } = require('../src/drive_history');
 const { DrivePrimaryWriter } = require('../src/drive_primary_writer');
+const { latestReportableQuarter, quarterKey } = require('./backfill_mops_20q_to_drive');
 
 function taipeiDate(now = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
-
 function latestDateOf(manifest) {
   return String(manifest?.latestTradeDate || manifest?.latestDate || manifest?.last_update?.latest_date || manifest?.last_update?.latestTradeDate || manifest?.end || '').slice(0, 10) || null;
 }
-
 async function readFolderManifest(parentFolderId, folderName) {
   const writer = new DrivePrimaryWriter({ parentFolderId, folderName });
   const folderId = await writer.ensureFolder();
@@ -22,14 +21,9 @@ async function readFolderManifest(parentFolderId, folderName) {
   if (!response.ok) throw new Error(`${folderName} manifest HTTP ${response.status}`);
   return JSON.parse(await response.text());
 }
-
 async function safeCheck(name, fn, blocking = true) {
-  try {
-    const detail = await fn();
-    return { name, ok: detail?.ok !== false, blocking, ...detail };
-  } catch (error) {
-    return { name, ok: false, blocking, error: String(error.message || error) };
-  }
+  try { const detail = await fn(); return { name, ok: detail?.ok !== false, blocking, ...detail }; }
+  catch (error) { return { name, ok: false, blocking, error: String(error.message || error) }; }
 }
 
 async function buildReport(options = {}) {
@@ -40,8 +34,8 @@ async function buildReport(options = {}) {
   const growthParent = process.env.GROWTH_DRIVE_PARENT_FOLDER_ID || mopsParent;
   const q20Parent = process.env.MOPS_20Q_DRIVE_PARENT_FOLDER_ID || '1oNlmeY46SpjBoZCUUlLCGGu8AV1W-knd';
   const history = new DriveHistorySource();
-
   const checks = [];
+
   for (const dataset of ['stockDaily', 'marketFlow', 'top50']) {
     checks.push(await safeCheck(dataset, async () => {
       const manifest = await history.manifest(dataset);
@@ -72,7 +66,11 @@ async function buildReport(options = {}) {
   }));
   checks.push(await safeCheck('mops20Q', async () => {
     const manifest = await readFolderManifest(q20Parent, process.env.MOPS_20Q_DRIVE_FOLDER_NAME || '20Q_MCP_PRIMARY');
-    return { ok: manifest.status === 'complete' && Number(manifest.quarterCount || 0) >= 20, latestQuarter: manifest.endQuarter || manifest.latestReportableQuarter, quarterCount: manifest.quarterCount, status: manifest.status };
+    const expected = latestReportableQuarter(now);
+    const expectedQuarter = quarterKey(expected.year, expected.quarter);
+    const latestQuarter = manifest.endQuarter || manifest.latestReportableQuarter || null;
+    const ok = manifest.status === 'complete' && Number(manifest.quarterCount || 0) >= 20 && latestQuarter === expectedQuarter;
+    return { ok, latestQuarter, expectedQuarter, quarterCount: manifest.quarterCount, status: ok ? 'complete' : 'stale' };
   }));
 
   const marketDates = checks.filter(x => ['stockDaily','marketFlow','top50'].includes(x.name) && x.ok && x.latestDate).map(x => x.latestDate);
@@ -81,37 +79,23 @@ async function buildReport(options = {}) {
   checks.push({ name: 'marketDateAlignment', blocking: true, ok: marketAligned, latestDate: latestCompleteTradeDate, dates: marketDates, status: marketAligned ? 'complete' : 'mismatch' });
 
   const failures = checks.filter(x => x.blocking && !x.ok);
-  const report = {
-    schemaVersion: 1,
-    generatedAt: now.toISOString(),
-    checkedForDate: today,
-    status: failures.length ? 'PARTIAL' : 'COMPLETE',
-    ok: failures.length === 0,
-    latestCompleteTradeDate,
+  return {
+    schemaVersion: 1, generatedAt: now.toISOString(), checkedForDate: today,
+    status: failures.length ? 'PARTIAL' : 'COMPLETE', ok: failures.length === 0, latestCompleteTradeDate,
     gatePolicy: 'ALL_BLOCKING_DATA_SOURCES_MUST_PASS; INCOMPLETE_DATA_MUST_NOT_REPLACE_LAST_COMPLETE_DATASET',
-    checks,
-    failedChecks: failures.map(x => x.name)
+    checks, failedChecks: failures.map(x => x.name)
   };
-  return report;
 }
 
 async function persistReport(report) {
   const bucketName = String(process.env.GCS_BUCKET || '').trim();
   if (!bucketName) throw new Error('GCS_BUCKET is required');
-  const file = new Storage().bucket(bucketName).file('public/data_health.json');
-  await file.save(`${JSON.stringify(report, null, 2)}\n`, { contentType: 'application/json; charset=utf-8', metadata: { cacheControl: 'no-store' }, resumable: false });
+  await new Storage().bucket(bucketName).file('public/data_health.json').save(`${JSON.stringify(report, null, 2)}\n`, { contentType: 'application/json; charset=utf-8', metadata: { cacheControl: 'no-store' }, resumable: false });
   const writer = new DrivePrimaryWriter({ parentFolderId: process.env.MCP_DRIVE_PARENT_FOLDER_ID || process.env.TWSE_DRIVE_PARENT_FOLDER_ID || '', folderName: process.env.DATA_HEALTH_DRIVE_FOLDER_NAME || 'DATA_HEALTH_AUDIT' });
   const date = report.checkedForDate;
   await writer.upsertText(`data_health_${date}.json`, `${JSON.stringify(report, null, 2)}\n`);
   await writer.upsertText('manifest.json', `${JSON.stringify({ schemaVersion: 1, generatedAt: report.generatedAt, latestDate: date, status: report.status, ok: report.ok, latestCompleteTradeDate: report.latestCompleteTradeDate, failedChecks: report.failedChecks }, null, 2)}\n`);
 }
-
-async function main() {
-  const report = await buildReport();
-  await persistReport(report);
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  if (!report.ok) process.exitCode = 2;
-}
-
+async function main() { const report = await buildReport(); await persistReport(report); process.stdout.write(`${JSON.stringify(report, null, 2)}\n`); if (!report.ok) process.exitCode = 2; }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
 module.exports = { buildReport, latestDateOf, persistReport, readFolderManifest, taipeiDate };
