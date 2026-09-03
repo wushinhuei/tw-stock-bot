@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { verify: verifyStrategyLock } = require('../scripts/verify_q2_strategy_lock');
 
 function readJson(filePath) {
   if (!fs.existsSync(filePath)) return null;
@@ -28,6 +29,7 @@ function auditQ2BacktestReadiness(options = {}) {
   const mopsManifest = readJson(path.join(mopsDir, 'manifest.json'));
   const intradayManifest = readJson(path.join(intradayDir, 'manifest.json'));
   const pitRows = readJsonl(path.join(mopsDir, 'q2_pit_with_mops.jsonl'));
+  const strategyLock = verifyStrategyLock(options.repoRoot || process.cwd());
 
   const tradingDates = unique(pitRows.map(row => row.tradeDate)).sort();
   const symbols = unique(pitRows.map(row => String(row.symbol))).sort();
@@ -48,6 +50,7 @@ function auditQ2BacktestReadiness(options = {}) {
   );
 
   const gates = {
+    strategyFrozen: strategyLock.passed,
     twseDownloaded: Boolean(twseManifest && Number(twseManifest.tradingDayCount || 0) > 0 && Number(twseManifest.requestFailureCount || 0) === 0),
     top100PointInTime: Boolean(pitManifest?.pointInTime?.enabled && pitManifest?.pointInTime?.sameSessionUseForbidden && top100Complete),
     institutionalComplete,
@@ -60,9 +63,10 @@ function auditQ2BacktestReadiness(options = {}) {
     )
   };
 
-  // Accuracy score is a restoration score, not a forecast confidence.
+  // Restoration score measures replay fidelity, not future-return confidence.
   const restorationScore = Math.round((
-    (gates.twseDownloaded ? 20 : 0)
+    (gates.strategyFrozen ? 5 : 0)
+    + (gates.twseDownloaded ? 15 : 0)
     + (gates.top100PointInTime ? 15 : 0)
     + (gates.institutionalComplete ? 10 : 0)
     + (Math.min(1, mopsAvailability) * 15)
@@ -75,9 +79,11 @@ function auditQ2BacktestReadiness(options = {}) {
     generatedAt: new Date().toISOString(),
     period: { start: '2026-04-01', end: '2026-06-30' },
     policy: {
-      strategyFrozen: true,
+      strategyFrozen: strategyLock.passed,
+      lockedAtCommit: strategyLock.lockedAtCommit,
       predictionForbidden: true,
       futureLeakageForbidden: true,
+      dataSource: 'TWSE_MCP_PRIMARY',
       resultMustNotBePublishedWhenStrictGateFails: true
     },
     counts: {
@@ -86,6 +92,10 @@ function auditQ2BacktestReadiness(options = {}) {
       symbols: symbols.length,
       mopsAvailabilityPct: Math.round(mopsAvailability * 10000) / 100,
       intradayCoveragePct: Math.round(intradayCoverage * 10000) / 100
+    },
+    strategyLock: {
+      passed: strategyLock.passed,
+      changedFiles: strategyLock.changedFiles
     },
     gates,
     blockers,
