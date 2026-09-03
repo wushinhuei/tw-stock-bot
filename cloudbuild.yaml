@@ -240,3 +240,6 @@ availableSecrets:
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
