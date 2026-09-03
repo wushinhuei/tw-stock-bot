@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const state = { selectedSymbol: null };
+  const state = { selectedSymbol: null, loading: false, loaded: false, error: null };
 
   function html(value) {
     return String(value == null ? '' : value)
@@ -32,6 +32,41 @@
     return [];
   }
 
+  function potentialEndpoint() {
+    const dashboard = String(window.CLOUD_DASHBOARD_ENDPOINT || '').trim();
+    if (!dashboard) return '';
+    return dashboard.replace(/\/dashboard\/?$/i, '/potential-stocks');
+  }
+
+  async function ensureData() {
+    if (rows().length) {
+      state.loaded = true;
+      return rows();
+    }
+    if (state.loading) return [];
+    const endpoint = potentialEndpoint();
+    if (!endpoint) {
+      state.error = '尚未設定 Cloud Dashboard API';
+      return [];
+    }
+    state.loading = true;
+    state.error = null;
+    try {
+      const response = await fetch(`${endpoint}?t=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      if (!payload || payload.ok === false || !Array.isArray(payload.top10)) throw new Error(payload?.error || 'INVALID_TOP10_PAYLOAD');
+      window.GROWTH_CANDIDATES_TOP10 = payload;
+      state.loaded = true;
+      return rows();
+    } catch (error) {
+      state.error = String(error?.message || error);
+      return [];
+    } finally {
+      state.loading = false;
+    }
+  }
+
   function confidenceLabel(value) {
     const n = Number(value);
     if (!Number.isFinite(n)) return '待補資料';
@@ -45,32 +80,38 @@
     return ({ HIGH_GROWTH_WATCH: '高成長觀察', GROWTH_WATCH: '成長觀察', WATCH: '一般觀察' })[String(value || '').toUpperCase()] || value || '成長觀察';
   }
 
+  function fundamentalsOf(item) {
+    return item.fundamentals || item.evidence?.fundamentals || {};
+  }
+
+  function newsEvidence(item) {
+    const evidence = item.newsEvidence || item.news?.evidence || item.verifiedNews || item.evidence?.news || [];
+    return Array.isArray(evidence) ? evidence : [];
+  }
+
   function reasonList(item) {
     const direct = item.reasons || item.inclusionReasons || item.whySelected || item.reason;
     if (Array.isArray(direct)) return direct.map(String).filter(Boolean);
     if (direct) return [String(direct)];
+    const fundamentals = fundamentalsOf(item);
     const reasons = [];
-    const yoy = item.latestRevenueYoY ?? item.revenueYoY ?? item.fundamentals?.latestRevenueYoY;
-    const prevYoy = item.previousRevenueYoY ?? item.fundamentals?.previousRevenueYoY;
+    const yoy = item.latestRevenueYoY ?? item.revenueYoY ?? fundamentals.latestRevenueYoYPct ?? fundamentals.latestRevenueYoY;
+    const prevYoy = item.previousRevenueYoY ?? fundamentals.previousRevenueYoYPct ?? fundamentals.previousRevenueYoY;
     if (Number.isFinite(Number(yoy))) {
       reasons.push(`最新月營收年增率 ${pctValue(yoy)}${Number.isFinite(Number(prevYoy)) ? `，前月 ${pctValue(prevYoy)}` : ''}`);
     }
-    const verified = item.verifiedNewsCount ?? item.news?.verifiedEventCount;
-    const sources = item.independentSourceCount ?? item.news?.independentSourceCount;
-    if (Number(verified) > 0) reasons.push(`已有 ${verified} 個新聞事件完成求證，涵蓋 ${Number(sources || 0)} 個獨立來源`);
-    if (item.theme || item.growthTheme) reasons.push(`成長題材：${item.theme || item.growthTheme}`);
+    const verified = item.verifiedNewsEvents ?? item.verifiedNewsCount ?? item.news?.verifiedEventCount;
+    const sources = item.newsSourceCount ?? item.independentSourceCount ?? item.news?.independentSourceCount;
+    if (Number(verified) > 0) reasons.push(`已有 ${verified} 個新聞事件完成求證，涵蓋 ${Number(sources || 0)} 個來源`);
+    if (item.growthThemeScore > 0) reasons.push(`成長題材證據分 ${item.growthThemeScore} 分`);
     return reasons.length ? reasons : ['目前僅有排名資料，詳細基本面與新聞證據仍在同步。'];
-  }
-
-  function newsEvidence(item) {
-    const evidence = item.newsEvidence || item.news?.evidence || item.verifiedNews || [];
-    return Array.isArray(evidence) ? evidence : [];
   }
 
   function riskList(item) {
     const risks = item.risks || item.riskReasons || item.news?.risks || [];
-    if (Array.isArray(risks)) return risks.map(String).filter(Boolean);
-    return risks ? [String(risks)] : [];
+    const out = Array.isArray(risks) ? risks.map(String).filter(Boolean) : (risks ? [String(risks)] : []);
+    if (item.hardRisk) out.unshift('偵測到重大官方風險事件，總分已依規則上限壓低至 45 分。');
+    return out;
   }
 
   function score(item) {
@@ -82,17 +123,18 @@
     if (!target) return;
     const items = rows();
     if (!items.length) {
-      target.innerHTML = '<div class="potential-empty"><strong>潛力股資料尚未產生</strong><span>每日 MCP／基本面／新聞求證完成後，會顯示最新高成長候選 Top10。系統不會用未求證單一新聞硬湊名單。</span></div>';
+      const detail = state.error ? `資料讀取失敗：${html(state.error)}` : '每日 MCP／基本面／新聞求證完成後，會顯示最新高成長候選 Top10。系統不會用未求證單一新聞硬湊名單。';
+      target.innerHTML = `<div class="potential-empty"><strong>${state.loading ? '潛力股資料讀取中…' : '潛力股資料尚未產生'}</strong><span>${detail}</span></div>`;
       return;
     }
     target.innerHTML = items.map((item, index) => {
       const symbol = item.symbol || item.stockCode || item.code || '-';
       const name = item.name || item.companyName || '';
-      const verified = item.verifiedNewsCount ?? item.news?.verifiedEventCount ?? 0;
+      const verified = item.verifiedNewsEvents ?? item.verifiedNewsCount ?? item.news?.verifiedEventCount ?? 0;
       return `
         <button type="button" class="potential-card" data-potential-symbol="${html(symbol)}">
           <span class="potential-rank">${index + 1}</span>
-          <span class="potential-main"><strong>${html(symbol)} ${html(name)}</strong><small>${html(statusLabel(item.status || item.watchStatus))}</small></span>
+          <span class="potential-main"><strong>${html(symbol)} ${html(name)}</strong><small>${html(statusLabel(item.label || item.status || item.watchStatus))}</small></span>
           <span class="potential-score"><strong>${html(score(item))}</strong><small>總分</small></span>
           <span class="potential-proof"><strong>${html(confidenceLabel(item.confidence))}</strong><small>已求證新聞 ${html(verified)} 件</small></span>
           <span class="potential-more">查看原因 ›</span>
@@ -111,15 +153,15 @@
     const reasons = reasonList(item);
     const risks = riskList(item);
     const evidence = newsEvidence(item);
-    const fundamentals = item.fundamentals || {};
+    const fundamentals = fundamentalsOf(item);
     const symbolText = item.symbol || item.stockCode || item.code || '-';
     const name = item.name || item.companyName || '';
     const fundamentalScore = item.fundamentalScore ?? item.components?.fundamental ?? fundamentals.score ?? '-';
     const newsScore = item.newsScore ?? item.components?.news ?? item.news?.score ?? '-';
-    const themeScore = item.themeScore ?? item.components?.theme ?? '-';
+    const themeScore = item.growthThemeScore ?? item.themeScore ?? item.components?.theme ?? '-';
     target.innerHTML = `
       <div class="potential-detail-head">
-        <div><button type="button" id="potentialBackButton" class="potential-back">← 返回 Top10</button><h3>${html(symbolText)} ${html(name)}</h3><p>${html(statusLabel(item.status || item.watchStatus))} · ${html(confidenceLabel(item.confidence))}</p></div>
+        <div><button type="button" id="potentialBackButton" class="potential-back">← 返回 Top10</button><h3>${html(symbolText)} ${html(name)}</h3><p>${html(statusLabel(item.label || item.status || item.watchStatus))} · ${html(confidenceLabel(item.confidence))}</p></div>
         <div class="potential-big-score"><strong>${html(score(item))}</strong><span>成長總分</span></div>
       </div>
       <div class="potential-breakdown">
@@ -129,12 +171,12 @@
       </div>
       <section class="potential-detail-section"><h4>列入原因</h4><ul>${reasons.map(reason => `<li>${html(reason)}</li>`).join('')}</ul></section>
       <section class="potential-detail-section"><h4>基本面重點</h4><div class="potential-facts">
-        <span>最新營收 YoY <strong>${html(pctValue(item.latestRevenueYoY ?? fundamentals.latestRevenueYoY))}</strong></span>
-        <span>前月營收 YoY <strong>${html(pctValue(item.previousRevenueYoY ?? fundamentals.previousRevenueYoY))}</strong></span>
+        <span>最新營收 YoY <strong>${html(pctValue(item.latestRevenueYoY ?? fundamentals.latestRevenueYoYPct ?? fundamentals.latestRevenueYoY))}</strong></span>
+        <span>前月營收 YoY <strong>${html(pctValue(item.previousRevenueYoY ?? fundamentals.previousRevenueYoYPct ?? fundamentals.previousRevenueYoY))}</strong></span>
         <span>淨利 <strong>${html(number(item.netIncome ?? fundamentals.netIncome, 0))}</strong></span>
         <span>營業利益 <strong>${html(number(item.operatingIncome ?? fundamentals.operatingIncome, 0))}</strong></span>
         <span>營業現金流 <strong>${html(number(item.operatingCashFlow ?? fundamentals.operatingCashFlow, 0))}</strong></span>
-        <span>負債比 <strong>${html(pctValue(item.liabilitiesToAssets ?? fundamentals.liabilitiesToAssets))}</strong></span>
+        <span>負債比 <strong>${html(pctValue((item.liabilitiesToAssets ?? fundamentals.liabilitiesToAssets) != null ? Number(item.liabilitiesToAssets ?? fundamentals.liabilitiesToAssets) * 100 : null))}</strong></span>
       </div></section>
       <section class="potential-detail-section"><h4>新聞求證</h4>${evidence.length ? `<div class="potential-news-evidence">${evidence.map(row => `<article><strong>${html(row.title || row.eventKey || '已驗證事件')}</strong><span>${html((row.sources || []).join('、') || row.source || '官方／多來源')}</span><small>${row.verified === false ? '尚未完成交叉驗證' : '已完成交叉驗證'}</small></article>`).join('')}</div>` : '<p class="potential-muted">目前沒有可顯示的已驗證新聞明細；未求證消息不會提高排名。</p>'}</section>
       <section class="potential-detail-section"><h4>風險提醒</h4>${risks.length ? `<ul class="potential-risks">${risks.map(risk => `<li>${html(risk)}</li>`).join('')}</ul>` : '<p class="potential-muted">目前沒有重大硬風險紀錄；仍不代表股價一定上漲。</p>'}</section>`;
@@ -176,19 +218,21 @@
     modal.innerHTML = `
       <div class="rules-backdrop" data-close-potential-stocks></div>
       <section class="rules-dialog potential-dialog" role="dialog" aria-modal="true" aria-labelledby="potentialStocksTitle">
-        <div class="rules-header"><div><p class="eyebrow">Growth discovery</p><h2 id="potentialStocksTitle">未來高成長潛力股 Top10</h2><p>依公司基本面與多來源新聞求證排序；這是研究觀察清單，不是買進指令。</p></div><button type="button" class="icon-close" data-close-potential-stocks aria-label="關閉潛力股">×</button></div>
+        <div class="rules-header"><div><p class="eyebrow">Growth discovery</p><h2 id="potentialStocksTitle">未來高成長潛力股 Top10</h2><p>依 MCP 公司基本面與多來源新聞求證排序；不受交易 Top100 股池限制，這是研究觀察清單，不是買進指令。</p></div><button type="button" class="icon-close" data-close-potential-stocks aria-label="關閉潛力股">×</button></div>
         <div class="rules-content"><div id="potentialStocksList" class="potential-list"></div><div id="potentialStockDetail" class="potential-detail" hidden></div></div>
       </section>`;
     document.body.appendChild(modal);
 
     const close = () => { modal.hidden = true; document.body.classList.remove('modal-open'); button.focus(); };
-    const open = () => {
+    const open = async () => {
       state.selectedSymbol = null;
       document.querySelector('#potentialStockDetail').hidden = true;
       document.querySelector('#potentialStocksList').hidden = false;
-      renderList();
       modal.hidden = false;
       document.body.classList.add('modal-open');
+      renderList();
+      await ensureData();
+      renderList();
     };
     button.addEventListener('click', open);
     modal.querySelectorAll('[data-close-potential-stocks]').forEach(node => node.addEventListener('click', close));
