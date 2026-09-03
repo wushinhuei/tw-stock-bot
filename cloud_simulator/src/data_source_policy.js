@@ -3,6 +3,7 @@
 const { callTool } = require('./twse_mcp_history');
 const { callLiveTool } = require('./twse_mcp_live');
 const { MopsMcpHistory } = require('./mops_mcp_history');
+const { callTool: callYahooMcpTool } = require('./yahoo_mcp');
 
 const POLICY = Object.freeze({
   mode: 'MCP_FIRST_DAILY_DRIVE_PERSISTENCE',
@@ -13,15 +14,17 @@ const POLICY = Object.freeze({
   tradingCalendarPrimary: 'TWSE_MCP',
   institutionalPrimary: 'TWSE_MCP',
   marginPrimary: 'TWSE_MCP',
-  fallbackOrder: Object.freeze(['GOOGLE_DRIVE_CACHE', 'OTHER_PROVIDER']),
+  supplementalMarketPrimary: 'YAHOO_FINANCE_MCP',
+  fallbackOrder: Object.freeze(['GOOGLE_DRIVE_CACHE', 'YAHOO_FINANCE_MCP', 'OTHER_PROVIDER']),
   persistPrimaryToDrive: true,
   persistFallbackToDriveWithProvenance: true,
   dailyRefreshRequired: true,
   fallbackOnlyWhenPrimaryUnavailable: true,
   externalProviderMayOverwriteOfficial: false,
+  yahooFinanceMcpSupplementalOnly: true,
   domains: Object.freeze({
-    marketDaily: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
-    liveQuotes: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
+    marketDaily: Object.freeze({ primary: 'TWSE_MCP', supplement: 'YAHOO_FINANCE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
+    liveQuotes: Object.freeze({ primary: 'TWSE_MCP', supplement: 'YAHOO_FINANCE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
     institutional: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
     margin: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
     tradingCalendar: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
@@ -29,7 +32,8 @@ const POLICY = Object.freeze({
     quarterlyFinancials: Object.freeze({ primary: 'MOPS_MCP', driveFolder: 'MOPS_MCP_PRIMARY' }),
     majorMessages: Object.freeze({ primary: 'MOPS_MCP', driveFolder: 'MOPS_MCP_PRIMARY' }),
     filingIndex: Object.freeze({ primary: 'MOPS_MCP', driveFolder: 'MOPS_MCP_PRIMARY' }),
-    intradayHistorical: Object.freeze({ primary: 'MCP_WHEN_AVAILABLE', fallback: 'AUTHORIZED_PROVIDER_ONLY', driveFolder: 'SUPPLEMENTAL_HISTORY' }),
+    intradayHistorical: Object.freeze({ primary: 'MCP_WHEN_AVAILABLE', supplement: 'YAHOO_FINANCE_MCP', fallback: 'AUTHORIZED_PROVIDER_ONLY', driveFolder: 'SUPPLEMENTAL_HISTORY' }),
+    internationalMarket: Object.freeze({ primary: 'YAHOO_FINANCE_MCP', driveFolder: 'YAHOO_FINANCE_MCP_SUPPLEMENT' }),
     mediaNews: Object.freeze({ primary: 'MCP_WHEN_AVAILABLE', fallback: 'APPROVED_MEDIA_ONLY', driveFolder: 'SUPPLEMENTAL_NEWS' })
   })
 });
@@ -41,6 +45,14 @@ function hasRows(result) {
 async function primaryCall(tool, args, options = {}) {
   if (tool === 'twse_live_quotes') return callLiveTool(tool, args, options.twse || {});
   return callTool(tool, args, options.twse || {});
+}
+
+async function yahooPrimary(tool, args, options = {}) {
+  try {
+    return await callYahooMcpTool(tool, args || {}, options.yahoo || {});
+  } catch (error) {
+    return { status: 'ERROR', rows: [], dataSource: 'YAHOO_FINANCE_MCP', official: false, supplementalOnly: true, error: String(error.message || error) };
+  }
 }
 
 async function twsePrimary(tool, args, options = {}) {
@@ -55,6 +67,12 @@ async function twsePrimary(tool, args, options = {}) {
     const fallback = await options.driveFallback();
     if (fallback && (Array.isArray(fallback) ? fallback.length : true)) {
       return { rows: Array.isArray(fallback) ? fallback : fallback.rows, dataSource: 'GOOGLE_DRIVE_CACHE', fallbackUsed: true, primaryResult: result };
+    }
+  }
+  if (typeof options.yahooFallback === 'function') {
+    const fallback = await options.yahooFallback();
+    if (fallback && (Array.isArray(fallback) ? fallback.length : hasRows(fallback) || fallback.status === 'OK')) {
+      return { ...(Array.isArray(fallback) ? { rows: fallback } : fallback), dataSource: 'YAHOO_FINANCE_MCP', official: false, supplementalOnly: true, fallbackUsed: true, primaryResult: result };
     }
   }
   if (typeof options.otherFallback === 'function') {
@@ -92,4 +110,4 @@ async function liveQuotes(symbols, options = {}) {
   return result.quotes || Object.fromEntries((result.rows || []).map(row => [String(row.symbol), row]));
 }
 
-module.exports = { POLICY, hasRows, liveQuotes, mopsPrimary, primaryCall, twsePrimary };
+module.exports = { POLICY, hasRows, liveQuotes, mopsPrimary, primaryCall, twsePrimary, yahooPrimary };
