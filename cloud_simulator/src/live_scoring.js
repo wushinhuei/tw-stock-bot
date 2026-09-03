@@ -123,12 +123,7 @@ async function enrichCandidatesWithLiveScores(candidates, options = {}) {
         ...candidate, metrics: { ...candidate.metrics, chip: bars.chipSignals || candidate.metrics?.chip }
       }, bars, now));
       const eligibleData = scored.grade !== 'BLOCKED' && scored.blockedReasons.length === 0;
-      const entryTier = eligibleData && scored.score >= CONFIG.scoreThresholds.A
-        ? 'STANDARD'
-        : eligibleData && scored.score >= CONFIG.trialScoreMin && scored.score < CONFIG.scoreThresholds.A
-          && scored.components.technical >= CONFIG.trialMinTechnical
-          && scored.components.volumeObv >= CONFIG.trialMinVolumeObv
-          ? 'TRIAL' : 'NONE';
+      const entryTier = eligibleData && scored.grade === 'A' ? 'STANDARD' : 'NONE';
       return {
         ...candidate,
         ...scored,
