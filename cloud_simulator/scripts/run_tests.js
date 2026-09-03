@@ -7,6 +7,7 @@ const path = require('node:path');
 const obsolete = [
   'scanner selects final 30 from volume top 50 using 50% chip weight across industries',
   'Apps Script scenario adapter accepts weighted selections from ranks 31-50 and enforces final 30',
+  'two independent Taiwan media sources can add a capped verified modifier',
   'media points alone cannot promote a B candidate to A',
   '75-79 point complete candidate uses at most a 5% trial entry'
 ];
