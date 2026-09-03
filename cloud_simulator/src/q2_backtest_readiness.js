@@ -1,0 +1,98 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+function readJson(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); }
+  catch { return null; }
+}
+
+function readJsonl(filePath) {
+  if (!fs.existsSync(filePath)) return [];
+  return fs.readFileSync(filePath, 'utf8').split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+}
+
+function unique(values) { return [...new Set(values)]; }
+
+function auditQ2BacktestReadiness(options = {}) {
+  const root = path.resolve(options.root || 'data/backtest');
+  const twseDir = path.resolve(options.twseDir || path.join(root, 'twse-q2-mcp'));
+  const pitDir = path.resolve(options.pitDir || path.join(root, 'q2-point-in-time'));
+  const mopsDir = path.resolve(options.mopsDir || path.join(root, 'q2-mops-point-in-time'));
+  const intradayDir = path.resolve(options.intradayDir || path.join(root, '2026Q2/intraday'));
+
+  const twseManifest = readJson(path.join(twseDir, 'manifest.json'));
+  const pitManifest = readJson(path.join(pitDir, 'manifest.json'));
+  const mopsManifest = readJson(path.join(mopsDir, 'manifest.json'));
+  const intradayManifest = readJson(path.join(intradayDir, 'manifest.json'));
+  const pitRows = readJsonl(path.join(mopsDir, 'q2_pit_with_mops.jsonl'));
+
+  const tradingDates = unique(pitRows.map(row => row.tradeDate)).sort();
+  const symbols = unique(pitRows.map(row => String(row.symbol))).sort();
+  const countsByDate = new Map();
+  for (const row of pitRows) countsByDate.set(row.tradeDate, (countsByDate.get(row.tradeDate) || 0) + 1);
+
+  const top100Complete = tradingDates.length > 0 && tradingDates.every(date => countsByDate.get(date) === 100);
+  const institutionalComplete = pitRows.length > 0 && pitRows.every(row => row.availability?.institutional !== false);
+  const mopsAvailability = pitRows.length ? pitRows.reduce((sum, row) => {
+    const value = Boolean(row.mopsAvailability?.monthlyRevenue) && Boolean(row.mopsAvailability?.quarterlyFinancials);
+    return sum + (value ? 1 : 0);
+  }, 0) / pitRows.length : 0;
+
+  const completeIntradaySymbols = new Set(intradayManifest?.completeSymbols || []);
+  const intradayCoverage = symbols.length ? symbols.filter(symbol => completeIntradaySymbols.has(symbol)).length / symbols.length : 0;
+  const intradayFilesComplete = symbols.length > 0 && symbols.every(symbol =>
+    ['1m', '5m', '15m'].every(interval => fs.existsSync(path.join(intradayDir, interval, `${symbol}.csv.gz`)))
+  );
+
+  const gates = {
+    twseDownloaded: Boolean(twseManifest && Number(twseManifest.tradingDayCount || 0) > 0 && Number(twseManifest.requestFailureCount || 0) === 0),
+    top100PointInTime: Boolean(pitManifest?.pointInTime?.enabled && pitManifest?.pointInTime?.sameSessionUseForbidden && top100Complete),
+    institutionalComplete,
+    mopsPointInTime: Boolean(mopsManifest?.pointInTimeRule && mopsAvailability >= 0.98),
+    intradayComplete: Boolean(intradayManifest?.status === 'complete' && intradayCoverage === 1 && intradayFilesComplete),
+    futureLeakageForbidden: Boolean(
+      pitManifest?.pointInTime?.sameSessionUseForbidden
+      && /No future|only MOPS records/i.test(String(mopsManifest?.pointInTimeRule || ''))
+      && /forbidden/i.test(String(intradayManifest?.policy?.futureLeakage || ''))
+    )
+  };
+
+  // Accuracy score is a restoration score, not a forecast confidence.
+  const restorationScore = Math.round((
+    (gates.twseDownloaded ? 20 : 0)
+    + (gates.top100PointInTime ? 15 : 0)
+    + (gates.institutionalComplete ? 10 : 0)
+    + (Math.min(1, mopsAvailability) * 15)
+    + (Math.min(1, intradayCoverage) * 30)
+    + (gates.futureLeakageForbidden ? 10 : 0)
+  ) * 10) / 10;
+
+  const blockers = Object.entries(gates).filter(([, passed]) => !passed).map(([name]) => name);
+  return {
+    generatedAt: new Date().toISOString(),
+    period: { start: '2026-04-01', end: '2026-06-30' },
+    policy: {
+      strategyFrozen: true,
+      predictionForbidden: true,
+      futureLeakageForbidden: true,
+      resultMustNotBePublishedWhenStrictGateFails: true
+    },
+    counts: {
+      tradingDays: tradingDates.length,
+      pointInTimeRows: pitRows.length,
+      symbols: symbols.length,
+      mopsAvailabilityPct: Math.round(mopsAvailability * 10000) / 100,
+      intradayCoveragePct: Math.round(intradayCoverage * 10000) / 100
+    },
+    gates,
+    blockers,
+    restorationScore,
+    targetReached: restorationScore >= 85 && blockers.length === 0,
+    interpretation: 'restorationScore measures how faithfully historical decisions can be reconstructed. It is not a probability of future profit.'
+  };
+}
+
+module.exports = { auditQ2BacktestReadiness, readJson, readJsonl };
