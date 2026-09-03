@@ -9,7 +9,8 @@ const CONFIG = Object.freeze({
   topVolumeLimit: 100,
   maxCandidates: 30,
   candidateRankingIntervalMinutes: 60,
-  candidateSelectionWeights: Object.freeze({ chip: 0.50, volume: 0.30, momentum: 0.20 }),
+  // Top100 只作為高流動性的可交易母池；Top30 觀察排序改由四大面向決定。
+  candidateSelectionWeights: Object.freeze({ chip: 0.30, technical: 0.30, fundamental: 0.25, news: 0.15 }),
   schedulerIntervalMinutes: 5,
   rssPollMs: 15 * 60 * 1000,
   sessionStart: '08:50',
