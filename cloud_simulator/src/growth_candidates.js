@@ -4,6 +4,17 @@ const HARD_RISK = /停止交易|暫停交易|處置|變更交易方法|重大不
 const POSITIVE_NEWS = /新訂單|重大訂單|取得.*訂單|得標|擴產|量產|上修|成長|創新高|投資|合作|需求強勁|市占|新品|認證|核准|營收.*增|獲利.*增/i;
 const NEGATIVE_NEWS = /下修|衰退|虧損|減損|停工|違約|訴訟|裁罰|需求疲弱|砍單|庫存|重大損失/i;
 
+const EVENT_RULES = [
+  ['ORDER_DEMAND', /訂單|得標|客戶|需求|出貨|拉貨|接單|bookings?/i, 'MEDIUM_LONG'],
+  ['CAPACITY_EXPANSION', /擴產|新廠|產能|量產|設備到位|投產|產線/i, 'LONG'],
+  ['NEW_PRODUCT_TECH', /新品|新產品|新技術|AI|人工智慧|先進封裝|CoWoS|HBM|液冷|光通訊|機器人|認證|核准/i, 'LONG'],
+  ['FINANCIAL_PERFORMANCE', /營收|獲利|毛利|EPS|財報|盈餘|淨利|現金流/i, 'MEDIUM_LONG'],
+  ['PARTNERSHIP_INVESTMENT', /合作|策略聯盟|投資|入股|合資|併購|M&A/i, 'LONG'],
+  ['GUIDANCE_OUTLOOK', /展望|上修|下修|財測|法說|預估|能見度/i, 'MEDIUM_LONG'],
+  ['REGULATORY_CORPORATE', /重大訊息|董事會|股利|增資|減資|主管機關|裁罰|訴訟/i, 'MEDIUM'],
+  ['RISK_EVENT', HARD_RISK, 'IMMEDIATE']
+];
+
 function num(value) {
   if (value == null || value === '') return null;
   const n = Number(String(value).replace(/,/g, '').replace(/%/g, ''));
@@ -63,19 +74,42 @@ function scoreFundamental(revenues, financial) {
     evidence: { latestRevenueYoYPct: latestYoy, previousRevenueYoYPct: prevYoy, netIncome: ni, operatingIncome: oi, operatingCashFlow: ocf, liabilitiesToAssets: assets && liabilities != null ? liabilities/assets : null }
   };
 }
+
+function classifyEvent(text) {
+  for (const [category, pattern, horizon] of EVENT_RULES) {
+    if (pattern.test(text)) return { category, horizon };
+  }
+  return { category: 'OTHER', horizon: 'UNKNOWN' };
+}
+
 function normalizeNewsItem(item) {
-  const text = `${item?.title || ''} ${item?.summary || ''} ${item?.description || ''}`;
+  const text = `${item?.title || ''} ${item?.summary || ''} ${item?.description || ''}`.trim();
+  const classified = classifyEvent(text);
+  const explicit = String(item?.sentiment || item?.impact || '').toUpperCase();
+  const positive = explicit === 'POSITIVE' || (!explicit && POSITIVE_NEWS.test(text)) || POSITIVE_NEWS.test(text);
+  const negative = explicit === 'NEGATIVE' || (!explicit && NEGATIVE_NEWS.test(text)) || NEGATIVE_NEWS.test(text);
   return {
     ...item,
     text,
     source: String(item?.source || item?.provider || 'UNKNOWN'),
     eventKey: String(item?.eventKey || item?.hash || item?.url || item?.title || ''),
     publishedAt: item?.publishedAt || item?.available_from || item?.availableAt || null,
-    positive: String(item?.sentiment || item?.impact || '').toUpperCase() === 'POSITIVE' || POSITIVE_NEWS.test(text),
-    negative: String(item?.sentiment || item?.impact || '').toUpperCase() === 'NEGATIVE' || NEGATIVE_NEWS.test(text),
-    hardRisk: HARD_RISK.test(text)
+    positive,
+    negative,
+    hardRisk: HARD_RISK.test(text),
+    eventCategory: item?.eventCategory || classified.category,
+    impactHorizon: item?.impactHorizon || classified.horizon
   };
 }
+
+function eventWeight(category, horizon) {
+  let weight = 1;
+  if (['ORDER_DEMAND', 'CAPACITY_EXPANSION', 'NEW_PRODUCT_TECH', 'GUIDANCE_OUTLOOK'].includes(category)) weight += 0.35;
+  if (horizon === 'LONG' || horizon === 'MEDIUM_LONG') weight += 0.25;
+  if (category === 'RISK_EVENT') weight = 1.5;
+  return weight;
+}
+
 function scoreNews(items) {
   const normalized = (items || []).map(normalizeNewsItem);
   const groups = new Map();
@@ -89,6 +123,8 @@ function scoreNews(items) {
   let points = 0;
   const evidence = [];
   const uniqueSources = new Set();
+  const categoryCounts = {};
+  const horizonCounts = {};
   let verifiedEvents = 0;
   let hardRisk = false;
   for (const [eventKey, rows] of groups) {
@@ -97,19 +133,44 @@ function scoreNews(items) {
     const verified = official || rows.length >= 2;
     const rowRisk = rows.some(r => r.hardRisk);
     if (rowRisk) hardRisk = true;
+    const category = rows.find(r => r.eventCategory)?.eventCategory || 'OTHER';
+    const horizon = rows.find(r => r.impactHorizon)?.impactHorizon || 'UNKNOWN';
     if (!verified) {
-      evidence.push({ eventKey, verified: false, sources: rows.map(r=>r.source), reason: 'SINGLE_SOURCE_UNVERIFIED' });
+      evidence.push({ eventKey, verified: false, sources: rows.map(r=>r.source), category, horizon, reason: 'SINGLE_SOURCE_UNVERIFIED' });
       continue;
     }
     verifiedEvents += 1;
+    categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+    horizonCounts[horizon] = (horizonCounts[horizon] || 0) + 1;
     const pos = rows.filter(r=>r.positive && !r.negative).length;
     const neg = rows.filter(r=>r.negative && !r.positive).length;
-    const delta = rowRisk ? -15 : pos > neg ? Math.min(6, 2 + rows.length) : neg > pos ? -Math.min(8, 3 + rows.length) : 0;
+    const weight = eventWeight(category, horizon);
+    const rawDelta = rowRisk ? -15 : pos > neg ? Math.min(6, 2 + rows.length) : neg > pos ? -Math.min(8, 3 + rows.length) : 0;
+    const delta = Math.round(rawDelta * weight);
     points += delta;
-    evidence.push({ eventKey, verified: true, sources: rows.map(r=>r.source), delta });
+    evidence.push({
+      eventKey,
+      title: rows.find(r => r.title)?.title || null,
+      verified: true,
+      official,
+      sources: rows.map(r=>r.source),
+      category,
+      horizon,
+      sentiment: rowRisk ? 'NEGATIVE' : pos > neg ? 'POSITIVE' : neg > pos ? 'NEGATIVE' : 'NEUTRAL',
+      delta
+    });
   }
-  return { score: Math.max(0, Math.min(30, 15 + points)), verifiedEvents, uniqueSourceCount: uniqueSources.size, hardRisk, evidence };
+  return {
+    score: Math.max(0, Math.min(30, 15 + points)),
+    verifiedEvents,
+    uniqueSourceCount: uniqueSources.size,
+    hardRisk,
+    categoryCounts,
+    horizonCounts,
+    evidence
+  };
 }
+
 function confidenceScore(fundamental, news) {
   let score = 35;
   const e = fundamental.evidence || {};
@@ -120,6 +181,16 @@ function confidenceScore(fundamental, news) {
   score += Math.min(15, news.verifiedEvents * 5);
   return Math.max(0, Math.min(100, score));
 }
+
+function longTermProfile(fundamental, news) {
+  const longEvents = (news.horizonCounts?.LONG || 0) + (news.horizonCounts?.MEDIUM_LONG || 0);
+  let score = Math.round(fundamental.score * 0.75 + news.score * 0.55 + Math.min(15, longEvents * 4));
+  score = Math.max(0, Math.min(100, score));
+  const grade = news.hardRisk ? 'RISK' : score >= 70 ? 'A' : score >= 55 ? 'B' : 'C';
+  const horizon = longEvents >= 2 ? '6-24M' : longEvents === 1 ? '3-12M' : 'WATCH';
+  return { score, grade, horizon };
+}
+
 function rankGrowthCandidates({ monthlyRevenue = [], quarterlyFinancials = [], news = [], officialEvents = [], limit = 10 } = {}) {
   const revenuesBySymbol = new Map();
   for (const row of monthlyRevenue) {
@@ -139,6 +210,7 @@ function rankGrowthCandidates({ monthlyRevenue = [], quarterlyFinancials = [], n
     const newsScore = scoreNews(newsBySymbol.get(symbol) || []);
     const confidence = confidenceScore(fundamental, newsScore);
     const growthTheme = newsScore.verifiedEvents > 0 ? Math.min(10, newsScore.verifiedEvents * 2) : 0;
+    const longTerm = longTermProfile(fundamental, newsScore);
     let total = Math.max(0, Math.min(100, fundamental.score + newsScore.score + growthTheme));
     if (newsScore.hardRisk) total = Math.min(total, 45);
     candidates.push({
@@ -150,13 +222,18 @@ function rankGrowthCandidates({ monthlyRevenue = [], quarterlyFinancials = [], n
       growthThemeScore: growthTheme,
       verifiedNewsEvents: newsScore.verifiedEvents,
       newsSourceCount: newsScore.uniqueSourceCount,
+      eventCategoryCounts: newsScore.categoryCounts,
+      impactHorizonCounts: newsScore.horizonCounts,
+      longTermLayoutScore: longTerm.score,
+      longTermLayoutGrade: longTerm.grade,
+      suggestedHoldingHorizon: longTerm.horizon,
       hardRisk: newsScore.hardRisk,
       evidence: { fundamentals: fundamental.evidence, news: newsScore.evidence },
       label: total >= 80 && confidence >= 70 ? 'HIGH_GROWTH_WATCH' : total >= 65 ? 'GROWTH_WATCH' : 'WATCH',
-      disclaimer: 'Ranking is evidence-based screening, not a prediction or guaranteed return.'
+      disclaimer: 'Ranking is evidence-based screening for research and medium/long-term layout consideration, not a buy signal or guaranteed return.'
     });
   }
-  return candidates.sort((a,b) => b.score-a.score || b.confidence-a.confidence || a.symbol.localeCompare(b.symbol)).slice(0, Math.max(1, Number(limit)||10));
+  return candidates.sort((a,b) => b.score-a.score || b.longTermLayoutScore-a.longTermLayoutScore || b.confidence-a.confidence || a.symbol.localeCompare(b.symbol)).slice(0, Math.max(1, Number(limit)||10));
 }
 
-module.exports = { confidenceScore, normalizeNewsItem, rankGrowthCandidates, scoreFundamental, scoreNews };
+module.exports = { classifyEvent, confidenceScore, longTermProfile, normalizeNewsItem, rankGrowthCandidates, scoreFundamental, scoreNews };
