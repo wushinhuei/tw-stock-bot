@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { DriveHistorySource } = require('../src/drive_history');
+const { MopsMcpHistory } = require('../src/mops_mcp_history');
 
 const START = process.env.START_DATE || '2026-04-01';
 const END = process.env.END_DATE || '2026-06-30';
@@ -70,16 +70,16 @@ function asOfNextSession(tradeDate) { return `${tradeDate}T08:59:59+08:00`; }
 
 async function loadMops(source) {
   const [rev2025, rev2026, fin2025, fin2026, msg2026, filing2025, filing2026] = await Promise.all([
-    source.mopsRows('monthlyRevenue', 2025), source.mopsRows('monthlyRevenue', 2026),
-    source.mopsRows('quarterlyFinancials', 2025), source.mopsRows('quarterlyFinancials', 2026),
-    source.mopsRows('majorMessages', 2026),
-    source.mopsRows('filingIndex', 2025), source.mopsRows('filingIndex', 2026)
+    source.monthlyRevenue({ year: 2025 }), source.monthlyRevenue({ year: 2026 }),
+    source.quarterlyFinancials({ year: 2025 }), source.quarterlyFinancials({ year: 2026 }),
+    source.majorMessages({ year: 2026 }),
+    source.filingIndex({ year: 2025 }), source.filingIndex({ year: 2026 })
   ]);
   return {
-    revenue: indexBySymbol([...rev2025, ...rev2026]),
-    financials: indexBySymbol([...fin2025, ...fin2026]),
-    messages: indexBySymbol(msg2026),
-    filings: indexBySymbol([...filing2025, ...filing2026])
+    revenue: indexBySymbol([...(rev2025.rows || []), ...(rev2026.rows || [])]),
+    financials: indexBySymbol([...(fin2025.rows || []), ...(fin2026.rows || [])]),
+    messages: indexBySymbol(msg2026.rows || []),
+    filings: indexBySymbol([...(filing2025.rows || []), ...(filing2026.rows || [])])
   };
 }
 
@@ -105,6 +105,7 @@ function buildRows(baseRows, mops) {
     rows.push({
       ...base,
       pointInTimeAsOf: asOf,
+      mopsSource: 'MOPS_MCP',
       mops: {
         monthlyRevenue: revenue,
         quarterlyFinancials: financial,
@@ -125,7 +126,7 @@ function buildRows(baseRows, mops) {
 async function main() {
   const basePath = path.join(INPUT_DIR, 'point_in_time_top100.jsonl');
   const baseRows = readJsonl(basePath);
-  const source = new DriveHistorySource();
+  const source = new MopsMcpHistory();
   const mops = await loadMops(source);
   const built = buildRows(baseRows, mops);
   const missingRows = built.rows.flatMap(row => {
@@ -138,7 +139,7 @@ async function main() {
   const manifest = {
     generatedAt: new Date().toISOString(),
     period: { start: START, end: END },
-    source: 'Google Drive MOPS rolling datasets',
+    source: 'MOPS_MCP backed by official MOPS datasets cached in Google Drive',
     pointInTimeRule: 'For each trade date, only MOPS records whose available_from/filing timestamp is <= 08:59:59 Asia/Taipei are visible. No future filings are used.',
     strategyModified: false,
     inputRows: baseRows.length,
@@ -162,4 +163,4 @@ async function main() {
 
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
 
-module.exports = { availableAt, buildRows, latestAvailable, messagesAvailable, normalizeDate, normalizeTime };
+module.exports = { availableAt, buildRows, latestAvailable, loadMops, messagesAvailable, normalizeDate, normalizeTime };
