@@ -9,6 +9,7 @@ const { adaptCandidatePayload } = require('./candidate_adapter');
 const { isTwseTradingDay } = require('./trading_calendar');
 const { enrichCandidatesWithLiveScores } = require('./live_scoring');
 const { triggerStaticBackupOnTrades } = require('./static_backup');
+const { upsertDailyEquity } = require('./daily_equity_history');
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function compactDate(date) { return date.replace(/-/g, ''); }
@@ -36,6 +37,16 @@ function repositoryFromEnvironment() {
     bucket: process.env.GCS_BUCKET,
     environment: process.env.SIMULATION_ENV || 'staging',
     databaseId: process.env.FIRESTORE_DATABASE_ID
+  });
+}
+
+function persistDailyEquitySnapshot(engine, context = {}) {
+  return upsertDailyEquity(engine.account, {
+    date: context.date || taipeiDate(),
+    timestamp: context.signalTimestamp || new Date().toISOString(),
+    positionValue: Number(engine.account.equity || 0) - Number(engine.account.cash || 0),
+    marketLabel: context.marketMode || 'NORMAL',
+    session: context.session || 'REGULAR'
   });
 }
 
@@ -84,10 +95,11 @@ async function runSession() {
       const quotes = await fetchQuotes(symbols);
       candidates = candidates.map(candidate => ({ ...candidate, ...(quotes[candidate.symbol] || {}) }));
       candidates = await enrichCandidatesWithLiveScores(candidates, { now });
-      const context = { date, time, signalTimestamp: now.toISOString(), marketMode: 'NORMAL' };
+      const context = { date, time, signalTimestamp: now.toISOString(), marketMode: 'NORMAL', session: 'REGULAR' };
       const tradesBefore = engine.account.trades.length;
       engine.processCandidates(candidates, context);
       engine.processQuotes(quotes, candidates, context);
+      persistDailyEquitySnapshot(engine, context);
       await repository.saveSnapshot({ timestamp: now.toISOString(), quotes });
       await repository.saveState({ account: engine.account });
       latestDashboard = await publishDashboardAndSyncBackup(repository, engine, candidates, tradesBefore);
@@ -146,11 +158,12 @@ async function runTick(options = {}) {
     const liveScorer = options.enrichCandidates || enrichCandidatesWithLiveScores;
     candidates = await liveScorer(candidates, { now });
     const context = {
-      date: taipeiDate(now), time: decision.time, signalTimestamp: now.toISOString(), marketMode: 'NORMAL'
+      date: taipeiDate(now), time: decision.time, signalTimestamp: now.toISOString(), marketMode: 'NORMAL', session: 'REGULAR'
     };
     const tradesBefore = engine.account.trades.length;
     engine.processCandidates(candidates, context);
     engine.processQuotes(quotes, candidates, context);
+    persistDailyEquitySnapshot(engine, context);
     await repository.saveSnapshot({ timestamp: now.toISOString(), quotes });
     await repository.saveState({ account: engine.account });
     await publishDashboardAndSyncBackup(repository, engine, candidates, tradesBefore);
@@ -223,4 +236,4 @@ async function main() {
 
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
 
-module.exports = { candidateSourceUrl, compactDate, isWeekday, loadCandidates, repositoryFromEnvironment, runSession, runTick, tickDecision };
+module.exports = { candidateSourceUrl, compactDate, isWeekday, loadCandidates, persistDailyEquitySnapshot, repositoryFromEnvironment, runSession, runTick, tickDecision };
