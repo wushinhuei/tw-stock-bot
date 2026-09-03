@@ -8,6 +8,7 @@ on:
       - 'package.json'
       - 'cloud_simulator/src/mops_mcp_history.js'
       - 'cloud_simulator/test/mops_public_fallback.test.js'
+      - 'cloud_simulator/scripts/build_q2_point_in_time_dataset.js'
       - 'cloud_simulator/scripts/q2_result_status.js'
       - 'cloud_simulator/scripts/probe_q2_intraday_source.js'
       - 'cloud_simulator/scripts/run_q2_backtest_pipeline.js'
@@ -50,7 +51,7 @@ jobs:
             echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/google-adc.json" >> "$GITHUB_ENV"
             echo "Google ADC secret detected."
           else
-            echo "No Google ADC secret detected; official public MOPS fallback will be attempted."
+            echo "No Google ADC secret detected; official public MOPS fallback will be attempted and Drive cross-check is non-blocking."
           fi
 
       - name: Install Shioaji fallback when credentials are configured
