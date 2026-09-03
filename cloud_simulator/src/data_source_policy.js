@@ -5,11 +5,33 @@ const { callLiveTool } = require('./twse_mcp_live');
 const { MopsMcpHistory } = require('./mops_mcp_history');
 
 const POLICY = Object.freeze({
+  mode: 'MCP_FIRST_DAILY_DRIVE_PERSISTENCE',
   marketPrimary: 'TWSE_MCP',
   fundamentalsPrimary: 'MOPS_MCP',
+  officialEventsPrimary: 'MOPS_MCP',
+  liveQuotesPrimary: 'TWSE_MCP',
+  tradingCalendarPrimary: 'TWSE_MCP',
+  institutionalPrimary: 'TWSE_MCP',
+  marginPrimary: 'TWSE_MCP',
   fallbackOrder: Object.freeze(['GOOGLE_DRIVE_CACHE', 'OTHER_PROVIDER']),
   persistPrimaryToDrive: true,
-  fallbackOnlyWhenPrimaryUnavailable: true
+  persistFallbackToDriveWithProvenance: true,
+  dailyRefreshRequired: true,
+  fallbackOnlyWhenPrimaryUnavailable: true,
+  externalProviderMayOverwriteOfficial: false,
+  domains: Object.freeze({
+    marketDaily: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
+    liveQuotes: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
+    institutional: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
+    margin: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
+    tradingCalendar: Object.freeze({ primary: 'TWSE_MCP', driveFolder: 'TWSE_MCP_PRIMARY' }),
+    monthlyRevenue: Object.freeze({ primary: 'MOPS_MCP', driveFolder: 'MOPS_MCP_PRIMARY' }),
+    quarterlyFinancials: Object.freeze({ primary: 'MOPS_MCP', driveFolder: 'MOPS_MCP_PRIMARY' }),
+    majorMessages: Object.freeze({ primary: 'MOPS_MCP', driveFolder: 'MOPS_MCP_PRIMARY' }),
+    filingIndex: Object.freeze({ primary: 'MOPS_MCP', driveFolder: 'MOPS_MCP_PRIMARY' }),
+    intradayHistorical: Object.freeze({ primary: 'MCP_WHEN_AVAILABLE', fallback: 'AUTHORIZED_PROVIDER_ONLY', driveFolder: 'SUPPLEMENTAL_HISTORY' }),
+    mediaNews: Object.freeze({ primary: 'MCP_WHEN_AVAILABLE', fallback: 'APPROVED_MEDIA_ONLY', driveFolder: 'SUPPLEMENTAL_NEWS' })
+  })
 });
 
 function hasRows(result) {
