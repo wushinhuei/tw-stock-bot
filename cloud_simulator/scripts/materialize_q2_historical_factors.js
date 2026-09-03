@@ -40,6 +40,7 @@ function main() {
     sourcePolicy: 'TWSE_MCP_PRIMARY + MOPS_OFFICIAL; no inferred or future factor values',
     input: path.basename(INPUT),
     output: path.basename(OUTPUT),
+    replayInput: path.basename(INPUT),
     rows: rows.length,
     completeRows: complete,
     blockerRows: blockers.length,
@@ -47,7 +48,10 @@ function main() {
     strict: true,
     status: blockers.length ? 'BLOCKED_MISSING_EXPLICIT_HISTORICAL_FACTORS' : 'COMPLETE'
   };
+  // Keep a dedicated factor artifact and also enrich the generated replay dataset in place.
+  // build_q2_mops_point_in_time.js recreates INPUT on every pipeline run, so this never mutates source archives.
   writeJsonl(OUTPUT, rows);
+  writeJsonl(INPUT, rows);
   writeJsonl(BLOCKERS, blockers);
   writeJson(MANIFEST, manifest);
   process.stdout.write(`${JSON.stringify(manifest, null, 2)}\n`);
