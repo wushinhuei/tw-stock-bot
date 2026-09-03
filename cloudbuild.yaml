@@ -16,7 +16,7 @@ steps:
       - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA
       - --region=${_REGION}
       - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
-      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},RUN_MODE=tick,CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL},DATA_SOURCE_POLICY=TWSE_MCP_PRIMARY,TWSE_DRIVE_SYNC=1,TWSE_DRIVE_PARENT_FOLDER_ID=${_TWSE_DRIVE_PARENT_FOLDER_ID},STATIC_BACKUP_ON_TRADE=1,GITHUB_STATIC_BACKUP_REPOSITORY=wushinhuei/tw-stock-bot,GITHUB_STATIC_BACKUP_WORKFLOW=update-static-dashboard.yml,GITHUB_STATIC_BACKUP_REF=main,STATIC_BACKUP_COOLDOWN_MS=120000
+      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},RUN_MODE=tick,CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL},DATA_SOURCE_POLICY=TWSE_MCP_PRIMARY,MOPS_SOURCE_POLICY=MOPS_MCP_PRIMARY,TWSE_DRIVE_SYNC=1,TWSE_DRIVE_PARENT_FOLDER_ID=${_TWSE_DRIVE_PARENT_FOLDER_ID},MOPS_DRIVE_PARENT_FOLDER_ID=${_MOPS_DRIVE_PARENT_FOLDER_ID},STATIC_BACKUP_ON_TRADE=1,GITHUB_STATIC_BACKUP_REPOSITORY=wushinhuei/tw-stock-bot,GITHUB_STATIC_BACKUP_WORKFLOW=update-static-dashboard.yml,GITHUB_STATIC_BACKUP_REF=main,STATIC_BACKUP_COOLDOWN_MS=120000
       - --update-secrets=GITHUB_STATIC_BACKUP_TOKEN=github-static-backup-token:latest
       - --tasks=1
       - --max-retries=0
@@ -24,7 +24,6 @@ steps:
       - --cpu=1
       - --memory=512Mi
 
-  # 專用盤前資料準備 Job：資料來源政策與主交易程式一致，TWSE MCP 優先。
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -37,14 +36,13 @@ steps:
       - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
       - --command=node
       - --args=cloud_simulator/src/pretrade_prepare_job.js
-      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL},DATA_SOURCE_POLICY=TWSE_MCP_PRIMARY,TWSE_DRIVE_SYNC=1,TWSE_DRIVE_PARENT_FOLDER_ID=${_TWSE_DRIVE_PARENT_FOLDER_ID}
+      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL},DATA_SOURCE_POLICY=TWSE_MCP_PRIMARY,MOPS_SOURCE_POLICY=MOPS_MCP_PRIMARY,TWSE_DRIVE_SYNC=1,TWSE_DRIVE_PARENT_FOLDER_ID=${_TWSE_DRIVE_PARENT_FOLDER_ID},MOPS_DRIVE_PARENT_FOLDER_ID=${_MOPS_DRIVE_PARENT_FOLDER_ID}
       - --tasks=1
       - --max-retries=1
       - --task-timeout=1200s
       - --cpu=1
       - --memory=512Mi
 
-  # 證交所官方資料同步到 Google Drive。其他來源不得覆蓋 TWSE MCP 主資料，只能補缺。
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -64,7 +62,25 @@ steps:
       - --cpu=1
       - --memory=512Mi
 
-  # Cloud Scheduler：盤前/盤後準備 + 盤後 TWSE MCP -> Drive 官方資料同步。
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - tw-stock-mops-drive-sync
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA
+      - --region=${_REGION}
+      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
+      - --command=node
+      - --args=cloud_simulator/scripts/sync_mops_mcp_to_drive.js
+      - --set-env-vars=MOPS_SOURCE_POLICY=MOPS_MCP_PRIMARY,MOPS_DRIVE_PARENT_FOLDER_ID=${_MOPS_DRIVE_PARENT_FOLDER_ID},MOPS_DRIVE_FOLDER_NAME=MOPS_MCP_PRIMARY
+      - --tasks=1
+      - --max-retries=1
+      - --task-timeout=1800s
+      - --cpu=1
+      - --memory=512Mi
+
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
@@ -95,10 +111,12 @@ steps:
           fi
         }
         PREP_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-pretrade-prepare:run"
-        SYNC_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-twse-drive-sync:run"
+        TWSE_SYNC_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-twse-drive-sync:run"
+        MOPS_SYNC_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-mops-drive-sync:run"
         upsert_scheduler tw-stock-pretrade-after-close '0 14 * * 1-5' "$PREP_URI"
         upsert_scheduler tw-stock-pretrade-0800 '0 8 * * 1-5' "$PREP_URI"
-        upsert_scheduler tw-stock-twse-drive-sync-after-close '5 14 * * 1-5' "$SYNC_URI"
+        upsert_scheduler tw-stock-twse-drive-sync-after-close '5 14 * * 1-5' "$TWSE_SYNC_URI"
+        upsert_scheduler tw-stock-mops-drive-sync-evening '30 20 * * 1-5' "$MOPS_SYNC_URI"
 
 substitutions:
   _REGION: asia-east1
@@ -106,8 +124,8 @@ substitutions:
   _GCS_BUCKET: project-aef205b5-5c27-4084-94c-tw-stock-data
   _RUNTIME_SERVICE_ACCOUNT: tw-stock-runtime@project-aef205b5-5c27-4084-94c.iam.gserviceaccount.com
   _CANDIDATE_SNAPSHOT_URL: 'https://script.google.com/macros/s/AKfycbxMSe1WvXNjTbAzxZSP8mD_9wt11BIGQSyaFTktoet_v7WQ1KujUu19pflwS6zHfhqt/exec?action=refresh&force=1'
-  # 既有 stockDaily Drive 資料夾作為父層，執行時自動建立 TWSE_MCP_PRIMARY 子資料夾。
   _TWSE_DRIVE_PARENT_FOLDER_ID: '1K0pAhcPJLxTZ7dIjlTrMFcqUr30gBl35'
+  _MOPS_DRIVE_PARENT_FOLDER_ID: '1K0pAhcPJLxTZ7dIjlTrMFcqUr30gBl35'
 
 availableSecrets:
   secretManager:
