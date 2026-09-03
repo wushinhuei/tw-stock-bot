@@ -35,9 +35,12 @@ function auditQ2BacktestReadiness(options = {}) {
   const twseManifest = readJson(path.join(twseDir, 'manifest.json'));
   const pitManifest = readJson(path.join(pitDir, 'manifest.json'));
   const mopsManifest = readJson(path.join(mopsDir, 'manifest.json'));
+  const factorManifest = readJson(path.join(mopsDir, 'historical_factors_manifest.json'));
   const intradayManifest = readJson(path.join(intradayDir, 'manifest.json'));
   const warmupManifest = readJson(path.join(warmupDir, 'manifest.json'));
-  const pitRows = readJsonl(path.join(mopsDir, 'q2_pit_with_mops.jsonl'));
+  const factorFile = path.join(mopsDir, 'q2_pit_with_factors.jsonl');
+  const baseFile = path.join(mopsDir, 'q2_pit_with_mops.jsonl');
+  const pitRows = readJsonl(fs.existsSync(factorFile) ? factorFile : baseFile);
   const strategyLock = verifyStrategyLock(options.repoRoot || process.cwd());
 
   const tradingDates = unique(pitRows.map(row => row.tradeDate)).sort();
@@ -53,10 +56,16 @@ function auditQ2BacktestReadiness(options = {}) {
   }, 0) / pitRows.length : 0;
 
   const factorCompleteCount = pitRows.filter(row =>
-    finiteFactor(row, ['historicalFactors.fundamentalScore', 'fundamentalScore', 'mops.fundamentalScore', 'components.fundamental'])
-    && finiteFactor(row, ['historicalFactors.officialNewsScore', 'officialNewsScore', 'mops.officialNewsScore', 'components.officialNews'])
+    row.historicalFactors?.complete === true
+    && finiteFactor(row, ['historicalFactors.fundamentalScore'])
+    && finiteFactor(row, ['historicalFactors.officialNewsScore'])
   ).length;
   const factorCoverage = pitRows.length ? factorCompleteCount / pitRows.length : 0;
+  const factorMaterializationComplete = Boolean(
+    factorManifest?.status === 'COMPLETE'
+    && Number(factorManifest?.blockerRows || 0) === 0
+    && factorCoverage === 1
+  );
 
   const completeWarmupSymbols = new Set(warmupManifest?.completeSymbols || []);
   const warmupCoverage = symbols.length ? symbols.filter(symbol => completeWarmupSymbols.has(symbol)).length / symbols.length : 0;
@@ -74,7 +83,7 @@ function auditQ2BacktestReadiness(options = {}) {
     top100PointInTime: Boolean(pitManifest?.pointInTime?.enabled && pitManifest?.pointInTime?.sameSessionUseForbidden && top100Complete),
     institutionalComplete,
     mopsPointInTime: Boolean(mopsManifest?.pointInTimeRule && mopsAvailability >= 0.98),
-    historicalFactorsComplete: factorCoverage >= 0.98,
+    historicalFactorsComplete: factorMaterializationComplete,
     dailyWarmupComplete: Boolean(warmupManifest?.status === 'complete' && warmupCoverage === 1 && warmupFilesComplete),
     intradayComplete: Boolean(intradayManifest?.status === 'complete' && intradayCoverage === 1 && intradayFilesComplete),
     futureLeakageForbidden: Boolean(
@@ -106,6 +115,7 @@ function auditQ2BacktestReadiness(options = {}) {
       predictionForbidden: true,
       futureLeakageForbidden: true,
       dataSource: 'TWSE_MCP_PRIMARY',
+      factorMaterialization: 'explicit point-in-time values only; no guessed historical factor score',
       resultMustNotBePublishedWhenStrictGateFails: true
     },
     counts: {
@@ -114,6 +124,7 @@ function auditQ2BacktestReadiness(options = {}) {
       symbols: symbols.length,
       mopsAvailabilityPct: Math.round(mopsAvailability * 10000) / 100,
       historicalFactorCoveragePct: Math.round(factorCoverage * 10000) / 100,
+      historicalFactorBlockers: Number(factorManifest?.blockerRows || 0),
       dailyWarmupCoveragePct: Math.round(warmupCoverage * 10000) / 100,
       intradayCoveragePct: Math.round(intradayCoverage * 10000) / 100
     },
