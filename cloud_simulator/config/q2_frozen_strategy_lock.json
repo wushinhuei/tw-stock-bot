@@ -2,13 +2,13 @@
   "schemaVersion": 2,
   "period": { "start": "2026-04-01", "end": "2026-06-30" },
   "lockedAtCommit": "01fee3370cd26571a82cda0a7bbf1810d32215ba",
-  "reconstructionLockedAfterDataPolicyCommit": "d14ec8299c3f12733257827c05e39c3222d4ff3e",
+  "reconstructionLockedAfterDataPolicyCommit": "e0c06aa211829b5c966bf10b9ecfeac4e329345d",
   "policy": {
     "predictionForbidden": true,
     "parameterTuningAfterResultForbidden": true,
     "futureLeakageForbidden": true,
     "dataSource": "TWSE_MCP_PRIMARY",
-    "historicalFactorPolicy": "Explicit historical values first; otherwise frozen deterministic MOPS point-in-time reconstruction V1 at 0.75 fidelity. Q2 outcomes are never inputs."
+    "historicalFactorPolicy": "Explicit historical values first; otherwise frozen deterministic MOPS point-in-time reconstruction V1 at 0.75 fidelity. Official hard-risk events cannot reach the frozen A>=80 entry gate. Q2 outcomes are never inputs."
   },
   "gitBlobSha1": {
     "cloud_simulator/src/config.js": "ac4bf50ba3eb07c1e4a0e0c445288615868f5b4e",
@@ -18,6 +18,6 @@
     "cloud_simulator/src/scanner.js": "6eb52a51091e54af5aec10b67bcff82300d028eb",
     "cloud_simulator/src/strategies.js": "3259f7adc22c54b9c4351f710cc9a65514871fc6",
     "cloud_simulator/src/engine.js": "ee60514963cfe99723a21d5b23389b54fd01d16e",
-    "cloud_simulator/src/q2_historical_factors.js": "2dbadc281243d84dbecce42151ea1149f44f508d"
+    "cloud_simulator/src/q2_historical_factors.js": "102e7e7655228e140b187b53918ed88f5020f58b"
   }
 }
