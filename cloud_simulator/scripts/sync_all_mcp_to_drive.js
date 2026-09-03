@@ -31,7 +31,8 @@ async function main() {
   for (const [key, script] of [
     ['twse', 'cloud_simulator/scripts/sync_twse_mcp_to_drive.js'],
     ['mops', 'cloud_simulator/scripts/sync_mops_mcp_to_drive.js'],
-    ['yahooFinance', 'cloud_simulator/scripts/sync_yahoo_mcp_to_drive.js']
+    ['yahooFinance', 'cloud_simulator/scripts/sync_yahoo_mcp_to_drive.js'],
+    ['taiwanFinancialNews', 'cloud_simulator/scripts/sync_taiwan_news_mcp_to_drive.js']
   ]) {
     try { results[key] = runNode(script, env); }
     catch (error) { errors[key] = String(error.message || error); }
@@ -43,27 +44,27 @@ async function main() {
   });
   const ok = Object.keys(errors).length === 0;
   const audit = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: new Date().toISOString(),
     date,
     ok,
     policy: POLICY,
-    sourceOrder: ['TWSE_MCP_OR_MOPS_MCP', 'GOOGLE_DRIVE_CACHE', 'YAHOO_FINANCE_MCP_SUPPLEMENT', 'OTHER_PROVIDER_ONLY_IF_PRIMARY_MISSING'],
-    overwriteRule: 'Yahoo Finance and other external providers must never overwrite official TWSE/MOPS rows',
+    sourceOrder: ['TWSE_MCP_OR_MOPS_MCP', 'GOOGLE_DRIVE_CACHE', 'YAHOO_FINANCE_MCP_SUPPLEMENT', 'TAIWAN_FINANCIAL_NEWS_MCP_LICENSED_ONLY', 'OTHER_PROVIDER_ONLY_IF_PRIMARY_MISSING'],
+    overwriteRule: 'Yahoo Finance, media MCPs and other external providers must never overwrite official TWSE/MOPS rows',
     results,
     errors
   };
   const filename = `mcp_daily_sync_${date}.json`;
   const saved = await writer.upsertText(filename, `${JSON.stringify(audit, null, 2)}\n`);
   await writer.upsertText('manifest.json', `${JSON.stringify({
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: audit.generatedAt,
     latestDate: date,
     latestFile: filename,
     driveFileId: saved.id,
     ok,
     policyMode: POLICY.mode,
-    sources: ['TWSE_MCP', 'MOPS_MCP', 'YAHOO_FINANCE_MCP']
+    sources: ['TWSE_MCP', 'MOPS_MCP', 'YAHOO_FINANCE_MCP', 'TAIWAN_FINANCIAL_NEWS_MCP']
   }, null, 2)}\n`);
 
   process.stdout.write(`${JSON.stringify({ ok, date, filename, driveFileId: saved.id, results, errors }, null, 2)}\n`);
