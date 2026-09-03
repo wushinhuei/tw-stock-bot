@@ -42,10 +42,6 @@ const CONFIG = Object.freeze({
   quoteMaxAgeMs: 10 * 60 * 1000,
   liveScoreConcurrency: 6,
   scoreThresholds: Object.freeze({ A: 80, B: 65, C: 50 }),
-  trialScoreMin: 75,
-  trialEntryPct: 0.05,
-  trialMinTechnical: 20,
-  trialMinVolumeObv: 8,
   investingRssUrls: Object.freeze([
     'https://www.investing.com/rss/news_25.rss',
     'https://www.investing.com/rss/news_11.rss',
