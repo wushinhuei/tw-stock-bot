@@ -7,7 +7,7 @@ const { buildPointInTimeRow, compareRow, near } = require('../scripts/build_q2_p
 test('near compares numeric strings and numbers', () => {
   assert.equal(near('100.0', 100), true);
   assert.equal(near(100, 101), false);
-  assert.equal(near(null, 100), null);
+  assert.equal(near(null, 100), false);
 });
 
 test('compareRow checks TWSE MCP against Drive aliases', () => {
