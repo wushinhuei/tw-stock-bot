@@ -7,8 +7,11 @@ on:
       - '.github/workflows/q2-strict-backtest.yml'
       - 'package.json'
       - 'cloud_simulator/src/mops_mcp_history.js'
+      - 'cloud_simulator/src/q2_backtest_readiness.js'
       - 'cloud_simulator/test/mops_public_fallback.test.js'
+      - 'cloud_simulator/scripts/audit_mops_mcp_source.js'
       - 'cloud_simulator/scripts/build_q2_point_in_time_dataset.js'
+      - 'cloud_simulator/scripts/build_q2_mops_point_in_time.js'
       - 'cloud_simulator/scripts/q2_result_status.js'
       - 'cloud_simulator/scripts/probe_q2_intraday_source.js'
       - 'cloud_simulator/scripts/run_q2_backtest_pipeline.js'
@@ -20,6 +23,7 @@ env:
   START_DATE: '2026-04-01'
   END_DATE: '2026-06-30'
   Q2_BACKTEST_ROOT: data/backtest
+  MOPS_CREDENTIALLESS_MODE: '1'
   SJ_API_KEY: ${{ secrets.SJ_API_KEY }}
   SJ_SEC_KEY: ${{ secrets.SJ_SEC_KEY }}
   GOOGLE_ADC_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON || secrets.GOOGLE_SERVICE_ACCOUNT_JSON || secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -51,7 +55,7 @@ jobs:
             echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/google-adc.json" >> "$GITHUB_ENV"
             echo "Google ADC secret detected."
           else
-            echo "No Google ADC secret detected; official public MOPS fallback will be attempted and Drive cross-check is non-blocking."
+            echo "No Google ADC secret detected; Drive is non-blocking and MOPS uses credentialless official archives."
           fi
 
       - name: Install Shioaji fallback when credentials are configured
@@ -62,7 +66,7 @@ jobs:
             python -m pip install shioaji pandas
             echo "Shioaji credentials detected."
           else
-            echo "No Shioaji credentials detected."
+            echo "No Shioaji credentials detected. Strict intraday replay remains blocked unless another approved minute archive exists."
           fi
 
       - name: Verify frozen strategy and test suite
