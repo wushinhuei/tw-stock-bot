@@ -71,11 +71,17 @@ async function main() {
     officialMessageRows: officialEvents.length
   };
   const payload = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: now.toISOString(),
     asOf,
-    methodology: 'Evidence-based growth screening. Fundamentals 60, verified news 30, growth-theme evidence 10. News must be official or corroborated by at least two independent sources before affecting score. Hard-risk events cap total score at 45.',
+    methodology: 'Independent medium/long-term potential-stock screening. Fundamentals 60, verified news 30, growth-theme evidence 10. News events are classified by business-event type and impact horizon. Official MOPS/TWSE events or corroboration by at least two independent sources are required before news can affect ranking. Long-horizon growth events receive extra weight. Hard-risk events cap total score at 45.',
     universePolicy: 'ALL_MOPS_LISTED_COMPANIES_WITH_CURRENT_YEAR_MONTHLY_REVENUE; NOT_RESTRICTED_BY_TOP100_TRADING_POOL',
+    layoutPolicy: 'POTENTIAL_TOP10_IS_A_MEDIUM_LONG_TERM_RESEARCH_WATCHLIST; NOT_A_BUY_SIGNAL; TECHNICAL_TRADING_POOL_AND_TOP100_DO_NOT_CONTROL_ELIGIBILITY',
+    eventAnalysisPolicy: {
+      stages: ['DEDUPLICATE', 'COMPANY_MAPPING', 'EVENT_CLASSIFICATION', 'SENTIMENT', 'IMPACT_HORIZON', 'SOURCE_VERIFICATION', 'FUNDAMENTAL_CROSS_CHECK'],
+      categories: ['ORDER_DEMAND', 'CAPACITY_EXPANSION', 'NEW_PRODUCT_TECH', 'FINANCIAL_PERFORMANCE', 'PARTNERSHIP_INVESTMENT', 'GUIDANCE_OUTLOOK', 'REGULATORY_CORPORATE', 'RISK_EVENT', 'OTHER'],
+      horizons: ['IMMEDIATE', 'MEDIUM', 'MEDIUM_LONG', 'LONG', 'UNKNOWN']
+    },
     sourcePolicy: {
       fundamentals: 'MOPS_MCP_PRIMARY',
       officialEvents: 'MOPS_MCP_PRIMARY',
@@ -94,8 +100,8 @@ async function main() {
   const filename = `growth_top10_${current.date}.json`;
   const saved = await writer.upsertText(filename, `${JSON.stringify(payload, null, 2)}\n`);
   const gcs = await mirrorToGcs(payload);
-  await writer.upsertText('manifest.json', `${JSON.stringify({ schemaVersion: 1, generatedAt: payload.generatedAt, latestDate: current.date, latestFile: filename, driveFileId: saved.id, count: top10.length, sourceStatus, gcs }, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ ok: true, date: current.date, filename, driveFileId: saved.id, count: top10.length, gcs, top10: top10.map(x => ({ symbol: x.symbol, score: x.score, confidence: x.confidence })) }, null, 2)}\n`);
+  await writer.upsertText('manifest.json', `${JSON.stringify({ schemaVersion: 2, generatedAt: payload.generatedAt, latestDate: current.date, latestFile: filename, driveFileId: saved.id, count: top10.length, sourceStatus, gcs }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ ok: true, date: current.date, filename, driveFileId: saved.id, count: top10.length, gcs, top10: top10.map(x => ({ symbol: x.symbol, score: x.score, confidence: x.confidence, longTermLayoutGrade: x.longTermLayoutGrade, suggestedHoldingHorizon: x.suggestedHoldingHorizon })) }, null, 2)}\n`);
 }
 
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
