@@ -82,3 +82,20 @@ window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.a
     window.findCandidate = holdingMonitorAwareFindCandidate;
   });
 })();
+
+// 候選名單是觀察池，不是交易指令：Top100 建池、每小時重排、顯示30檔。
+(function installCandidateWatchlistCopy() {
+  function applyCopy() {
+    const summary = document.querySelector('#candidateUniverseSummary');
+    if (summary) {
+      summary.textContent = '由 TWSE 上市普通股成交量 Top100 建立股池，以籌碼50%、成交量／流動性30%、價格動能20%排序；每小時重新排序一次並顯示前30檔。此名單僅供觀察，不代表要進行任何買賣操作。';
+    }
+
+    const panel = document.querySelector('#candidateUniverse')?.closest('.scanner-panel');
+    const title = panel?.querySelector('h2');
+    if (title) title.textContent = '今日觀察候選30檔';
+  }
+
+  applyCopy();
+  window.addEventListener('load', applyCopy);
+})();
