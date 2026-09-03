@@ -12,13 +12,9 @@ function storageJsonReader(bucketName, objectName) {
   };
 }
 
-function storageDashboardReader(bucketName) {
-  return storageJsonReader(bucketName, 'public/dashboard.json');
-}
-
-function storagePotentialStocksReader(bucketName) {
-  return storageJsonReader(bucketName, 'public/growth_top10.json');
-}
+function storageDashboardReader(bucketName) { return storageJsonReader(bucketName, 'public/dashboard.json'); }
+function storagePotentialStocksReader(bucketName) { return storageJsonReader(bucketName, 'public/growth_top10.json'); }
+function storageDataHealthReader(bucketName) { return storageJsonReader(bucketName, 'public/data_health.json'); }
 
 function json(response, status, payload) {
   response.writeHead(status, {
@@ -40,10 +36,20 @@ function deploymentMetadata() {
 function createDashboardServer(options = {}) {
   const readDashboard = options.readDashboard || storageDashboardReader(process.env.GCS_BUCKET);
   const readPotentialStocks = options.readPotentialStocks || storagePotentialStocksReader(process.env.GCS_BUCKET);
+  const readDataHealth = options.readDataHealth || storageDataHealthReader(process.env.GCS_BUCKET);
   return http.createServer(async (request, response) => {
     const path = new URL(request.url, 'http://localhost').pathname;
     if (request.method !== 'GET') return json(response, 405, { ok: false, error: 'METHOD_NOT_ALLOWED' });
     if (path === '/health') return json(response, 200, { ok: true, service: 'tw-stock-dashboard-api', ...deploymentMetadata() });
+    if (path === '/data-health') {
+      try {
+        const payload = await readDataHealth();
+        return json(response, payload.ok ? 200 : 503, { ...payload, cloudApiAt: new Date().toISOString(), ...deploymentMetadata() });
+      } catch (error) {
+        console.warn(JSON.stringify({ event: 'data-health-not-ready', error: String(error) }));
+        return json(response, 503, { ok: false, status: 'UNKNOWN', error: 'DATA_HEALTH_NOT_READY', ...deploymentMetadata() });
+      }
+    }
     if (path === '/potential-stocks') {
       try {
         const payload = await readPotentialStocks();
@@ -71,4 +77,4 @@ function startDashboardApi() {
   return server;
 }
 
-module.exports = { createDashboardServer, deploymentMetadata, startDashboardApi, storageDashboardReader, storagePotentialStocksReader };
+module.exports = { createDashboardServer, deploymentMetadata, startDashboardApi, storageDashboardReader, storagePotentialStocksReader, storageDataHealthReader };
