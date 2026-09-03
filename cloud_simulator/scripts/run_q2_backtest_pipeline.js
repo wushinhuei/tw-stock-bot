@@ -27,12 +27,13 @@ function main() {
   const report = [];
 
   if (!runRequired(report, 'node', ['cloud_simulator/scripts/audit_data_source_policy.js'], 'TWSE MCP primary-source policy audit')) return;
+  if (!runRequired(report, 'node', ['cloud_simulator/scripts/audit_mops_mcp_source.js'], 'MOPS MCP primary-source readiness audit')) return;
   if (!runRequired(report, 'node', ['cloud_simulator/scripts/verify_q2_strategy_lock.js'], 'Frozen Q2 strategy verification')) return;
 
   const steps = [
     ['node', ['cloud_simulator/scripts/backfill_q2_twse_mcp.js'], 'TWSE MCP Q2 backfill'],
     ['node', ['cloud_simulator/scripts/build_q2_point_in_time_dataset.js'], 'Q2 TWSE point-in-time dataset'],
-    ['node', ['cloud_simulator/scripts/build_q2_mops_point_in_time.js'], 'Q2 MOPS point-in-time dataset'],
+    ['node', ['cloud_simulator/scripts/build_q2_mops_point_in_time.js'], 'Q2 MOPS MCP point-in-time dataset'],
     ['node', ['cloud_simulator/scripts/materialize_q2_historical_factors.js'], 'Strict Q2 point-in-time factor materialization'],
     ['node', ['cloud_simulator/scripts/prepare_q2_intraday_universe.js'], 'Q2 intraday acquisition universe'],
     ['node', ['cloud_simulator/scripts/backfill_q2_twse_warmup.js'], 'TWSE MCP daily/weekly indicator warmup']
@@ -68,10 +69,12 @@ function main() {
   process.stdout.write(`${JSON.stringify({
     status: 'Q2_STRICT_REPLAY_COMPLETE',
     policy: {
-      dataSource: 'TWSE_MCP_PRIMARY',
-      fallbackOnlyWhenTwseUnavailable: true,
+      marketDataSource: 'TWSE_MCP_PRIMARY',
+      fundamentalsAndAnnouncementsSource: 'MOPS_MCP_PRIMARY',
+      googleDriveRole: 'official cache and persistence layer',
+      fallbackOnlyWhenPrimaryUnavailable: true,
       strategyFrozen: true,
-      historicalFactors: 'explicit point-in-time values only',
+      historicalFactors: 'point-in-time MOPS MCP values/reconstruction only',
       predictionForbidden: true,
       futureLeakageForbidden: true,
       resultPublishedOnlyAfterStrictGate: true
