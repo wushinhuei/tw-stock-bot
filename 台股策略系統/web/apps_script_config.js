@@ -16,6 +16,14 @@ window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.a
   function applyCopy(){const summary=document.querySelector('#candidateUniverseSummary');if(summary)summary.textContent='先由 TWSE 上市普通股依流動性建立 Top100 可交易母池，再以籌碼30%、技術30%、基本面25%、新聞／事件15%做綜合排序；每小時重新排序一次並顯示前30檔。此名單僅供觀察，不代表要進行任何買賣操作。';const panel=document.querySelector('#candidateUniverse')?.closest('.scanner-panel');const title=panel?.querySelector('h2');if(title)title.textContent='今日觀察候選30檔';}applyCopy();window.addEventListener('load',applyCopy);
 })();
 
+// 全系統資料健康狀態：行情、Top100、法人/融資、MOPS、20季、新聞與潛力股都必須通過。
+(function installGlobalDataHealth() {
+  function endpoint(){return String(window.CLOUD_DASHBOARD_ENDPOINT||'').replace(/\/dashboard\/?$/i,'/data-health');}
+  function mount(){let node=document.querySelector('#globalDataHealth');if(node)return node;const anchor=document.querySelector('#lastUpdatedAt')||document.querySelector('.top-actions');if(!anchor)return null;node=document.createElement('div');node.id='globalDataHealth';node.style.cssText='grid-column:1/-1;font-size:12px;line-height:1.5;padding:6px 9px;border-radius:7px;background:#f3f6f9;color:#526174;';if(anchor.id==='lastUpdatedAt')anchor.insertAdjacentElement('afterend',node);else anchor.appendChild(node);return node;}
+  async function refresh(){const node=mount();if(!node)return;node.textContent='全系統資料：檢查中…';try{const response=await fetch(`${endpoint()}?t=${Date.now()}`,{cache:'no-store'});const data=await response.json();const complete=data?.ok===true&&data?.status==='COMPLETE';const failed=Array.isArray(data?.failedChecks)&&data.failedChecks.length?`；異常：${data.failedChecks.join('、')}`:'';node.textContent=complete?`全系統資料：✅ 完整｜最後完整交易日 ${data.latestCompleteTradeDate||'-'}｜每日完整性檢查已通過`:`全系統資料：⚠️ ${data?.status||'UNKNOWN'}｜最後完整交易日 ${data?.latestCompleteTradeDate||'-'}${failed}｜未通過時禁止以不完整資料新增交易`;node.style.background=complete?'#eef8f2':'#fff4e5';node.style.color=complete?'#17633d':'#8a5500';}catch(error){node.textContent='全系統資料：⚠️ 無法取得完整性檢查結果；視為未通過。';node.style.background='#fff4e5';node.style.color='#8a5500';}}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',refresh,{once:true});else refresh();window.addEventListener('load',refresh);setInterval(refresh,5*60*1000);
+})();
+
 // 潛力股 Top10：獨立中長期研究線，不受交易 Top100 限制。
 (function loadPotentialStocksUi() {
   function installSummary(){const button=document.querySelector('#openPotentialStocksButton');if(!button||document.querySelector('#potentialTop10Summary'))return false;const note=document.createElement('div');note.id='potentialTop10Summary';note.className='potential-top10-summary';note.textContent='選股：基本面50＋已求證新聞事件25＋法人資金25；70分進、65分出，新股連續2週達標，原則每月換榜一次，重大風險立即排除。中長期6–24個月觀察，不受交易Top100限制。';note.style.cssText='grid-column:1/-1;font-size:12px;line-height:1.55;color:#657487;padding:2px 4px 6px;';button.insertAdjacentElement('afterend',note);return true;}
