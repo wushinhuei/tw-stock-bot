@@ -47,7 +47,11 @@ function auditQ2BacktestReadiness(options = {}) {
   for (const row of pitRows) countsByDate.set(row.tradeDate, (countsByDate.get(row.tradeDate) || 0) + 1);
   const top100Complete = tradingDates.length > 0 && tradingDates.every(date => countsByDate.get(date) === 100);
   const institutionalComplete = pitRows.length > 0 && pitRows.every(row => row.availability?.institutional !== false);
-  const mopsAvailability = pitRows.length ? pitRows.reduce((sum, row) => sum + (row.mopsAvailability?.monthlyRevenue && row.mopsAvailability?.quarterlyFinancials ? 1 : 0), 0) / pitRows.length : 0;
+  const mopsAvailability = pitRows.length ? pitRows.reduce((sum, row) => sum + (
+    row.mopsAvailability?.monthlyRevenue
+    && row.mopsAvailability?.quarterlyFinancials
+    && row.mopsAvailability?.majorMessagesQueryable !== false ? 1 : 0
+  ), 0) / pitRows.length : 0;
 
   const completeFactors = pitRows.filter(row => row.historicalFactors?.complete === true
     && finiteFactor(row, ['historicalFactors.fundamentalScore'])
