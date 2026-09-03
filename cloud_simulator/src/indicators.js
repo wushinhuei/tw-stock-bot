@@ -92,6 +92,83 @@ function analyzeObv(bars, maPeriod = 42, breakoutPeriod = 20) {
   };
 }
 
+function pivotLevels(bars, lookback = 40, radius = 2) {
+  if (!Array.isArray(bars) || bars.length < radius * 2 + 3) return { supports: [], resistances: [] };
+  const rows = bars.slice(-Math.max(lookback, radius * 2 + 3));
+  const supports = [];
+  const resistances = [];
+  for (let i = radius; i < rows.length - radius; i += 1) {
+    const low = Number(rows[i].low);
+    const high = Number(rows[i].high);
+    if (!Number.isFinite(low) || !Number.isFinite(high)) continue;
+    let isPivotLow = true;
+    let isPivotHigh = true;
+    for (let offset = 1; offset <= radius; offset += 1) {
+      if (low > Number(rows[i - offset].low) || low > Number(rows[i + offset].low)) isPivotLow = false;
+      if (high < Number(rows[i - offset].high) || high < Number(rows[i + offset].high)) isPivotHigh = false;
+    }
+    if (isPivotLow) supports.push(low);
+    if (isPivotHigh) resistances.push(high);
+  }
+  return { supports, resistances };
+}
+
+function supportResistance(bars, lookback = 40, tolerancePct = 0.03) {
+  if (!Array.isArray(bars) || bars.length < 10) {
+    return { support: null, resistance: null, nearSupport: false, nearResistance: false, aboveResistance: false, distanceToSupportPct: null, distanceToResistancePct: null };
+  }
+  const current = Number(last(bars)?.close);
+  if (!Number.isFinite(current) || current <= 0) {
+    return { support: null, resistance: null, nearSupport: false, nearResistance: false, aboveResistance: false, distanceToSupportPct: null, distanceToResistancePct: null };
+  }
+  const rows = bars.slice(-lookback);
+  const pivots = pivotLevels(rows, lookback, 2);
+  const fallbackSupport = Math.min(...rows.map(row => Number(row.low)).filter(Number.isFinite));
+  const fallbackResistance = Math.max(...rows.slice(0, -1).map(row => Number(row.high)).filter(Number.isFinite));
+  const supportCandidates = pivots.supports.filter(value => value <= current);
+  const resistanceCandidates = pivots.resistances.filter(value => value >= current);
+  const support = supportCandidates.length ? Math.max(...supportCandidates) : fallbackSupport;
+  const resistance = resistanceCandidates.length ? Math.min(...resistanceCandidates) : fallbackResistance;
+  const distanceToSupportPct = Number.isFinite(support) && support > 0 ? (current - support) / support : null;
+  const distanceToResistancePct = Number.isFinite(resistance) && resistance > 0 ? (resistance - current) / resistance : null;
+  const aboveResistance = Number.isFinite(resistance) && current > resistance;
+  return {
+    support: Number.isFinite(support) ? support : null,
+    resistance: Number.isFinite(resistance) ? resistance : null,
+    nearSupport: distanceToSupportPct != null && distanceToSupportPct >= 0 && distanceToSupportPct <= tolerancePct,
+    nearResistance: distanceToResistancePct != null && distanceToResistancePct >= 0 && distanceToResistancePct <= tolerancePct,
+    aboveResistance,
+    distanceToSupportPct,
+    distanceToResistancePct
+  };
+}
+
+function breakoutRetest(bars, lookback = 20, retestWindow = 5, tolerancePct = 0.015) {
+  if (!Array.isArray(bars) || bars.length < lookback + 3) {
+    return { breakout: false, retestConfirmed: false, breakoutLevel: null, breakoutIndex: null, retestIndex: null };
+  }
+  const start = Math.max(lookback, bars.length - retestWindow - 2);
+  for (let i = bars.length - 2; i >= start; i -= 1) {
+    const prior = bars.slice(i - lookback, i);
+    const resistance = Math.max(...prior.map(row => Number(row.high)).filter(Number.isFinite));
+    const breakoutClose = Number(bars[i].close);
+    if (!Number.isFinite(resistance) || !Number.isFinite(breakoutClose) || breakoutClose <= resistance) continue;
+    const following = bars.slice(i + 1, Math.min(bars.length, i + 1 + retestWindow));
+    for (let j = 0; j < following.length; j += 1) {
+      const low = Number(following[j].low);
+      const close = Number(following[j].close);
+      const touched = Number.isFinite(low) && low <= resistance * (1 + tolerancePct);
+      const held = Number.isFinite(close) && close >= resistance * (1 - tolerancePct);
+      const latestClose = Number(last(bars).close);
+      if (touched && held && latestClose >= resistance) {
+        return { breakout: true, retestConfirmed: true, breakoutLevel: resistance, breakoutIndex: i, retestIndex: i + 1 + j };
+      }
+    }
+    return { breakout: true, retestConfirmed: false, breakoutLevel: resistance, breakoutIndex: i, retestIndex: null };
+  }
+  return { breakout: false, retestConfirmed: false, breakoutLevel: null, breakoutIndex: null, retestIndex: null };
+}
+
 function vwap(bars) {
   let volume = 0;
   let value = 0;
@@ -104,4 +181,4 @@ function vwap(bars) {
   return volume ? value / volume : null;
 }
 
-module.exports = { analyzeObv, atr, clamp, emaSeries, macd, obvSeries, rsi, sma, vwap };
+module.exports = { analyzeObv, atr, breakoutRetest, clamp, emaSeries, macd, obvSeries, pivotLevels, rsi, sma, supportResistance, vwap };
