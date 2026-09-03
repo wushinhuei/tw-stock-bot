@@ -8,8 +8,6 @@ window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.a
     const cell = row?.cells?.[0];
     if (!cell) return '';
 
-    // first cell 顯示格式：
-    // 2026-09-02\n09:25:30\n盤中
     const parts = String(cell.innerText || cell.textContent || '')
       .trim()
       .split(/\s+/)
@@ -28,7 +26,7 @@ window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.a
     const sorted = rows.slice().sort((a, b) => {
       const aKey = rowDateTimeKey(a);
       const bKey = rowDateTimeKey(b);
-      return bKey.localeCompare(aKey); // 最新在最上方
+      return bKey.localeCompare(aKey);
     });
 
     const changed = sorted.some((row, index) => row !== rows[index]);
@@ -58,13 +56,11 @@ window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.a
     return true;
   }
 
-  // 此檔載入時 HTML 已存在，先立即掛上；另外在 load 後再補一次。
   attach();
   window.addEventListener('load', attach);
 })();
 
 // 現有持倉不必進入每日30檔候選，也必須能被持倉畫面與風控查到。
-// Cloud tick 會另外回傳 day.positionMonitors；這裡只在一般候選找不到時才回退到持倉監控資料。
 (function installHoldingMonitorLookup() {
   window.addEventListener('load', () => {
     const originalFindCandidate = window.findCandidate;
@@ -98,4 +94,18 @@ window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.a
 
   applyCopy();
   window.addEventListener('load', applyCopy);
+})();
+
+// 潛力股 Top10 前端：獨立檔案動態載入，不干擾既有交易畫面。
+(function loadPotentialStocksUi() {
+  const load = () => {
+    if (document.querySelector('script[data-potential-stocks-ui]')) return;
+    const script = document.createElement('script');
+    script.src = `potential_stocks_ui.js?v=${Date.now()}`;
+    script.async = false;
+    script.dataset.potentialStocksUi = '1';
+    document.body.appendChild(script);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load, { once: true });
+  else load();
 })();
