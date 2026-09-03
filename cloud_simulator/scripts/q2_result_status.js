@@ -14,6 +14,19 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function blockerCodeFor(readiness, intraday) {
+  const gates = readiness?.gates || {};
+  const upstreamBlocked = [
+    'twseDownloaded', 'top100PointInTime', 'institutionalComplete',
+    'mopsPointInTime', 'historicalFactorsComplete', 'dailyWarmupComplete'
+  ].some(name => gates[name] === false);
+  const intradayBlocked = intraday?.status === 'BLOCKED';
+  if (upstreamBlocked && intradayBlocked) return 'BLOCKED_MULTIPLE_DATA_SOURCES';
+  if (upstreamBlocked) return 'BLOCKED_UPSTREAM_DATA_INCOMPLETE';
+  if (intradayBlocked) return 'BLOCKED_INTRADAY_DATA_UNAVAILABLE';
+  return 'BLOCKED_STRICT_READINESS_GATE';
+}
+
 function buildStatus(options = {}) {
   const root = path.resolve(options.root || process.env.Q2_BACKTEST_ROOT || 'data/backtest');
   const resultDir = path.resolve(options.resultDir || process.env.Q2_REPLAY_OUTPUT || path.join(root, '2026Q2/result'));
@@ -49,7 +62,7 @@ function buildStatus(options = {}) {
     publishable: false,
     period: { start: '2026-04-01', end: '2026-06-30' },
     result: null,
-    blockerCode: intraday.status === 'BLOCKED' ? 'BLOCKED_INTRADAY_DATA_UNAVAILABLE' : 'BLOCKED_STRICT_READINESS_GATE',
+    blockerCode: blockerCodeFor(readiness, intraday),
     blockers,
     readiness,
     intraday,
@@ -74,4 +87,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { buildStatus, readJson, writeJson };
+module.exports = { blockerCodeFor, buildStatus, readJson, writeJson };
