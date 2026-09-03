@@ -1,58 +1,64 @@
 window.APPS_SCRIPT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxMSe1WvXNjTbAzxZSP8mD_9wt11BIGQSyaFTktoet_v7WQ1KujUu19pflwS6zHfhqt/exec';
 window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.asia-east1.run.app/dashboard';
 
-// 歷史交易明細固定依實際成交時間由新到舊排列。
-// app.js 原本只是把資料陣列 reverse()，若 API 回傳本身不是嚴格時間順序，
-// 同一天的交易就會出現 09:25:23 排在 09:25:30 前面的情況。
-(function installHistoryTradeTimeSortFix() {
-  function tradeTimestamp(trade) {
-    const raw = trade?.filledAt || trade?.executedAt || trade?.timestamp || '';
-    const parsed = raw ? new Date(raw).getTime() : NaN;
-    if (Number.isFinite(parsed)) return parsed;
+// 歷史交易明細：直接監看表格 DOM，固定依畫面上的「日期＋時間」由新到舊排列。
+// 這個修正不依賴 API 原始陣列順序，也不依賴 app.js 的 reverse()。
+(function installHistoryTradeDomSortFix() {
+  function rowDateTimeKey(row) {
+    const cell = row?.cells?.[0];
+    if (!cell) return '';
 
-    // 舊資料若只有 date/time 欄位，仍盡量組成可比較時間。
-    const date = String(trade?.date || '').trim();
-    const time = String(trade?.time || trade?.filledTime || trade?.executedTime || '').trim();
-    const fallback = date && time ? new Date(`${date}T${time}`).getTime() : NaN;
-    return Number.isFinite(fallback) ? fallback : 0;
+    // first cell 顯示格式：
+    // 2026-09-02\n09:25:30\n盤中
+    const parts = String(cell.innerText || cell.textContent || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const date = parts.find(value => /^\d{4}-\d{2}-\d{2}$/.test(value)) || '';
+    const time = parts.find(value => /^\d{2}:\d{2}:\d{2}$/.test(value)) || '00:00:00';
+    return date ? `${date}T${time}` : '';
   }
 
-  function sortRenderedRows() {
-    const tbody = document.querySelector('#historyTradeRows');
+  function sortHistoryRows(tbody) {
     if (!tbody) return;
-    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const rows = Array.from(tbody.querySelectorAll(':scope > tr'));
     if (rows.length < 2) return;
 
-    rows.sort((a, b) => {
-      const aText = String(a.cells?.[0]?.innerText || '').trim().split(/\s+/);
-      const bText = String(b.cells?.[0]?.innerText || '').trim().split(/\s+/);
-      const aKey = `${aText[0] || ''}T${aText[1] || '00:00:00'}`;
-      const bKey = `${bText[0] || ''}T${bText[1] || '00:00:00'}`;
-      return bKey.localeCompare(aKey);
+    const sorted = rows.slice().sort((a, b) => {
+      const aKey = rowDateTimeKey(a);
+      const bKey = rowDateTimeKey(b);
+      return bKey.localeCompare(aKey); // 最新在最上方
     });
 
-    rows.forEach(row => tbody.appendChild(row));
+    const changed = sorted.some((row, index) => row !== rows[index]);
+    if (!changed) return;
+
+    observer.disconnect();
+    sorted.forEach(row => tbody.appendChild(row));
+    observer.observe(tbody, { childList: true });
   }
 
-  window.addEventListener('load', () => {
-    const originalRenderHistoryTradeRows = window.renderHistoryTradeRows;
-
-    if (typeof originalRenderHistoryTradeRows === 'function') {
-      window.renderHistoryTradeRows = function renderHistoryTradeRowsSorted(trades, selectedDate) {
-        const orderedTrades = (Array.isArray(trades) ? trades : [])
-          .slice()
-          .sort((a, b) => tradeTimestamp(a) - tradeTimestamp(b));
-        return originalRenderHistoryTradeRows(orderedTrades, selectedDate);
-      };
-
-      const historyTradeDate = document.querySelector('#historyTradeDate');
-      if (historyTradeDate && typeof historyTradeDate.onchange === 'function') {
-        historyTradeDate.onchange();
-      } else {
-        sortRenderedRows();
-      }
-    } else {
-      sortRenderedRows();
-    }
+  let activeTbody = null;
+  const observer = new MutationObserver(() => {
+    if (activeTbody) sortHistoryRows(activeTbody);
   });
+
+  function attach() {
+    const tbody = document.querySelector('#historyTradeRows');
+    if (!tbody) return false;
+
+    if (activeTbody !== tbody) {
+      observer.disconnect();
+      activeTbody = tbody;
+      observer.observe(tbody, { childList: true });
+    }
+
+    sortHistoryRows(tbody);
+    return true;
+  }
+
+  // 此檔載入時 HTML 已存在，先立即掛上；另外在 load 後再補一次。
+  attach();
+  window.addEventListener('load', attach);
 })();
