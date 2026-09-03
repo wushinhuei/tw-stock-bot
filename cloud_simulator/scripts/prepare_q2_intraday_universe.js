@@ -2,87 +2,83 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { DriveHistorySource } = require('../src/drive_history');
 
 const START = process.env.BACKTEST_START || '2026-04-01';
 const END = process.env.BACKTEST_END || '2026-06-30';
 const WARMUP_START = process.env.INTRADAY_WARMUP_START || '2026-03-20';
+const MCP_DIR = path.resolve(process.env.TWSE_Q2_DIR || 'data/backtest/twse-q2-mcp');
 const OUTPUT = process.env.INTRADAY_UNIVERSE_OUTPUT
   || path.join(process.cwd(), 'data', 'backtest', '2026Q2', 'q2_top100_union.json');
 
 function candidateCode(row) {
-  const code = String(row.stock_code || '').trim();
-  // 台股一般上市普通股主要為四位數且不以 0 開頭；此處寧可多抓、不可少抓。
-  // 正式回測的可交易性仍由 point-in-time universe 規則再次篩選。
+  const code = String(row.symbol || row.stock_code || '').trim();
   return /^[1-9]\d{3}$/.test(code) ? code : null;
 }
 
 function numericVolume(row) {
-  const value = Number(row.trade_volume || row.volume || 0);
+  const value = Number(row.volume || row.trade_volume || 0);
   return Number.isFinite(value) ? value : 0;
 }
 
+function readBundles() {
+  const dailyDir = path.join(MCP_DIR, 'daily');
+  if (!fs.existsSync(dailyDir)) throw new Error(`missing TWSE MCP daily cache: ${dailyDir}`);
+  return fs.readdirSync(dailyDir)
+    .filter(name => /^2026-\d{2}-\d{2}\.json$/.test(name))
+    .map(name => JSON.parse(fs.readFileSync(path.join(dailyDir, name), 'utf8')))
+    .filter(bundle => bundle.tradingDay && bundle.date >= START && bundle.date <= END)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 async function buildUniverse(options = {}) {
-  const source = options.source || new DriveHistorySource();
-  await source.manifest('stockDaily');
-  const rows = await source.rows('stockDaily', 2026);
-  const byDate = new Map();
-
-  for (const row of rows) {
-    const date = String(row.trade_date || '');
-    if (date < START || date > END) continue;
-    const code = candidateCode(row);
-    if (!code || numericVolume(row) <= 0) continue;
-    if (!byDate.has(date)) byDate.set(date, []);
-    byDate.get(date).push({
-      symbol: code,
-      name: row.stock_name || '',
-      volume: numericVolume(row)
-    });
-  }
-
+  const bundles = options.bundles || readBundles();
   const appearances = new Map();
-  const dailyTop100 = [];
-  for (const date of [...byDate.keys()].sort()) {
-    const ranked = byDate.get(date)
-      .sort((a, b) => b.volume - a.volume || a.symbol.localeCompare(b.symbol))
-      .slice(0, 100)
-      .map((row, index) => ({ ...row, rank: index + 1 }));
-    dailyTop100.push({ date, symbols: ranked.map(row => row.symbol) });
-    for (const row of ranked) {
-      const current = appearances.get(row.symbol) || {
-        symbol: row.symbol,
-        name: row.name,
-        appearances: 0,
-        bestRank: Number.POSITIVE_INFINITY,
-        firstSeen: date,
-        lastSeen: date
+  const dailyMarket = [];
+
+  for (const bundle of bundles) {
+    const rows = (bundle.market?.rows || [])
+      .filter(row => candidateCode(row) && numericVolume(row) > 0 && Number(row.close) > 0);
+    dailyMarket.push({ date: bundle.date, symbols: rows.map(row => candidateCode(row)).sort() });
+    for (const row of rows) {
+      const symbol = candidateCode(row);
+      const current = appearances.get(symbol) || {
+        symbol,
+        name: row.name || '',
+        tradingDays: 0,
+        firstSeen: bundle.date,
+        lastSeen: bundle.date,
+        maxDailyVolume: 0
       };
-      current.appearances += 1;
-      current.bestRank = Math.min(current.bestRank, row.rank);
-      current.firstSeen = current.firstSeen < date ? current.firstSeen : date;
-      current.lastSeen = current.lastSeen > date ? current.lastSeen : date;
+      current.tradingDays += 1;
+      current.firstSeen = current.firstSeen < bundle.date ? current.firstSeen : bundle.date;
+      current.lastSeen = current.lastSeen > bundle.date ? current.lastSeen : bundle.date;
+      current.maxDailyVolume = Math.max(current.maxDailyVolume, numericVolume(row));
       if (row.name) current.name = row.name;
-      appearances.set(row.symbol, current);
+      appearances.set(symbol, current);
     }
   }
 
+  // Acquisition universe intentionally contains every listed common stock that traded in Q2.
+  // Using the final daily Top100 to decide which intraday data to download would leak end-of-day information
+  // into the morning replay. Hourly Top100 must be reconstructed later from cumulative intraday volume.
   const symbols = [...appearances.values()]
-    .sort((a, b) => b.appearances - a.appearances || a.bestRank - b.bestRank || a.symbol.localeCompare(b.symbol));
+    .sort((a, b) => b.tradingDays - a.tradingDays || b.maxDailyVolume - a.maxDailyVolume || a.symbol.localeCompare(b.symbol));
 
   return {
-    schemaVersion: 1,
-    purpose: '2026Q2 point-in-time replay intraday acquisition universe',
+    schemaVersion: 2,
+    purpose: '2026Q2 high-fidelity point-in-time intraday acquisition universe',
     period: { start: START, end: END, intradayWarmupStart: WARMUP_START },
+    source: 'TWSE_MCP_PRIMARY',
     policy: {
-      dailyPoolSize: 100,
-      rankingBasisForAcquisitionOnly: 'daily trade_volume',
-      note: '此檔只決定要補抓哪些股票的盤中資料；不代表正式 Top30 或進場名單。正式回測會逐時依凍結策略重新評分。'
+      acquisitionUniverse: 'all listed common stocks with positive official TWSE volume during Q2',
+      dailyTop100LeakageForbidden: true,
+      signalSelection: 'reconstruct cumulative-volume Top100 and four-factor Top30 at each replay timestamp',
+      fallback: 'other providers may supply intraday bars only because TWSE MCP public history has no minute bars'
     },
-    tradingDays: dailyTop100.length,
+    tradingDays: dailyMarket.length,
     uniqueSymbols: symbols.length,
     symbols,
-    dailyTop100
+    dailyMarket
   };
 }
 
@@ -90,20 +86,9 @@ async function main() {
   const payload = await buildUniverse();
   fs.mkdirSync(path.dirname(OUTPUT), { recursive: true });
   fs.writeFileSync(OUTPUT, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-  console.log(JSON.stringify({
-    ok: true,
-    output: OUTPUT,
-    tradingDays: payload.tradingDays,
-    uniqueSymbols: payload.uniqueSymbols,
-    period: payload.period
-  }, null, 2));
+  console.log(JSON.stringify({ ok: true, source: payload.source, output: OUTPUT, tradingDays: payload.tradingDays, uniqueSymbols: payload.uniqueSymbols, period: payload.period }, null, 2));
 }
 
-if (require.main === module) {
-  main().catch(error => {
-    console.error(error);
-    process.exitCode = 1;
-  });
-}
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
 
-module.exports = { buildUniverse, candidateCode, numericVolume };
+module.exports = { buildUniverse, candidateCode, numericVolume, readBundles };
