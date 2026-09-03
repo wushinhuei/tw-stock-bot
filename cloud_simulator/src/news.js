@@ -11,6 +11,7 @@ const TOPICS = [
 const HIGH = /war|invasion|sanction|tariff|export ban|emergency|default|recession|rate hike|cyberattack|earthquake/i;
 const NEGATIVE = /fall|drop|cut|ban|loss|risk|warning|weak|slump|layoff|probe|lawsuit|shortage/i;
 const POSITIVE = /rise|gain|growth|beat|upgrade|record|expand|order|investment|recovery|surge/i;
+const GLOBAL_MAJOR = /war|invasion|military|missile|sanction|tariff|export ban|export control|emergency|default|recession|rate hike|rate cut|fed|central bank|oil shock|energy crisis|cyberattack|earthquake|tsunami|pandemic|strait|geopolitic/i;
 
 const TAIWAN_MEDIA_SOURCES = Object.freeze({
   '中央通訊社': { weight: 1.00, automatedMethods: ['RSS', 'LICENSED_API'], rss: 'https://feeds.feedburner.com/rsscna/finance' },
@@ -43,6 +44,37 @@ function classify(text) {
     riskLevel: HIGH.test(text) ? 'HIGH' : relatedIndustries.length ? 'MEDIUM' : 'LOW',
     sentiment: negative && !positive ? 'NEGATIVE' : positive && !negative ? 'POSITIVE' : negative && positive ? 'UNCERTAIN' : 'NEUTRAL'
   };
+}
+
+function normalizeSymbols(value) {
+  const input = Array.isArray(value) ? value : value == null ? [] : [value];
+  return [...new Set(input.flatMap(item => String(item || '').match(/\b\d{4}\b/g) || []))];
+}
+
+function isMajorInternationalEvent(item) {
+  const scope = String(item?.marketScope || item?.scope || '').toUpperCase();
+  const category = String(item?.category || '');
+  const riskLevel = String(item?.riskLevel || item?.impact || '').toUpperCase();
+  const text = `${item?.title || ''} ${item?.summary || ''} ${item?.description || ''}`;
+  const explicitlyGlobal = ['GLOBAL', 'INTERNATIONAL', 'MACRO'].includes(scope) || /全球市場|總體經濟|國際/.test(category);
+  return (riskLevel === 'HIGH' && (explicitlyGlobal || GLOBAL_MAJOR.test(text)))
+    || (explicitlyGlobal && GLOBAL_MAJOR.test(text));
+}
+
+function newsScopeDecision(item) {
+  const top100Related = item?.top100Related === true || item?.inTop100 === true || item?.poolRelevant === true;
+  const globalMajor = isMajorInternationalEvent(item);
+  return {
+    eligible: top100Related || globalMajor,
+    top100Related,
+    globalMajor,
+    relatedSymbols: normalizeSymbols(item?.relatedSymbols || item?.symbols || item?.stockCodes),
+    reason: top100Related ? 'TOP100_RELATED' : globalMajor ? 'GLOBAL_MAJOR_EVENT' : 'OUTSIDE_TOP100_AND_NOT_GLOBAL_MAJOR'
+  };
+}
+
+function scopeNewsItems(items) {
+  return (items || []).map(item => ({ item, scope: newsScopeDecision(item) })).filter(row => row.scope.eligible);
 }
 
 function parseRss(xml, source = 'Investing.com') {
@@ -102,7 +134,9 @@ function validateTaiwanMediaItem(item) {
 }
 
 function scoreTaiwanMedia(items, officialEventKeys = [], now = new Date()) {
-  const accepted = (items || []).filter(item => {
+  const scoped = scopeNewsItems(items);
+  const suppressed = (items || []).filter(item => !newsScopeDecision(item).eligible);
+  const accepted = scoped.map(row => row.item).filter(item => {
     const check = validateTaiwanMediaItem(item);
     return check.accepted && new Date(item.publishedAt) <= now;
   });
@@ -113,7 +147,12 @@ function scoreTaiwanMedia(items, officialEventKeys = [], now = new Date()) {
     groups.set(item.eventKey, rows);
   }
   let modifier = 0;
-  const evidence = [];
+  const evidence = suppressed.map(item => ({
+    eventKey: item.eventKey || null,
+    sources: item.source ? [item.source] : [],
+    scored: false,
+    reason: '非Top100相關新聞且非國際重大事件，忽略'
+  }));
   for (const [eventKey, rows] of groups.entries()) {
     const officialConfirmed = officialEventKeys.includes(eventKey);
     const corroborated = officialConfirmed || rows.length >= 2;
@@ -125,12 +164,24 @@ function scoreTaiwanMedia(items, officialEventKeys = [], now = new Date()) {
     const sentiments = rows.map(row => String(row.sentiment || 'NEUTRAL').toUpperCase());
     const positive = sentiments.filter(value => value === 'POSITIVE').length;
     const negative = sentiments.filter(value => value === 'NEGATIVE').length;
-    const impact = rows.some(row => String(row.impact || '').toUpperCase() === 'HIGH') ? 1.5 : 1;
+    const impact = rows.some(row => String(row.impact || '').toUpperCase() === 'HIGH' || isMajorInternationalEvent(row)) ? 1.5 : 1;
     const delta = positive > negative ? averageWeight * impact : negative > positive ? -averageWeight * impact : 0;
     modifier += delta;
-    evidence.push({ eventKey, sources: rows.map(row => row.source), scored: true, delta: Math.round(delta * 100) / 100 });
+    evidence.push({
+      eventKey,
+      sources: rows.map(row => row.source),
+      scored: true,
+      scope: rows.some(isMajorInternationalEvent) ? 'GLOBAL_MAJOR_EVENT' : 'TOP100_RELATED',
+      delta: Math.round(delta * 100) / 100
+    });
   }
-  return { modifier: Math.max(-3, Math.min(3, Math.round(modifier))), evidence, acceptedCount: accepted.length };
+  return {
+    modifier: Math.max(-3, Math.min(3, Math.round(modifier))),
+    evidence,
+    acceptedCount: accepted.length,
+    suppressedCount: suppressed.length,
+    policy: 'TOP100_RELATED_OR_GLOBAL_MAJOR_ONLY'
+  };
 }
 
 async function fetchInvestingRss(urls, fetchImpl = fetch) {
@@ -157,4 +208,8 @@ async function fetchTaiwanMediaRss(sources, fetchImpl = fetch) {
   };
 }
 
-module.exports = { TAIWAN_MEDIA_SOURCES, classify, deduplicateNews, fetchInvestingRss, fetchTaiwanMediaRss, parseRss, scoreOfficialEvents, scoreTaiwanMedia, validateTaiwanMediaItem };
+module.exports = {
+  TAIWAN_MEDIA_SOURCES, classify, deduplicateNews, fetchInvestingRss, fetchTaiwanMediaRss,
+  isMajorInternationalEvent, newsScopeDecision, normalizeSymbols, parseRss,
+  scopeNewsItems, scoreOfficialEvents, scoreTaiwanMedia, validateTaiwanMediaItem
+};
