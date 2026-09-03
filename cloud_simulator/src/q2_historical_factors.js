@@ -11,7 +11,6 @@ function finite(value) {
   const number = Number(String(value).replace(/,/g, '').replace(/%/g, ''));
   return Number.isFinite(number) ? number : null;
 }
-
 function firstFinite(row, paths) {
   for (const path of paths) {
     const value = path.split('.').reduce((obj, key) => obj?.[key], row);
@@ -20,7 +19,6 @@ function firstFinite(row, paths) {
   }
   return null;
 }
-
 function firstBoolean(row, paths) {
   for (const path of paths) {
     const value = path.split('.').reduce((obj, key) => obj?.[key], row);
@@ -30,7 +28,6 @@ function firstBoolean(row, paths) {
   }
   return null;
 }
-
 function normalizeFraction(value, maxPoints) {
   const number = finite(value);
   if (number == null) return null;
@@ -38,7 +35,6 @@ function normalizeFraction(value, maxPoints) {
   if (number >= 0 && number <= maxPoints) return number / maxPoints;
   return null;
 }
-
 function rawValue(row, patterns) {
   const raw = row?.raw || {};
   for (const [key, value] of Object.entries(raw)) {
@@ -49,7 +45,6 @@ function rawValue(row, patterns) {
   }
   return null;
 }
-
 function financialFact(row, metric) {
   const facts = Array.isArray(row?.facts) ? row.facts.filter(item => item.metric === metric && Number.isFinite(Number(item.value))) : [];
   if (!facts.length) return null;
@@ -60,13 +55,9 @@ function financialFact(row, metric) {
 function explicitFundamentalScore(row) {
   const sources = [row, row?.mops?.monthlyRevenue, row?.mops?.quarterlyFinancials].filter(Boolean);
   for (const source of sources) {
-    const direct = firstFinite(source, [
-      'historicalFactors.fundamentalScore', 'fundamentalScore', 'fundamental_score',
-      'score.fundamental', 'components.fundamental'
-    ]);
+    const direct = firstFinite(source, ['historicalFactors.fundamentalScore', 'fundamentalScore', 'fundamental_score', 'score.fundamental', 'components.fundamental']);
     const normalized = normalizeFraction(direct, 10);
     if (normalized != null) return { score: normalized, source: 'EXPLICIT_HISTORICAL_SCORE', quality: 1 };
-
     const ok = firstBoolean(source, ['fundamentalOk', 'fundamental_ok', 'flags.fundamentalOk']);
     if (ok != null) return { score: ok ? 1 : 0, source: 'EXPLICIT_HISTORICAL_BOOLEAN', quality: 1 };
   }
@@ -77,7 +68,6 @@ function reconstructFundamentalScore(row) {
   const revenue = row?.mops?.monthlyRevenue;
   const financial = row?.mops?.quarterlyFinancials;
   if (!revenue || !financial) return null;
-
   const yoy = rawValue(revenue, [/去年同月.*增減.*%/i, /年增率/i, /YoY/i, /去年同月比/i]);
   const revenueValue = rawValue(revenue, [/當月營收/i, /^營業收入$/i, /本月營收/i]);
   const netIncome = financialFact(financial, 'net_income');
@@ -85,11 +75,9 @@ function reconstructFundamentalScore(row) {
   const operatingCashFlow = financialFact(financial, 'operating_cash_flow');
   const assets = financialFact(financial, 'assets');
   const liabilities = financialFact(financial, 'liabilities');
-
   const evidence = [];
   let score = 0.50;
   let evidenceCount = 0;
-
   if (yoy != null) {
     evidenceCount += 1;
     if (yoy >= 20) score += 0.20;
@@ -103,18 +91,12 @@ function reconstructFundamentalScore(row) {
     evidenceCount += 1;
     evidence.push({ metric: 'monthlyRevenue', value: revenueValue, neutralOnly: true });
   }
-
-  for (const [metric, value, weight] of [
-    ['netIncome', netIncome, 0.10],
-    ['operatingIncome', operatingIncome, 0.08],
-    ['operatingCashFlow', operatingCashFlow, 0.07]
-  ]) {
+  for (const [metric, value, weight] of [['netIncome', netIncome, 0.10], ['operatingIncome', operatingIncome, 0.08], ['operatingCashFlow', operatingCashFlow, 0.07]]) {
     if (value == null) continue;
     evidenceCount += 1;
     score += value > 0 ? weight : value < 0 ? -weight : 0;
     evidence.push({ metric, value });
   }
-
   if (assets != null && liabilities != null && assets > 0) {
     evidenceCount += 1;
     const ratio = liabilities / assets;
@@ -122,29 +104,19 @@ function reconstructFundamentalScore(row) {
     else if (ratio >= 0.80) score -= 0.08;
     evidence.push({ metric: 'liabilitiesToAssets', value: ratio });
   }
-
   if (evidenceCount < 2) return null;
-  return {
-    score: Math.max(0, Math.min(1, Math.round(score * 1000) / 1000)),
-    source: 'MOPS_POINT_IN_TIME_RECONSTRUCTION_V1',
-    quality: 0.75,
-    evidence
-  };
+  return { score: Math.max(0, Math.min(1, Math.round(score * 1000) / 1000)), source: 'MOPS_POINT_IN_TIME_RECONSTRUCTION_V1', quality: 0.75, evidence };
 }
 
 function messageTitle(message) {
   const raw = message?.raw || {};
   return String(message?.title || message?.subject || raw['主旨'] || raw['重大訊息主旨'] || raw['說明'] || '').trim();
 }
-
 function normalizeOfficialEvent(message) {
-  const publishedAt = String(
-    message?.available_from || message?.availableAt || message?.publishedAt || message?.publish_time || ''
-  ).replace(' ', 'T');
+  const publishedAt = String(message?.available_from || message?.availableAt || message?.publishedAt || message?.publish_time || '').replace(' ', 'T');
   let impact = String(message?.impact || message?.eventImpact || message?.event_impact || '').toUpperCase();
   let type = String(message?.type || message?.eventType || message?.event_type || '').toUpperCase();
   const title = messageTitle(message);
-
   let quality = 1;
   if (!['POSITIVE', 'NEGATIVE', 'NEUTRAL'].includes(impact) && !['SUSPENDED', 'DISPOSITION', 'MATERIAL_RISK_UNCLEAR'].includes(type)) {
     quality = 0.75;
@@ -155,28 +127,15 @@ function normalizeOfficialEvent(message) {
   }
   return { publishedAt, impact, type, title, reconstructionQuality: quality };
 }
-
 function explicitOfficialNewsScore(row, asOf) {
-  const direct = firstFinite(row, [
-    'historicalFactors.officialNewsScore', 'officialNewsScore', 'official_news_score',
-    'score.officialNews', 'components.officialNews'
-  ]);
+  const direct = firstFinite(row, ['historicalFactors.officialNewsScore', 'officialNewsScore', 'official_news_score', 'score.officialNews', 'components.officialNews']);
   const normalized = normalizeFraction(direct, 15);
-  if (normalized != null) return { score: normalized, source: 'EXPLICIT_HISTORICAL_SCORE', events: [], quality: 1 };
-
+  if (normalized != null) return { score: normalized, source: 'EXPLICIT_HISTORICAL_SCORE', events: [], quality: 1, blocked: false, blockedReasons: [], reasons: [] };
   const messages = Array.isArray(row?.mops?.majorMessages) ? row.mops.majorMessages : [];
   const classified = messages.map(normalizeOfficialEvent);
   const scored = scoreOfficialEvents(classified, new Date(asOf));
   const quality = classified.length ? Math.min(...classified.map(event => event.reconstructionQuality || 1)) : 1;
-  return {
-    score: scored.score,
-    source: messages.length ? 'MOPS_POINT_IN_TIME_EVENT_RECONSTRUCTION_V1' : 'NO_OFFICIAL_EVENT_BASELINE',
-    quality,
-    events: classified,
-    blocked: scored.blocked,
-    blockedReasons: scored.blockedReasons,
-    reasons: scored.reasons
-  };
+  return { score: scored.score, source: messages.length ? 'MOPS_POINT_IN_TIME_EVENT_RECONSTRUCTION_V1' : 'NO_OFFICIAL_EVENT_BASELINE', quality, events: classified, blocked: scored.blocked, blockedReasons: scored.blockedReasons, reasons: scored.reasons };
 }
 
 function materializeHistoricalFactors(row) {
@@ -185,6 +144,7 @@ function materializeHistoricalFactors(row) {
   const official = explicitOfficialNewsScore(row, asOf);
   const complete = Boolean(fundamental && official);
   const quality = complete ? Math.min(fundamental.quality ?? 1, official.quality ?? 1) : 0;
+  const riskBlocked = Boolean(official?.blocked);
   return {
     ...row,
     historicalFactors: {
@@ -192,24 +152,18 @@ function materializeHistoricalFactors(row) {
       pointInTimeAsOf: asOf,
       complete,
       reconstructionQuality: quality,
-      fundamentalScore: fundamental?.score ?? null,
+      fundamentalScore: riskBlocked ? 0 : (fundamental?.score ?? null),
+      fundamentalScoreBeforeRiskGate: fundamental?.score ?? null,
       fundamentalSource: fundamental?.source || null,
       fundamentalEvidence: fundamental?.evidence || [],
-      officialNewsScore: official?.score ?? null,
+      officialNewsScore: riskBlocked ? 0 : (official?.score ?? null),
       officialNewsSource: official?.source || null,
-      officialRiskBlocked: Boolean(official?.blocked),
+      officialRiskBlocked: riskBlocked,
       officialRiskReasons: official?.blockedReasons || [],
       officialEventReasons: official?.reasons || [],
-      rule: 'Prefer explicit historical values. When absent, reconstruct only from MOPS records visible at the replay timestamp using the frozen V1 adapter; no future filings are read and Q2 outcomes are never inputs.'
+      rule: 'Prefer explicit historical values. Otherwise use frozen MOPS point-in-time reconstruction V1. Official hard-risk events force both reconstructed fundamental/news contributions to zero so the frozen A>=80 entry gate cannot be reached; this affects entry eligibility only, not historical prices or exits.'
     }
   };
 }
 
-module.exports = {
-  explicitFundamentalScore,
-  explicitOfficialNewsScore,
-  materializeHistoricalFactors,
-  normalizeFraction,
-  normalizeOfficialEvent,
-  reconstructFundamentalScore
-};
+module.exports = { explicitFundamentalScore, explicitOfficialNewsScore, materializeHistoricalFactors, normalizeFraction, normalizeOfficialEvent, reconstructFundamentalScore };
