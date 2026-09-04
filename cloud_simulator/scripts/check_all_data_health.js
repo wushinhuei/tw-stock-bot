@@ -91,10 +91,21 @@ async function persistReport(report) {
   const bucketName = String(process.env.GCS_BUCKET || '').trim();
   if (!bucketName) throw new Error('GCS_BUCKET is required');
   await new Storage().bucket(bucketName).file('public/data_health.json').save(`${JSON.stringify(report, null, 2)}\n`, { contentType: 'application/json; charset=utf-8', metadata: { cacheControl: 'no-store' }, resumable: false });
-  const writer = new DrivePrimaryWriter({ parentFolderId: process.env.MCP_DRIVE_PARENT_FOLDER_ID || process.env.TWSE_DRIVE_PARENT_FOLDER_ID || '', folderName: process.env.DATA_HEALTH_DRIVE_FOLDER_NAME || 'DATA_HEALTH_AUDIT' });
-  const date = report.checkedForDate;
-  await writer.upsertText(`data_health_${date}.json`, `${JSON.stringify(report, null, 2)}\n`);
-  await writer.upsertText('manifest.json', `${JSON.stringify({ schemaVersion: 1, generatedAt: report.generatedAt, latestDate: date, status: report.status, ok: report.ok, latestCompleteTradeDate: report.latestCompleteTradeDate, failedChecks: report.failedChecks }, null, 2)}\n`);
+
+  // GCS is the authoritative persistence target for Cloud Run. A Google Drive
+  // copy is optional because service accounts cannot reliably create folders in
+  // a consumer My Drive. Enable the mirror explicitly only in an environment
+  // where the runtime identity has a writable Shared Drive or delegated OAuth.
+  if (String(process.env.DATA_HEALTH_DRIVE_MIRROR || '').trim() !== '1') return;
+
+  try {
+    const writer = new DrivePrimaryWriter({ parentFolderId: process.env.MCP_DRIVE_PARENT_FOLDER_ID || process.env.TWSE_DRIVE_PARENT_FOLDER_ID || '', folderName: process.env.DATA_HEALTH_DRIVE_FOLDER_NAME || 'DATA_HEALTH_AUDIT' });
+    const date = report.checkedForDate;
+    await writer.upsertText(`data_health_${date}.json`, `${JSON.stringify(report, null, 2)}\n`);
+    await writer.upsertText('manifest.json', `${JSON.stringify({ schemaVersion: 1, generatedAt: report.generatedAt, latestDate: date, status: report.status, ok: report.ok, latestCompleteTradeDate: report.latestCompleteTradeDate, failedChecks: report.failedChecks }, null, 2)}\n`);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: 'data-health-drive-mirror-failed', error: String(error.message || error) }));
+  }
 }
 async function main() { const report = await buildReport(); await persistReport(report); process.stdout.write(`${JSON.stringify(report, null, 2)}\n`); if (!report.ok) process.exitCode = 2; }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
