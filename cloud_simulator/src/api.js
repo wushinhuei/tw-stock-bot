@@ -16,6 +16,14 @@ function storageDashboardReader(bucketName) { return storageJsonReader(bucketNam
 function storagePotentialStocksReader(bucketName) { return storageJsonReader(bucketName, 'public/growth_top10.json'); }
 function storageDataHealthReader(bucketName) { return storageJsonReader(bucketName, 'public/data_health.json'); }
 
+function lazyStorageReader(optionsReader, factory) {
+  let reader = optionsReader || null;
+  return async function read() {
+    if (!reader) reader = factory(process.env.GCS_BUCKET);
+    return reader();
+  };
+}
+
 function json(response, status, payload) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -34,9 +42,9 @@ function deploymentMetadata() {
 }
 
 function createDashboardServer(options = {}) {
-  const readDashboard = options.readDashboard || storageDashboardReader(process.env.GCS_BUCKET);
-  const readPotentialStocks = options.readPotentialStocks || storagePotentialStocksReader(process.env.GCS_BUCKET);
-  const readDataHealth = options.readDataHealth || storageDataHealthReader(process.env.GCS_BUCKET);
+  const readDashboard = lazyStorageReader(options.readDashboard, storageDashboardReader);
+  const readPotentialStocks = lazyStorageReader(options.readPotentialStocks, storagePotentialStocksReader);
+  const readDataHealth = lazyStorageReader(options.readDataHealth, storageDataHealthReader);
   return http.createServer(async (request, response) => {
     const path = new URL(request.url, 'http://localhost').pathname;
     if (request.method !== 'GET') return json(response, 405, { ok: false, error: 'METHOD_NOT_ALLOWED' });
