@@ -27,7 +27,7 @@ const { economicCash, markToMarket, positionMarketValue } = require('../../å°è‚
 const { DRIVE_DATASETS, MOPS_ROLLING, DriveHistorySource, parseCsv, parseJsonl } = require('../src/drive_history');
 const { fee, technicalProxy } = require('../src/drive_backtest');
 const { archiveEntryIdentity, attachFilingTimes, MopsClient, parseHtmlTables, parseXbrlInstance,
-  rowsFromTable, toCsv, validateMopsCompleteness, validateOfficialBatch, xbrlArchiveUrl } = require('../src/mops_history');
+  retryableXbrlHttpStatus, rowsFromTable, toCsv, validateMopsCompleteness, validateOfficialBatch, xbrlArchiveUrl } = require('../src/mops_history');
 const { parse0050, parseTaiex, rocDate, validateBenchmarks } = require('../src/benchmark_history');
 const { adjustBars, buildCumulativeFactors, parseCorporateActions } = require('../src/corporate_actions');
 const { repairZeroPriceSellState } = require('../src/state_repair');
@@ -309,6 +309,12 @@ test('MOPS XBRL archive URL uses the official bulk download path', () => {
   assert.match(url, /mopsov\.twse\.com\.tw\/server-java\/FileDownLoad/);
   assert.match(url, /tifrs-2025Q4\.zip/);
   assert.match(url, /%2Fifrs%2F2025%2F/);
+});
+
+test('MOPS XBRL retries transient throttling and server failures only', () => {
+  assert.equal(retryableXbrlHttpStatus(429), true);
+  assert.equal(retryableXbrlHttpStatus(502), true);
+  assert.equal(retryableXbrlHttpStatus(404), false);
 });
 
 test('MOPS XBRL parser filters core non-dimensional facts and requires filing time', () => {

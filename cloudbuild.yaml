@@ -111,7 +111,7 @@ steps:
       - --args=cloud_simulator/scripts/backfill_mops_20q_to_drive.js
       - --set-env-vars=DATA_SOURCE_POLICY=MCP_FIRST_DAILY_DRIVE_PERSISTENCE,MOPS_SOURCE_POLICY=MOPS_MCP_PRIMARY,GCS_BUCKET=${_GCS_BUCKET},MOPS_20Q_COUNT=20,MOPS_20Q_DRIVE_PARENT_FOLDER_ID=${_MOPS_20Q_DRIVE_PARENT_FOLDER_ID},MOPS_20Q_DRIVE_FOLDER_NAME=20Q_MCP_PRIMARY,NODE_OPTIONS=--max-old-space-size=3072,DEPLOY_COMMIT_SHA=$COMMIT_SHA
       - --tasks=1
-      - --max-retries=1
+      - --max-retries=0
       - --task-timeout=7200s
       - --cpu=2
       - --memory=4Gi

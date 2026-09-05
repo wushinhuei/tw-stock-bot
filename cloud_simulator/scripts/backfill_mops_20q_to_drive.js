@@ -247,7 +247,11 @@ async function main() {
     totalRecords,
     expectedMetricCells,
     presentMetricCells,
-    missingMetricCells: expectedMetricCells - presentMetricCells
+    missingMetricCells: expectedMetricCells - presentMetricCells,
+    byMetric: Object.fromEntries(CORE_METRICS.map(metric => {
+      const present = summaries.reduce((sum, item) => sum + Number(item.metricCoverage[metric]?.rows || 0), 0);
+      return [metric, { expected: totalRecords, present, missing: totalRecords - present }];
+    }))
   };
 
   const manifest = {
@@ -274,7 +278,7 @@ async function main() {
   process.stdout.write(`${JSON.stringify({
     ok: manifest.status === 'complete', event: 'mops-20q-complete', status: manifest.status,
     startQuarter: manifest.startQuarter, endQuarter: manifest.endQuarter, quarterCount: summaries.length,
-    universeSymbols: symbols.length, manifestDriveFileId: savedManifest.id
+    universeSymbols: symbols.length, metricValidation, manifestDriveFileId: savedManifest.id
   }, null, 2)}\n`);
   if (manifest.status !== 'complete') process.exitCode = 2;
 }

@@ -182,6 +182,10 @@ async function validZipFile(zipPath) {
   try { const zip = await openZip(zipPath); zip.close(); return true; } catch { return false; }
 }
 
+function retryableXbrlHttpStatus(status) {
+  return Number(status) === 429 || Number(status) >= 500;
+}
+
 function readEntry(zip, entry) {
   return new Promise((resolve, reject) => zip.openReadStream(entry, (error, stream) => {
     if (error) return reject(error);
@@ -323,16 +327,30 @@ async function downloadXbrlArchives(options = {}) {
 async function downloadXbrlArchive(year, quarter, options = {}) {
   const outputDir = path.resolve(options.outputDir || 'tmp/mops-history/xbrl');
   const fetchImpl = options.fetchImpl || fetch;
+  const attempt = Number(options.attempt || 1);
   fs.mkdirSync(outputDir, { recursive: true });
   const name = `tifrs-${year}Q${quarter}.zip`;
   const target = path.join(outputDir, name);
   if (fs.existsSync(target) && !(await validZipFile(target))) fs.unlinkSync(target);
   if (!fs.existsSync(target) || fs.statSync(target).size <= 4) {
-    const response = await fetchImpl(xbrlArchiveUrl(year, quarter), {
-      headers: { accept: 'application/zip,application/octet-stream', 'user-agent': 'tw-stock-bot-mops-history/1.0 (+official-XBRL-bulk-download)' },
-      signal: AbortSignal.timeout(30 * 60 * 1000)
-    });
-    if (!response.ok || !response.body) throw new Error(`MOPS XBRL ${year}Q${quarter} HTTP ${response.status}`);
+    let response;
+    try {
+      response = await fetchImpl(xbrlArchiveUrl(year, quarter), {
+        headers: { accept: 'application/zip,application/octet-stream', 'user-agent': 'tw-stock-bot-mops-history/1.0 (+official-XBRL-bulk-download)' },
+        signal: AbortSignal.timeout(30 * 60 * 1000)
+      });
+    } catch (error) {
+      if (attempt >= 3) throw error;
+      await sleep(1500 * attempt);
+      return downloadXbrlArchive(year, quarter, { ...options, attempt: attempt + 1 });
+    }
+    if (!response.ok || !response.body) {
+      if (retryableXbrlHttpStatus(response.status) && attempt < 3) {
+        await sleep(1500 * attempt);
+        return downloadXbrlArchive(year, quarter, { ...options, attempt: attempt + 1 });
+      }
+      throw new Error(`MOPS XBRL ${year}Q${quarter} HTTP ${response.status}`);
+    }
     await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(`${target}.part`));
     const signature = Buffer.alloc(4);
     const handle = fs.openSync(`${target}.part`, 'r');
@@ -342,7 +360,6 @@ async function downloadXbrlArchive(year, quarter, options = {}) {
   }
   if (!(await validZipFile(target))) {
     fs.unlinkSync(target);
-    const attempt = Number(options.attempt || 1);
     if (attempt >= 3) throw new Error(`MOPS XBRL ${year}Q${quarter} remained truncated after ${attempt} attempts`);
     await sleep(1500 * attempt);
     return downloadXbrlArchive(year, quarter, { ...options, attempt: attempt + 1 });
@@ -535,5 +552,5 @@ module.exports = {
   archiveEntryIdentity, attachFilingTimes, buildQuarterlyXbrlHistory, canonicalRow, cleanText, dedupeCompanyQuarters,
   downloadMopsHistory, downloadXbrlArchive, downloadXbrlArchives, parseContexts, parseHtmlTables, parseXbrlArchive,
   parseXbrlInstance, requestParams, rowsFromTable, toCsv, top50SymbolSet,
-  validZipFile, validateMopsCompleteness, validateOfficialBatch, xbrlArchiveUrl
+  retryableXbrlHttpStatus, validZipFile, validateMopsCompleteness, validateOfficialBatch, xbrlArchiveUrl
 };
