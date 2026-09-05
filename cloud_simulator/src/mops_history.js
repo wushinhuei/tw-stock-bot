@@ -88,7 +88,7 @@ function xbrlArchiveUrl(year, quarter) {
 
 const CORE_FACT_PATTERNS = Object.freeze({
   revenue: /(?:^|:)(?:Revenue|Revenues|OperatingRevenue|TotalOperatingRevenue)$/i,
-  operating_income: /(?:^|:)(?:OperatingIncome|OperatingProfitLoss)$/i,
+  operating_income: /(?:^|:)(?:OperatingIncome|OperatingProfitLoss|ProfitLossFromOperatingActivities)$/i,
   net_income: /(?:^|:)(?:ProfitLoss|NetIncomeLoss|ProfitLossAttributableToOwnersOfParent)$/i,
   eps: /(?:^|:)(?:BasicEarningsLossPerShare|BasicEarningsPerShare)$/i,
   assets: /(?:^|:)(?:Assets|TotalAssets)$/i,
@@ -96,11 +96,11 @@ const CORE_FACT_PATTERNS = Object.freeze({
   equity: /(?:^|:)(?:Equity|EquityAttributableToOwnersOfParent|TotalEquity)$/i,
   cash: /(?:^|:)(?:CashAndCashEquivalents|CashAndCashEquivalentsAtCarryingValue)$/i,
   operating_cash_flow: /(?:^|:)(?:NetCashFlowsFromUsedInOperatingActivities|NetCashProvidedByUsedInOperatingActivities|CashFlowsFromUsedInOperatingActivities)$/i,
-  capital_expenditure: /(?:^|:)(?:PaymentsToAcquirePropertyPlantAndEquipment|AcquisitionOfPropertyPlantAndEquipment|PurchaseOfPropertyPlantAndEquipment)$/i,
+  capital_expenditure: /(?:^|:)(?:PaymentsToAcquirePropertyPlantAndEquipment|AcquisitionOfPropertyPlantAndEquipment|PurchaseOfPropertyPlantAndEquipment|PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities)$/i,
   current_assets: /(?:^|:)(?:CurrentAssets|TotalCurrentAssets)$/i,
   current_liabilities: /(?:^|:)(?:CurrentLiabilities|TotalCurrentLiabilities)$/i,
   noncurrent_liabilities: /(?:^|:)(?:NoncurrentLiabilities|NonCurrentLiabilities|TotalNoncurrentLiabilities|TotalNonCurrentLiabilities)$/i,
-  operating_expenses: /(?:^|:)(?:OperatingExpenses|TotalOperatingExpenses)$/i
+  operating_expenses: /(?:^|:)(?:OperatingExpense|OperatingExpenses|TotalOperatingExpenses)$/i
 });
 
 function archiveEntryIdentity(name) {
