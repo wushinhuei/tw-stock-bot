@@ -9,17 +9,20 @@ function taipeiDate(now = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
 function latestDateOf(manifest) {
-  return String(manifest?.latestTradeDate || manifest?.latestDate || manifest?.last_update?.latest_date || manifest?.last_update?.latestTradeDate || manifest?.end || '').slice(0, 10) || null;
+  return String(
+    manifest?.latestTradeDate ||
+    manifest?.latestDate ||
+    manifest?.latest_successful_trade_date ||
+    manifest?.last_update?.latest_date ||
+    manifest?.last_update?.latestTradeDate ||
+    manifest?.last_update?.latest_successful_trade_date ||
+    manifest?.end ||
+    ''
+  ).slice(0, 10) || null;
 }
 async function readFolderManifest(parentFolderId, folderName) {
   const writer = new DrivePrimaryWriter({ parentFolderId, folderName });
-  const folderId = await writer.ensureFolder();
-  const files = await writer.list(`'${folderId}' in parents and name='manifest.json' and trashed=false`);
-  if (files.length !== 1) throw new Error(`${folderName} manifest count=${files.length}`);
-  const headers = await writer.headers();
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(files[0].id)}?alt=media`, { headers, signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new Error(`${folderName} manifest HTTP ${response.status}`);
-  return JSON.parse(await response.text());
+  return JSON.parse(await writer.readText('manifest.json'));
 }
 async function safeCheck(name, fn, blocking = true) {
   try { const detail = await fn(); return { name, ok: detail?.ok !== false, blocking, ...detail }; }

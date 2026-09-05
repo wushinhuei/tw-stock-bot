@@ -10,6 +10,22 @@ class DrivePrimaryWriter {
     this.fetchImpl = options.fetchImpl || fetch;
     this.parentFolderId = options.parentFolderId || process.env.TWSE_DRIVE_PARENT_FOLDER_ID || '';
     this.folderName = options.folderName || process.env.TWSE_DRIVE_FOLDER_NAME || 'TWSE_MCP_PRIMARY';
+    this.bucketName = options.bucketName ?? process.env.GCS_BUCKET ?? '';
+    this.storage = options.storage || null;
+    this.driveMirrorEnabled = options.driveMirrorEnabled ?? String(process.env.DRIVE_MIRROR_ENABLED || '').trim() === '1';
+    this.driveMirrorRequired = options.driveMirrorRequired ?? String(process.env.DRIVE_MIRROR_REQUIRED || '').trim() === '1';
+  }
+
+  storageClient() {
+    if (!this.storage) {
+      const { Storage } = require('@google-cloud/storage');
+      this.storage = new Storage();
+    }
+    return this.storage;
+  }
+
+  objectName(name) {
+    return `${String(this.folderName).replace(/^\/+|\/+$/g, '')}/${String(name).replace(/^\/+/, '')}`;
   }
 
   async headers() {
@@ -41,7 +57,7 @@ class DrivePrimaryWriter {
     return (await response.json()).id;
   }
 
-  async upsertText(name, text, mimeType = 'application/json') {
+  async upsertDriveText(name, text, mimeType = 'application/json') {
     const folderId = await this.ensureFolder();
     const query = `'${escapeQuery(folderId)}' in parents and name='${escapeQuery(name)}' and trashed=false`;
     const existing = await this.list(query);
@@ -62,6 +78,48 @@ class DrivePrimaryWriter {
     });
     if (!response.ok) throw new Error(`Google Drive create ${name} HTTP ${response.status}`);
     return response.json();
+  }
+
+  async upsertText(name, text, mimeType = 'application/json') {
+    if (!this.bucketName) return this.upsertDriveText(name, text, mimeType);
+
+    const object = this.objectName(name);
+    const file = this.storageClient().bucket(this.bucketName).file(object);
+    await file.save(text, {
+      contentType: `${mimeType}; charset=utf-8`,
+      metadata: { cacheControl: 'no-store' },
+      resumable: false
+    });
+    const saved = { id: `gs://${this.bucketName}/${object}`, name, object, storage: 'gcs' };
+
+    if (this.driveMirrorEnabled) {
+      try {
+        saved.driveMirror = await this.upsertDriveText(name, text, mimeType);
+      } catch (error) {
+        if (this.driveMirrorRequired) throw error;
+        console.warn(JSON.stringify({ event: 'drive-mirror-failed', folderName: this.folderName, name, error: String(error.message || error) }));
+      }
+    }
+    return saved;
+  }
+
+  async readText(name) {
+    if (this.bucketName) {
+      const [buffer] = await this.storageClient().bucket(this.bucketName).file(this.objectName(name)).download();
+      return buffer.toString('utf8');
+    }
+
+    const folderId = await this.ensureFolder();
+    const query = `'${escapeQuery(folderId)}' in parents and name='${escapeQuery(name)}' and trashed=false`;
+    const existing = await this.list(query);
+    if (existing.length !== 1) throw new Error(`${this.folderName} ${name} count=${existing.length}`);
+    const headers = await this.headers();
+    const response = await this.fetchImpl(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(existing[0].id)}?alt=media`, {
+      headers,
+      signal: AbortSignal.timeout(30000)
+    });
+    if (!response.ok) throw new Error(`Google Drive read ${name} HTTP ${response.status}`);
+    return response.text();
   }
 }
 
