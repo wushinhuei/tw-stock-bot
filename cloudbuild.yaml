@@ -212,7 +212,7 @@ steps:
         echo "tw-stock-dashboard-api -> $$SERVICE_IMAGE"
         test "$$SERVICE_IMAGE" = "$$EXPECTED_IMAGE"
         for JOB in tw-stock-simulator tw-stock-pretrade-prepare tw-stock-twse-drive-sync tw-stock-mops-drive-sync tw-stock-mops-20q-backfill tw-stock-mcp-daily-sync tw-stock-growth-top10-sync tw-stock-data-health; do
-          IMAGE="$$(gcloud run jobs describe "$$JOB" --region="${_REGION}" --format='value(template.template.containers[0].image)')"
+          IMAGE="$$(gcloud run jobs describe "$$JOB" --region="${_REGION}" --format='value(spec.template.spec.template.spec.containers[0].image)')"
           echo "$$JOB -> $$IMAGE"
           test "$$IMAGE" = "$$EXPECTED_IMAGE"
         done
