@@ -3,8 +3,6 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { Readable } = require('node:stream');
-const { pipeline } = require('node:stream/promises');
 const { GoogleAuth } = require('google-auth-library');
 const yauzl = require('yauzl');
 const { DriveHistorySource } = require('./drive_history');
@@ -22,6 +20,15 @@ const DATASETS = Object.freeze({
 });
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function writeFetchBody(response, target) {
+  // Avoid Readable.fromWeb backpressure assertions observed in Node 22/undici
+  // when MOPS closes a large XBRL ZIP response. The Cloud Run backfill job is
+  // memory-bounded separately and validates the completed ZIP before reuse.
+  const body = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(target, body);
+  return body.length;
+}
 function rocYear(year) { return Number(year) - 1911; }
 function cleanText(value) {
   return String(value || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
@@ -312,7 +319,7 @@ async function downloadXbrlArchives(options = {}) {
       });
       if (response.status === 404 || response.status === 500) continue;
       if (!response.ok || !response.body) throw new Error(`MOPS XBRL ${year}Q${quarter} HTTP ${response.status}`);
-      await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(`${target}.part`));
+      await writeFetchBody(response, `${target}.part`);
       const signature = Buffer.alloc(4);
       const handle = fs.openSync(`${target}.part`, 'r');
       fs.readSync(handle, signature, 0, 4, 0); fs.closeSync(handle);
@@ -351,7 +358,7 @@ async function downloadXbrlArchive(year, quarter, options = {}) {
       }
       throw new Error(`MOPS XBRL ${year}Q${quarter} HTTP ${response.status}`);
     }
-    await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(`${target}.part`));
+    await writeFetchBody(response, `${target}.part`);
     const signature = Buffer.alloc(4);
     const handle = fs.openSync(`${target}.part`, 'r');
     fs.readSync(handle, signature, 0, 4, 0); fs.closeSync(handle);
