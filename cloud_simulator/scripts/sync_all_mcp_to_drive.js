@@ -23,8 +23,7 @@ async function main() {
     ['twse', 'cloud_simulator/scripts/sync_twse_mcp_to_drive.js'],
     ['mops', 'cloud_simulator/scripts/sync_mops_mcp_to_drive.js'],
     ['yahooFinance', 'cloud_simulator/scripts/sync_yahoo_mcp_to_drive.js'],
-    ['taiwanFinancialNews', 'cloud_simulator/scripts/sync_taiwan_news_mcp_to_drive.js'],
-    ['growthCandidatesTop10', 'cloud_simulator/scripts/sync_growth_candidates_to_drive.js']
+    ['taiwanFinancialNews', 'cloud_simulator/scripts/sync_taiwan_news_mcp_to_drive.js']
   ]) {
     try { results[key] = runNode(script, env); } catch (error) { errors[key] = String(error.message || error); }
   }
@@ -33,12 +32,12 @@ async function main() {
   const audit = {
     schemaVersion: 4, generatedAt: new Date().toISOString(), date, ok, policy: POLICY,
     sourceOrder: ['TWSE_MCP_OR_MOPS_MCP', 'GOOGLE_DRIVE_CACHE', 'YAHOO_FINANCE_MCP_SUPPLEMENT', 'TAIWAN_FINANCIAL_NEWS_MCP_LICENSED_ONLY', 'OTHER_PROVIDER_ONLY_IF_PRIMARY_MISSING'],
-    derivedProducts: ['GROWTH_CANDIDATES_TOP10'],
+    derivedProducts: [],
     overwriteRule: 'Yahoo Finance, media MCPs and other external providers must never overwrite official TWSE/MOPS rows', results, errors
   };
   const filename = `mcp_daily_sync_${date}.json`;
   const saved = await writer.upsertText(filename, `${JSON.stringify(audit, null, 2)}\n`);
-  await writer.upsertText('manifest.json', `${JSON.stringify({ schemaVersion: 4, generatedAt: audit.generatedAt, latestDate: date, latestFile: filename, driveFileId: saved.id, ok, policyMode: POLICY.mode, sources: ['TWSE_MCP', 'MOPS_MCP', 'YAHOO_FINANCE_MCP', 'TAIWAN_FINANCIAL_NEWS_MCP'], derivedProducts: ['GROWTH_CANDIDATES_TOP10'] }, null, 2)}\n`);
+  await writer.upsertText('manifest.json', `${JSON.stringify({ schemaVersion: 4, generatedAt: audit.generatedAt, latestDate: date, latestFile: filename, driveFileId: saved.id, ok, policyMode: POLICY.mode, sources: ['TWSE_MCP', 'MOPS_MCP', 'YAHOO_FINANCE_MCP', 'TAIWAN_FINANCIAL_NEWS_MCP'], derivedProducts: [] }, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({ ok, date, filename, driveFileId: saved.id, results, errors }, null, 2)}\n`);
   if (!ok) process.exitCode = 1;
 }

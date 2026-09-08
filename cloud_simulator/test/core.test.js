@@ -820,6 +820,7 @@ test('dashboard API exposes only read-only dashboard and health routes', async t
   assert.equal(dashboard.status, 200);
   assert.equal((await dashboard.json()).source, 'test');
   assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 200);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/potential-stocks`)).status, 404);
   assert.equal((await fetch(`http://127.0.0.1:${port}/raw/quotes`)).status, 404);
   assert.equal((await fetch(`http://127.0.0.1:${port}/dashboard`, { method: 'POST' })).status, 405);
 });

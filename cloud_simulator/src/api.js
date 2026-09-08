@@ -13,7 +13,6 @@ function storageJsonReader(bucketName, objectName) {
 }
 
 function storageDashboardReader(bucketName) { return storageJsonReader(bucketName, 'public/dashboard.json'); }
-function storagePotentialStocksReader(bucketName) { return storageJsonReader(bucketName, 'public/growth_top10.json'); }
 function storageDataHealthReader(bucketName) { return storageJsonReader(bucketName, 'public/data_health.json'); }
 
 function lazyStorageReader(optionsReader, factory) {
@@ -43,7 +42,6 @@ function deploymentMetadata() {
 
 function createDashboardServer(options = {}) {
   const readDashboard = lazyStorageReader(options.readDashboard, storageDashboardReader);
-  const readPotentialStocks = lazyStorageReader(options.readPotentialStocks, storagePotentialStocksReader);
   const readDataHealth = lazyStorageReader(options.readDataHealth, storageDataHealthReader);
   return http.createServer(async (request, response) => {
     const path = new URL(request.url, 'http://localhost').pathname;
@@ -56,15 +54,6 @@ function createDashboardServer(options = {}) {
       } catch (error) {
         console.warn(JSON.stringify({ event: 'data-health-not-ready', error: String(error) }));
         return json(response, 503, { ok: false, status: 'UNKNOWN', error: 'DATA_HEALTH_NOT_READY', ...deploymentMetadata() });
-      }
-    }
-    if (path === '/potential-stocks') {
-      try {
-        const payload = await readPotentialStocks();
-        return json(response, 200, { ok: true, ...payload, cloudApiAt: new Date().toISOString(), ...deploymentMetadata() });
-      } catch (error) {
-        console.warn(JSON.stringify({ event: 'potential-stocks-not-ready', error: String(error) }));
-        return json(response, 503, { ok: false, error: 'POTENTIAL_STOCKS_NOT_READY', ...deploymentMetadata() });
       }
     }
     if (path !== '/' && path !== '/dashboard') return json(response, 404, { ok: false, error: 'NOT_FOUND' });
@@ -85,4 +74,4 @@ function startDashboardApi() {
   return server;
 }
 
-module.exports = { createDashboardServer, deploymentMetadata, startDashboardApi, storageDashboardReader, storagePotentialStocksReader, storageDataHealthReader };
+module.exports = { createDashboardServer, deploymentMetadata, startDashboardApi, storageDashboardReader, storageDataHealthReader };

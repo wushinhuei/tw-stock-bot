@@ -34,7 +34,6 @@ async function buildReport(options = {}) {
   const today = taipeiDate(now);
   const root = process.env.MCP_DRIVE_PARENT_FOLDER_ID || process.env.TWSE_DRIVE_PARENT_FOLDER_ID || '';
   const mopsParent = process.env.MOPS_DRIVE_PARENT_FOLDER_ID || root;
-  const growthParent = process.env.GROWTH_DRIVE_PARENT_FOLDER_ID || mopsParent;
   const q20Parent = process.env.MOPS_20Q_DRIVE_PARENT_FOLDER_ID || '1oNlmeY46SpjBoZCUUlLCGGu8AV1W-knd';
   const history = new DriveHistorySource();
   const checks = [];
@@ -62,10 +61,6 @@ async function buildReport(options = {}) {
   checks.push(await safeCheck('taiwanFinancialNews', async () => {
     const manifest = await readFolderManifest(root, process.env.TAIWAN_NEWS_DRIVE_FOLDER_NAME || 'TAIWAN_FINANCIAL_NEWS_MCP');
     return { ok: manifest.latestDate === today, latestDate: manifest.latestDate, rowCount: manifest.rowCount, status: manifest.latestDate === today ? 'complete' : 'stale' };
-  }));
-  checks.push(await safeCheck('potentialTop10', async () => {
-    const manifest = await readFolderManifest(growthParent, process.env.GROWTH_DRIVE_FOLDER_NAME || 'GROWTH_CANDIDATES_TOP10');
-    return { ok: manifest.latestDate === today && Number(manifest.count || 0) > 0, latestDate: manifest.latestDate, count: manifest.count, status: manifest.latestDate === today ? 'complete' : 'stale' };
   }));
   checks.push(await safeCheck('mops20Q', async () => {
     const manifest = await readFolderManifest(q20Parent, process.env.MOPS_20Q_DRIVE_FOLDER_NAME || '20Q_MCP_PRIMARY');

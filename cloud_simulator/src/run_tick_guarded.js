@@ -58,7 +58,6 @@ async function main() {
   console.log(JSON.stringify({
     event: result?.skipped ? 'tick-skipped' : 'run-complete', testMode: result?.testMode === true, dryRun: result?.testMode === true,
     generatedAt: result?.generatedAt, reason: result?.reason, positionsMonitored: Array.isArray(result?.positionMonitors) ? result.positionMonitors.length : 0,
-    candidatesVisible: Array.isArray(result?.potentialStocks) ? result.potentialStocks.length : null,
     pretradeReady: result?.pretradeReadiness?.ready ?? false, dataHealth: result?.dataHealth?.status || 'UNKNOWN',
     top100Complete: result?.pretradeReadiness?.completeCount ?? 0, top100Incomplete: result?.pretradeReadiness?.incompleteCount ?? 0,
   }));
