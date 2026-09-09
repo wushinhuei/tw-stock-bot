@@ -18,7 +18,8 @@ function normalizeItem(item, sourceConfig) {
   const normalized = {
     source: sourceConfig.source, title, summary, url, publishedAt, fetchedAt: new Date().toISOString(),
     acquisitionMethod: String(item?.acquisitionMethod || 'LICENSED_API').toUpperCase(), relatedSymbols,
-    top100Related: item?.top100Related === true, marketScope: item?.marketScope || item?.scope || null,
+    top50Related: item?.top50Related === true || item?.top100Related === true,
+    top100Related: item?.top50Related === true || item?.top100Related === true, marketScope: item?.marketScope || item?.scope || null,
     eventKey: item?.eventKey || crypto.createHash('sha256').update(`${sourceConfig.source}|${title}|${publishedAt}`).digest('hex').slice(0, 24),
     hash: crypto.createHash('sha256').update(`${url}|${title}|${publishedAt}`).digest('hex'), ...classification
   };
@@ -50,7 +51,7 @@ async function fetchJsonEndpoint(name, endpoint, options = {}) {
   const rows = scopeMode === 'GROWTH_DISCOVERY' ? normalized : normalized.filter(row => row.eligible);
   return {
     source: config.source, status: 'OK', rows, suppressedCount: rawRows.length - rows.length,
-    policy: scopeMode === 'GROWTH_DISCOVERY' ? 'MARKET_WIDE_GROWTH_DISCOVERY' : 'TOP100_RELATED_OR_GLOBAL_MAJOR_ONLY', licensedOnly: true
+    policy: scopeMode === 'GROWTH_DISCOVERY' ? 'MARKET_WIDE_GROWTH_DISCOVERY' : 'TOP50_RELATED_OR_GLOBAL_MAJOR_ONLY', licensedOnly: true
   };
 }
 
@@ -62,7 +63,7 @@ class TaiwanNewsMcp {
   }
   listTools() {
     return { tools: [
-      { name: 'taiwan_financial_news', description: 'Read licensed Taiwan financial news metadata. Trading-risk mode keeps Top100/global-major only; growth-discovery mode allows market-wide discovery.', inputSchema: { type: 'object', properties: { source: { type: 'string', enum: ['ALL', 'UDN_ECONOMIC_DAILY', 'CTEE'] }, scopeMode: { type: 'string', enum: ['TRADING_RISK', 'GROWTH_DISCOVERY'] } } } },
+      { name: 'taiwan_financial_news', description: 'Read licensed Taiwan financial news metadata. Trading-risk mode keeps Top50/global-major only; growth-discovery mode allows market-wide discovery.', inputSchema: { type: 'object', properties: { source: { type: 'string', enum: ['ALL', 'UDN_ECONOMIC_DAILY', 'CTEE'] }, scopeMode: { type: 'string', enum: ['TRADING_RISK', 'GROWTH_DISCOVERY'] } } } },
       { name: 'taiwan_financial_news_sources', description: 'Show configured licensed Taiwan financial news MCP sources.', inputSchema: { type: 'object', properties: {} } }
     ] };
   }
@@ -79,7 +80,7 @@ class TaiwanNewsMcp {
       if (result.status === 'fulfilled') { sources.push({ key, ...result.value, rows: undefined }); rows.push(...(result.value.rows || [])); }
       else errors.push({ key, error: String(result.reason) });
     });
-    return { structuredContent: { status: errors.length ? 'PARTIAL' : 'OK', rows: deduplicateNews(rows), sources, errors, policy: scopeMode === 'GROWTH_DISCOVERY' ? 'MARKET_WIDE_GROWTH_DISCOVERY' : 'TOP100_RELATED_OR_GLOBAL_MAJOR_ONLY', licensedOnly: true } };
+    return { structuredContent: { status: errors.length ? 'PARTIAL' : 'OK', rows: deduplicateNews(rows), sources, errors, policy: scopeMode === 'GROWTH_DISCOVERY' ? 'MARKET_WIDE_GROWTH_DISCOVERY' : 'TOP50_RELATED_OR_GLOBAL_MAJOR_ONLY', licensedOnly: true } };
   }
 }
 

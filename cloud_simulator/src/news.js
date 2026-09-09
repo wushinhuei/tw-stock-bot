@@ -62,14 +62,16 @@ function isMajorInternationalEvent(item) {
 }
 
 function newsScopeDecision(item) {
-  const top100Related = item?.top100Related === true || item?.inTop100 === true || item?.poolRelevant === true;
+  const top50Related = item?.top50Related === true || item?.inTop50 === true
+    || item?.top100Related === true || item?.inTop100 === true || item?.poolRelevant === true;
   const globalMajor = isMajorInternationalEvent(item);
   return {
-    eligible: top100Related || globalMajor,
-    top100Related,
+    eligible: top50Related || globalMajor,
+    top50Related,
+    top100Related: top50Related,
     globalMajor,
     relatedSymbols: normalizeSymbols(item?.relatedSymbols || item?.symbols || item?.stockCodes),
-    reason: top100Related ? 'TOP100_RELATED' : globalMajor ? 'GLOBAL_MAJOR_EVENT' : 'OUTSIDE_TOP100_AND_NOT_GLOBAL_MAJOR'
+    reason: top50Related ? 'TOP50_RELATED' : globalMajor ? 'GLOBAL_MAJOR_EVENT' : 'OUTSIDE_TOP50_AND_NOT_GLOBAL_MAJOR'
   };
 }
 
@@ -151,7 +153,7 @@ function scoreTaiwanMedia(items, officialEventKeys = [], now = new Date()) {
     eventKey: item.eventKey || null,
     sources: item.source ? [item.source] : [],
     scored: false,
-    reason: '非Top100相關新聞且非國際重大事件，忽略'
+    reason: '非Top50相關新聞且非國際重大事件，忽略'
   }));
   for (const [eventKey, rows] of groups.entries()) {
     const officialConfirmed = officialEventKeys.includes(eventKey);
@@ -171,7 +173,7 @@ function scoreTaiwanMedia(items, officialEventKeys = [], now = new Date()) {
       eventKey,
       sources: rows.map(row => row.source),
       scored: true,
-      scope: rows.some(isMajorInternationalEvent) ? 'GLOBAL_MAJOR_EVENT' : 'TOP100_RELATED',
+      scope: rows.some(isMajorInternationalEvent) ? 'GLOBAL_MAJOR_EVENT' : 'TOP50_RELATED',
       delta: Math.round(delta * 100) / 100
     });
   }
@@ -180,7 +182,7 @@ function scoreTaiwanMedia(items, officialEventKeys = [], now = new Date()) {
     evidence,
     acceptedCount: accepted.length,
     suppressedCount: suppressed.length,
-    policy: 'TOP100_RELATED_OR_GLOBAL_MAJOR_ONLY'
+    policy: 'TOP50_RELATED_OR_GLOBAL_MAJOR_ONLY'
   };
 }
 

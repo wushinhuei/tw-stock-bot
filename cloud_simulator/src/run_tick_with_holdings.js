@@ -9,7 +9,7 @@ const { isTwseTradingDay } = require('./trading_calendar');
 const { enrichCandidatesWithLiveScores } = require('./live_scoring');
 const { triggerStaticBackupOnTrades } = require('./static_backup');
 
-const MAX_OPEN_POSITIONS = 5;
+const MAX_OPEN_POSITIONS = Number(CONFIG.maxOpenPositions || 5);
 const MIN_NEW_ENTRY_GRADE = 'A';
 const CANDIDATE_RANKING_INTERVAL_MINUTES = Number(CONFIG.candidateRankingIntervalMinutes || 60);
 
@@ -57,11 +57,13 @@ async function loadHourlyCandidateRanking(repository, options, now) {
     };
   }
 
-  if (previous?.rankingKey === rankingKey && Array.isArray(previous.candidates) && previous.candidates.length) {
+  const cacheMatchesPolicy = Number(previous?.sourcePoolSize) === Number(CONFIG.candidateSelectionPoolLimit)
+    && Number(previous?.limit) === Number(CONFIG.maxCandidates);
+  if (previous?.rankingKey === rankingKey && cacheMatchesPolicy && Array.isArray(previous.candidates) && previous.candidates.length) {
     return { candidates: previous.candidates, cache: previous, refreshed: false };
   }
 
-  const fresh = await loadCandidates();
+  const fresh = await (options.loadCandidates || loadCandidates)();
   if (Array.isArray(fresh) && fresh.length) {
     const cache = {
       rankingKey,
@@ -167,7 +169,7 @@ function decorateDashboard(dashboard, positionMonitors, candidateRanking) {
   };
   dashboard.candidatePolicy = {
     purpose: 'WATCHLIST_ONLY',
-    source: 'TWSE_TOP_VOLUME_100',
+    source: 'TWSE_TOP_VOLUME_50',
     sourcePoolSize: CONFIG.candidateSelectionPoolLimit,
     displayLimit: CONFIG.maxCandidates,
     rankingIntervalMinutes: CANDIDATE_RANKING_INTERVAL_MINUTES,
@@ -213,7 +215,7 @@ async function runTickWithHoldings(options = {}) {
   const engine = options.engine || new SimulationEngine({ config: CONFIG, repository });
   await engine.restore();
 
-  // 候選觀察名單與交易判斷分開：從成交量 Top100 建池，每小時只重新排序一次並固定該小時的30檔名單。
+  // 候選觀察名單與交易判斷分開：從成交量 Top50 建池，每小時只重新排序一次並固定該小時的10檔名單。
   const ranking = await loadHourlyCandidateRanking(repository, options, now);
   let watchlistCandidates = ranking.candidates;
 

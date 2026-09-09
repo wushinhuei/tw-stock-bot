@@ -74,8 +74,8 @@ test('score totals 100 points at most and maps A/B/C thresholds', () => {
   assert.equal(result.metrics.obv.bullish, true);
 });
 
-test('scanner selects final 30 from volume top 50 using 50% chip weight across industries', () => {
-  assert.equal(CONFIG.topVolumeLimit, 30);
+test('scanner selects final 10 from volume top 50 using 50% chip weight across industries', () => {
+  assert.equal(CONFIG.topVolumeLimit, 10);
   assert.equal(CONFIG.candidateSelectionPoolLimit, 50);
   assert.deepEqual(CONFIG.candidateSelectionWeights, { chip: 0.50, volume: 0.30, momentum: 0.20 });
   const rows = Array.from({ length: 60 }, (_, i) => ({
@@ -85,7 +85,7 @@ test('scanner selects final 30 from volume top 50 using 50% chip weight across i
   const enrichment = Object.fromEntries(rows.map(row => [row.symbol, { chipOk: false, changePct: 0 }]));
   enrichment['1040'] = { chipOk: true, changePct: 0.05 };
   const result = buildUniverse(rows, enrichment);
-  assert.equal(result.length, 30);
+  assert.equal(result.length, 10);
   assert.ok(result.every(row => row.market === 'TWSE' && row.securityType === 'COMMON_STOCK'));
   assert.ok(result.some(row => row.group === '金融'));
   assert.ok(result.some(row => row.group === '半導體'));
@@ -361,7 +361,7 @@ test('Cloud live scoring computes OBV and blocks incomplete technical data', asy
   assert.match(incomplete.blockedReasons.join(','), /OBV不足/);
 });
 
-test('Apps Script scenario adapter accepts weighted selections from ranks 31-50 and enforces final 30', () => {
+test('Apps Script scenario adapter accepts weighted selections from Top50 and enforces final 10', () => {
   const candidate = rank => ({
     symbol: String(2300 + rank), name: '測試股', group: '半導體', price: 100, bidPrice: 99.9, askPrice: 100,
     grade: 'A', dayTradeOk: false, overnightOk: false, industryOk: true, fundamentalOk: true,
@@ -371,7 +371,7 @@ test('Apps Script scenario adapter accepts weighted selections from ranks 31-50 
   const rows = [candidate(5), candidate(30), candidate(40), candidate(51), ...Array.from({ length: 28 }, (_, i) => candidate(i + 1))];
   const result = adaptCandidatePayload({ generatedAt: '2026-08-21T03:52:52Z', scenario: [{ date: '2026-08-21', candidates: rows }] }, { time: '11:52' });
   assert.equal(result.mode, 'APPS_SCRIPT_SCENARIO');
-  assert.equal(result.candidates.length, 30);
+  assert.equal(result.candidates.length, 10);
   assert.equal(result.candidates[0].metrics.volumeRank, 5);
   assert.equal(result.candidates[1].metrics.volumeRank, 30);
   assert.equal(result.candidates[2].metrics.volumeRank, 40);
@@ -547,12 +547,12 @@ test('T+2 skips weekends and ledger does not count open orders', () => {
   assert.equal(ledger[0].sellReceivable, 0);
 });
 
-test('40% cash reserve and settlement reserve constrain entry budget', () => {
+test('30% cash reserve and settlement reserve constrain entry budget', () => {
   const account = createAccount(100000);
   account.bankCash = 45000;
   account.cash = 45000;
   account.equity = 100000;
-  assert.equal(maxEntryBudget(account, 'SWING', CONFIG), 5000);
+  assert.equal(maxEntryBudget(account, 'SWING', CONFIG), 10000);
   account.settlements = [{ date: '2026-08-25', netPayable: 5000 }];
   assert.equal(availableToBuy(account, CONFIG), 35000);
 });

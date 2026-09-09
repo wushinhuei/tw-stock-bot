@@ -12,10 +12,10 @@ window.CLOUD_DASHBOARD_ENDPOINT = 'https://tw-stock-dashboard-api-702657072551.a
 })();
 
 (function installCandidateWatchlistCopy() {
-  function applyCopy(){const summary=document.querySelector('#candidateUniverseSummary');if(summary)summary.textContent='先由 TWSE 上市普通股依流動性建立 Top100 可交易母池，再以籌碼30%、技術30%、基本面25%、新聞／事件15%做綜合排序；每小時重新排序一次並顯示前30檔。此名單僅供觀察，不代表要進行任何買賣操作。';const panel=document.querySelector('#candidateUniverse')?.closest('.scanner-panel');const title=panel?.querySelector('h2');if(title)title.textContent='今日觀察候選30檔';}applyCopy();window.addEventListener('load',applyCopy);
+  function applyCopy(){const summary=document.querySelector('#candidateUniverseSummary');if(summary)summary.textContent='先由 TWSE 上市普通股依流動性建立 Top50 可交易母池，再依完整心法指標做綜合排序；每小時重新排序一次並顯示前10檔。此名單僅供觀察，不代表要進行任何買賣操作。';const panel=document.querySelector('#candidateUniverse')?.closest('.scanner-panel');const title=panel?.querySelector('h2');if(title)title.textContent='今日觀察候選10檔';}applyCopy();window.addEventListener('load',applyCopy);
 })();
 
-// 全系統資料健康狀態：行情、Top100、法人/融資、MOPS、20季與新聞都必須通過。
+// 全系統資料健康狀態：行情、Top50、法人/融資、MOPS、20季與新聞都必須通過。
 (function installGlobalDataHealth() {
   function endpoint(){return String(window.CLOUD_DASHBOARD_ENDPOINT||'').replace(/\/dashboard\/?$/i,'/data-health');}
   function mount(){let node=document.querySelector('#globalDataHealth');if(node)return node;const anchor=document.querySelector('#lastUpdatedAt')||document.querySelector('.top-actions');if(!anchor)return null;node=document.createElement('div');node.id='globalDataHealth';node.style.cssText='grid-column:1/-1;font-size:12px;line-height:1.5;padding:6px 9px;border-radius:7px;background:#f3f6f9;color:#526174;';if(anchor.id==='lastUpdatedAt')anchor.insertAdjacentElement('afterend',node);else anchor.appendChild(node);return node;}

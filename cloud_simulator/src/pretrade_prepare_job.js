@@ -1,6 +1,6 @@
 'use strict';
 
-const { preparePretradeTop100 } = require('./pretrade_prepare');
+const { preparePretradeTop50 } = require('./pretrade_prepare');
 const { repositoryFromEnvironment } = require('./main');
 
 async function saveReadiness(repository, report) {
@@ -20,7 +20,7 @@ async function saveReadiness(repository, report) {
 async function runPretradePrepareJob(options = {}) {
   const now = options.now || new Date();
   const repository = options.repository || repositoryFromEnvironment();
-  const report = await preparePretradeTop100({ now });
+  const report = await preparePretradeTop50({ now });
   await saveReadiness(repository, report);
   return report;
 }
@@ -32,7 +32,7 @@ async function main() {
     generatedAt: report.generatedAt,
     ready: report.ready,
     dataTradeDate: report.dataTradeDate || null,
-    activeTop100Count: report.activeTop100Count,
+    activeTop50Count: report.activeTop50Count,
     completeCount: report.completeCount,
     incompleteCount: report.incompleteCount,
     incompleteSymbols: report.incompleteSymbols,

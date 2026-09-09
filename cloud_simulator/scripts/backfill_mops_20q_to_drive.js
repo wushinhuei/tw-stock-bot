@@ -25,12 +25,14 @@ function normalizeSymbol(value) {
   return match ? match[0] : '';
 }
 
-function activeTop100Symbols(universeRows, options = {}) {
+function activeTop50Symbols(universeRows, options = {}) {
   const requested = new Set((options.requestedSymbols || []).map(normalizeSymbol).filter(Boolean));
-  let symbols = [...new Set((universeRows || [])
-    .filter(row => row.active_top100 === true && /^[1-9]\d{3}$/.test(normalizeSymbol(row.stock_code || row.symbol))
+  const activeRows = (universeRows || [])
+    .filter(row => (row.active_top50 === true || (row.active_top50 == null && row.active_top100 === true)) && /^[1-9]\d{3}$/.test(normalizeSymbol(row.stock_code || row.symbol))
       && !/^91/.test(normalizeSymbol(row.stock_code || row.symbol)) && !/-DR\b/i.test(String(row.stock_name || '')))
-    .map(row => normalizeSymbol(row.stock_code || row.symbol)).filter(Boolean))].sort();
+    .sort((a, b) => Number(a.current_top50_rank || a.current_top100_rank || 9999) - Number(b.current_top50_rank || b.current_top100_rank || 9999))
+    .slice(0, 50);
+  let symbols = [...new Set(activeRows.map(row => normalizeSymbol(row.stock_code || row.symbol)).filter(Boolean))].sort();
   if (requested.size) symbols = symbols.filter(symbol => requested.has(symbol));
   const limit = Number(options.limit || 0);
   if (Number.isInteger(limit) && limit > 0) symbols = symbols.slice(0, limit);
@@ -182,7 +184,7 @@ async function main() {
   const universeRows = await history.analysisUniverse();
   const requestedSymbols = String(process.env.MOPS_20Q_SYMBOLS || '').split(',');
   const symbolLimit = Number(process.env.MOPS_20Q_SYMBOL_LIMIT || 0);
-  const symbols = activeTop100Symbols(universeRows, { requestedSymbols, limit: symbolLimit });
+  const symbols = activeTop50Symbols(universeRows, { requestedSymbols, limit: symbolLimit });
   if (!symbols.length) throw new Error('analysis universe is empty');
 
   const latest = latestReportableQuarter(asOf);
@@ -262,7 +264,7 @@ async function main() {
     sourcePolicy: 'MOPS_MCP_PRIMARY',
     sourceProvider: 'MOPS official XBRL archive through MopsMcpHistory bulk provider',
     timingPolicy: 'Exact filing availability when present; otherwise conservative statutory deadline plus one day',
-    universeSource: 'Google Drive analysis_universe.jsonl where active_top100=true',
+    universeSource: 'Google Drive analysis_universe.jsonl where active_top50=true',
     universeSymbols: symbols.length,
     universeSha256: stableHash(symbols),
     quarterCount,
@@ -286,6 +288,6 @@ async function main() {
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
 
 module.exports = {
-  CORE_METRICS, FLOW_METRICS, INSTANT_METRICS, activeTop100Symbols, latestReportableQuarter, metricCoverage,
+  CORE_METRICS, FLOW_METRICS, INSTANT_METRICS, activeTop50Symbols, activeTop100Symbols: activeTop50Symbols, latestReportableQuarter, metricCoverage,
   normalizeQuarterlyRows, previousQuarter, quarterEndDate, quarterKey, quarterStartDate, quarterWindow, stableHash
 };

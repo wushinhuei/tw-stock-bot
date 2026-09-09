@@ -21,7 +21,7 @@ async function main() {
     generatedAt: now.toISOString(),
     date,
     sourcePolicy: 'TAIWAN_FINANCIAL_NEWS_MCP_LICENSED_ONLY',
-    scoringScope: 'TOP100_RELATED_OR_GLOBAL_MAJOR_ONLY',
+    scoringScope: 'TOP50_RELATED_OR_GLOBAL_MAJOR_ONLY',
     rows: result.rows || [],
     sources: result.sources || [],
     errors: result.errors || []

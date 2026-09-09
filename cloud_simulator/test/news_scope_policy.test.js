@@ -14,7 +14,7 @@ function media(overrides = {}) {
   };
 }
 
-test('ordinary news outside Top100 is suppressed from alerts and scoring', () => {
+test('ordinary news outside Top50 is suppressed from alerts and scoring', () => {
   const item = media({ top100Related: false, riskLevel: 'MEDIUM' });
   assert.equal(newsScopeDecision(item).eligible, false);
   const scored = scoreTaiwanMedia([item], [], now);
@@ -23,7 +23,7 @@ test('ordinary news outside Top100 is suppressed from alerts and scoring', () =>
   assert.equal(scored.modifier, 0);
 });
 
-test('Top100-related news remains eligible for corroborated scoring', () => {
+test('Top50-related news remains eligible for corroborated scoring', () => {
   const rows = [
     media({ top100Related: true, source: '中央通訊社', url: 'https://example.com/a' }),
     media({ top100Related: true, source: '經濟日報', acquisitionMethod: 'MANUAL', url: 'https://example.com/b' })
@@ -31,10 +31,10 @@ test('Top100-related news remains eligible for corroborated scoring', () => {
   const scored = scoreTaiwanMedia(rows, [], now);
   assert.equal(scored.acceptedCount, 2);
   assert.ok(scored.modifier > 0);
-  assert.ok(scored.evidence.some(row => row.scored && row.scope === 'TOP100_RELATED'));
+  assert.ok(scored.evidence.some(row => row.scored && row.scope === 'TOP50_RELATED'));
 });
 
-test('major international event is eligible even when unrelated to a specific Top100 stock', () => {
+test('major international event is eligible even when unrelated to a specific Top50 stock', () => {
   const rows = [
     media({ eventKey: 'global-war', top100Related: false, marketScope: 'GLOBAL', riskLevel: 'HIGH', title: 'Major war escalation triggers energy shock', sentiment: 'NEGATIVE', source: '中央通訊社', url: 'https://example.com/g1' }),
     media({ eventKey: 'global-war', top100Related: false, marketScope: 'GLOBAL', riskLevel: 'HIGH', title: 'Major war escalation triggers energy shock', sentiment: 'NEGATIVE', source: '經濟日報', acquisitionMethod: 'MANUAL', url: 'https://example.com/g2' })

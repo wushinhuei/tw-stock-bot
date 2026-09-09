@@ -18,7 +18,7 @@ const CONFIG = {
   boardLot: 1,
   standardPositionPct: 0.10,
   halfPositionPct: 0.05,
-  minCashReservePct: 0.4,
+  minCashReservePct: 0.3,
   cashCautionPct: 0.4,
   dailyStopLossPct: -0.02,
   dailySoftStopLossPct: -0.005,
@@ -36,10 +36,11 @@ const CONFIG = {
   maxChasePct: 0.003,
   maxMarketOrderSpreadPct: 0.002,
   maxLimitOrderSpreadPct: 0.006,
-  rawVolumeReviewLimit: 100,
+  rawVolumeReviewLimit: 50,
   candidateSelectionPoolLimit: 50,
-  topVolumeLimit: 30,
-  maxScanCandidates: 30,
+  topVolumeLimit: 10,
+  maxScanCandidates: 10,
+  maxOpenPositions: 5,
   candidateChipWeight: 0.50,
   candidateVolumeWeight: 0.30,
   candidateMomentumWeight: 0.20,
@@ -83,10 +84,11 @@ const STRATEGY_SETTINGS = [
   ['maxChasePct', '追價上限', 'number', CONFIG.maxChasePct, '最多追價幅度'],
   ['maxMarketOrderSpreadPct', '市價允許價差', 'number', CONFIG.maxMarketOrderSpreadPct, '價差小於此值才允許類市價'],
   ['maxLimitOrderSpreadPct', '限價最大價差', 'number', CONFIG.maxLimitOrderSpreadPct, '價差超過此值不進場'],
-  ['rawVolumeReviewLimit', '成交量原始檢討筆數', 'number', CONFIG.rawVolumeReviewLimit, '每日先檢討成交量前 100 名'],
+  ['rawVolumeReviewLimit', '成交量原始檢討筆數', 'number', CONFIG.rawVolumeReviewLimit, '每日先檢討成交量前 50 名'],
   ['candidateSelectionPoolLimit', '候選篩選母體筆數', 'number', CONFIG.candidateSelectionPoolLimit, '由成交量前 50 名進行籌碼加權篩選'],
-  ['topVolumeLimit', '最終候選筆數', 'number', CONFIG.topVolumeLimit, '籌碼加權後保留 30 名'],
+  ['topVolumeLimit', '最終候選筆數', 'number', CONFIG.topVolumeLimit, '綜合排序後保留 10 名'],
   ['maxScanCandidates', '掃描候選上限', 'number', CONFIG.maxScanCandidates, '最多分析幾檔'],
+  ['maxOpenPositions', '最多持有股票數', 'number', CONFIG.maxOpenPositions, '新買進後最多同時持有 5 檔'],
   ['candidateChipWeight', '候選籌碼權重', 'number', CONFIG.candidateChipWeight, '候選排序占 50%，不改正式籌碼 15 分'],
   ['candidateVolumeWeight', '候選成交量權重', 'number', CONFIG.candidateVolumeWeight, '候選排序占 30%'],
   ['candidateMomentumWeight', '候選價格動能權重', 'number', CONFIG.candidateMomentumWeight, '候選排序占 20%'],
@@ -232,7 +234,7 @@ function readLatestCandidateUniverse() {
   const latest = (manifest.raw_ranking_files || []).slice().sort(function(a, b) {
     return String(b.latest_trade_date || '').localeCompare(String(a.latest_trade_date || ''));
   })[0];
-  if (!latest || !latest.file_id) throw new Error('尚無成交量前 100 名原始排名檔');
+  if (!latest || !latest.file_id) throw new Error('尚無成交量前 50 名原始排名檔');
   const lines = historyReadText(latest.file_id).replace(/^\uFEFF/, '').trim().split(/\r?\n/);
   const header = historyParseCsvLine(lines[0]);
   const rows = lines.slice(1).map(historyParseCsvLine).filter(function(row) {
@@ -240,7 +242,7 @@ function readLatestCandidateUniverse() {
   }).slice(0, CONFIG.topVolumeLimit);
   return {
     ok: true, tradeDate: latest.latest_trade_date,
-    reviewedCount: Number(manifest.selection_source_count || 100), selectedCount: rows.length,
+    reviewedCount: Number(manifest.selection_source_count || 50), selectedCount: rows.length,
     limit: CONFIG.topVolumeLimit,
     generatedAt: latest.updated_at || manifest.generated_at,
     items: rows.map(function(row) {
@@ -478,13 +480,14 @@ function ensureStrategySettingsSheet(workbook) {
     const key = setting[0];
     const current = existingByKey[key];
     const row = current ? current.row : [];
-    const migrateCandidateLimit = key === 'topVolumeLimit'
-      && Number(row[2]) > Number(setting[3])
-      && Number(row[4]) >= Number(setting[3]);
-    const value = migrateCandidateLimit
+    const forcePolicyValue = [
+      'minCashReservePct', 'rawVolumeReviewLimit', 'candidateSelectionPoolLimit',
+      'topVolumeLimit', 'maxScanCandidates', 'maxOpenPositions'
+    ].indexOf(key) >= 0 && Number(row[2]) !== Number(setting[3]);
+    const value = forcePolicyValue
       ? setting[3]
       : (row[2] !== '' && row[2] != null ? row[2] : setting[3]);
-    const output = [key, setting[1], value, setting[2], setting[3], setting[4], migrateCandidateLimit ? now : (row[6] || now)];
+    const output = [key, setting[1], value, setting[2], setting[3], setting[4], forcePolicyValue ? now : (row[6] || now)];
     if (current) sheet.getRange(current.index, 1, 1, headers.length).setValues([output]);
     else sheet.appendRow(output);
   });
@@ -1139,7 +1142,7 @@ function candidateFromHeldPosition(position, item, quote, previousDay) {
     bidPrice: bidPrice,
     askPrice: askPrice,
     grade: 'C',
-    reason: '既有持倉補報價；未列入今日成交量前 100 名目標族群掃描',
+    reason: '既有持倉補報價；未列入今日成交量前 50 名目標族群掃描',
     stopPrice: position.stopPrice || round2(price * 0.98),
     targetPrice: position.targetPrice || round2(price * 1.08),
     dayTradeOk: false,
@@ -2313,6 +2316,7 @@ function buyByRules(account, day, marketState) {
   day.candidates.filter(function(candidate) {
     return canOpenPosition(candidate, marketState, account);
   }).forEach(function(candidate) {
+    if (account.positions.length >= CONFIG.maxOpenPositions) return;
     if (account.positions.some(function(position) { return position.symbol === candidate.symbol; })) return;
     const budget = accountEquity(account, day) * (throttle.reduceSize ? Math.min(positionPct(candidate, account), CONFIG.halfPositionPct) : positionPct(candidate, account));
     const buyPrice = executionBuyPrice(candidate);

@@ -46,10 +46,10 @@ async function loadMopsCoverage(source, now) {
   };
 }
 
-async function preparePretradeTop100(options = {}) {
+async function preparePretradeTop50(options = {}) {
   const now = options.now || new Date();
   const source = options.driveSource || new DriveHistorySource();
-  const expectedCount = Number(options.expectedCount || CONFIG.candidateSelectionPoolLimit || 100);
+  const expectedCount = Number(options.expectedCount || CONFIG.candidateSelectionPoolLimit || 50);
   const minDailyBars = Number(options.minDailyBars || 50);
   const start = monthsBefore(now, 18);
 
@@ -67,8 +67,8 @@ async function preparePretradeTop100(options = {}) {
   try { mops = await loadMopsCoverage(source, now); } catch (error) { globalErrors.push(`mops:${error}`); }
 
   const active = (universe || [])
-    .filter(row => row.active_top100)
-    .sort((a, b) => Number(a.current_top100_rank || 9999) - Number(b.current_top100_rank || 9999))
+    .filter(row => row.active_top50 === true || (row.active_top50 == null && row.active_top100 === true))
+    .sort((a, b) => Number(a.current_top50_rank || a.current_top100_rank || 9999) - Number(b.current_top50_rank || b.current_top100_rank || 9999))
     .slice(0, expectedCount);
 
   const tradeDate = analysisStatus?.tradeDate || analysisStatus?.latestSuccessfulTradeDate || null;
@@ -94,7 +94,7 @@ async function preparePretradeTop100(options = {}) {
     return {
       symbol,
       name: row.stock_name || symbol,
-      rank: Number(row.current_top100_rank || 0) || null,
+      rank: Number(row.current_top50_rank || row.current_top100_rank || 0) || null,
       ready: missing.size === 0,
       missing: [...missing],
       dailyBars: dailyBars.length,
@@ -109,6 +109,8 @@ async function preparePretradeTop100(options = {}) {
     ready,
     generatedAt: now.toISOString(),
     dataTradeDate: tradeDate,
+    expectedTop50Count: expectedCount,
+    activeTop50Count: active.length,
     expectedTop100Count: expectedCount,
     activeTop100Count: active.length,
     completeCount,
@@ -121,7 +123,7 @@ async function preparePretradeTop100(options = {}) {
       chip: '前一交易日以前的法人／融資融券／借券資料可用',
       fundamental: '公司基本資料＋月營收＋最近可得季度財報',
       news: 'MOPS重大訊息／申報事件資料集更新完成；沒有個股新聞本身不視為缺資料',
-      tradingGate: 'Top100未全數完成盤前資料準備時，禁止新增買進；既有持倉仍照常監控與出場',
+      tradingGate: 'Top50未全數完成盤前資料準備時，禁止新增買進；既有持倉仍照常監控與出場',
     },
     checks,
   };
@@ -129,7 +131,7 @@ async function preparePretradeTop100(options = {}) {
 
 function blockEntriesForPretradeReadiness(candidates, report) {
   if (report?.ready) return candidates;
-  const reason = 'Top100盤前資料尚未全部補齊，暫停新增買進';
+  const reason = 'Top50盤前資料尚未全部補齊，暫停新增買進';
   return (candidates || []).map(candidate => ({
     ...candidate,
     grade: 'BLOCKED',
@@ -140,4 +142,5 @@ function blockEntriesForPretradeReadiness(candidates, report) {
   }));
 }
 
-module.exports = { blockEntriesForPretradeReadiness, preparePretradeTop100 };
+const preparePretradeTop100 = preparePretradeTop50;
+module.exports = { blockEntriesForPretradeReadiness, preparePretradeTop50, preparePretradeTop100 };

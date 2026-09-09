@@ -4,7 +4,7 @@ const { enrichCandidatesWithLiveScores } = require('./live_scoring');
 const { readDataHealth, isDataHealthy } = require('./data_health');
 const { repositoryFromEnvironment } = require('./main');
 const { MemoryRepository } = require('./repository');
-const { blockEntriesForPretradeReadiness, preparePretradeTop100 } = require('./pretrade_prepare');
+const { blockEntriesForPretradeReadiness, preparePretradeTop50 } = require('./pretrade_prepare');
 const { runTickWithHoldings } = require('./run_tick_with_holdings');
 
 function buildSafeTestNow(realNow = new Date()) {
@@ -23,7 +23,7 @@ async function runGuardedTick(options = {}) {
   const repository = testMode ? new MemoryRepository(await realRepository.loadState().catch(() => ({}))) : realRepository;
   const now = options.now || (testMode ? buildSafeTestNow() : new Date());
 
-  const report = await preparePretradeTop100({ now }).catch(error => ({
+  const report = await preparePretradeTop50({ now }).catch(error => ({
     ready: false, generatedAt: now.toISOString(), globalErrors: [`pretrade_prepare:${error}`], incompleteSymbols: [],
     policy: { tradingGate: '盤前資料準備失敗時禁止新增買進；既有持倉仍照常監控與出場' },
   }));
@@ -46,7 +46,7 @@ async function runGuardedTick(options = {}) {
     result.dataHealth = report.globalDataHealth;
     result.pretradeReadiness = {
       ready: report.ready, generatedAt: report.generatedAt, dataTradeDate: report.dataTradeDate || null,
-      activeTop100Count: report.activeTop100Count ?? null, completeCount: report.completeCount ?? null,
+      activeTop50Count: report.activeTop50Count ?? report.activeTop100Count ?? null, completeCount: report.completeCount ?? null,
       incompleteCount: report.incompleteCount ?? null, incompleteSymbols: report.incompleteSymbols || [], globalErrors: report.globalErrors || [],
     };
   }
@@ -59,7 +59,7 @@ async function main() {
     event: result?.skipped ? 'tick-skipped' : 'run-complete', testMode: result?.testMode === true, dryRun: result?.testMode === true,
     generatedAt: result?.generatedAt, reason: result?.reason, positionsMonitored: Array.isArray(result?.positionMonitors) ? result.positionMonitors.length : 0,
     pretradeReady: result?.pretradeReadiness?.ready ?? false, dataHealth: result?.dataHealth?.status || 'UNKNOWN',
-    top100Complete: result?.pretradeReadiness?.completeCount ?? 0, top100Incomplete: result?.pretradeReadiness?.incompleteCount ?? 0,
+    top50Complete: result?.pretradeReadiness?.completeCount ?? 0, top50Incomplete: result?.pretradeReadiness?.incompleteCount ?? 0,
   }));
 }
 

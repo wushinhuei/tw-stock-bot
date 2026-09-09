@@ -18,7 +18,10 @@ function stockEntries(rows) {
 
 function buildAnalysisUniverseIndex(options = {}) {
   const previous = new Map(stockEntries(options.previous));
-  const current = new Map(stockEntries(options.currentTop100));
+  const currentRows = stockEntries(options.currentTop50 || options.currentTop100)
+    .sort((a, b) => Number(a[1].rank || 9999) - Number(b[1].rank || 9999))
+    .slice(0, 50);
+  const current = new Map(currentRows);
   const historicalTop50 = new Set((options.historicalTop50Codes || []).map(normalizeCode).filter(code => isListedCommonStock(code)));
   for (const [code, row] of previous) if (row.historical_top50) historicalTop50.add(code);
   const pending = new Map((options.pendingBackfill || []).map(row => [normalizeCode(row.stock_code), row]).filter(item => item[0]));
@@ -43,11 +46,13 @@ function buildAnalysisUniverseIndex(options = {}) {
       stock_name: quote.stock_name || company.stock_name || old.stock_name || '',
       industry: company.industry || old.industry || '',
       listing_date: company.listing_date || old.listing_date || '',
-      first_top100_date: old.first_top100_date || (current.has(code) ? tradeDate : ''),
-      last_top100_date: current.has(code) ? tradeDate : (old.last_top100_date || ''),
+      first_top50_date: old.first_top50_date || old.first_top100_date || (current.has(code) ? tradeDate : ''),
+      last_top50_date: current.has(code) ? tradeDate : (old.last_top50_date || old.last_top100_date || ''),
+      active_top50: current.has(code),
       active_top100: current.has(code),
       retained_in_master_index: true,
       daily_update_active: current.has(code),
+      current_top50_rank: current.has(code) ? Number(quote.rank || 0) : null,
       current_top100_rank: current.has(code) ? Number(quote.rank || 0) : null,
       historical_top50: historicalTop50.has(code),
       daily_history_status: dailyComplete ? 'complete' : String(task.status || 'pending'),
@@ -65,10 +70,11 @@ function buildUniverseManifest(rows, options = {}) {
     dataset: 'TWSE_ANALYSIS_UNIVERSE',
     version: options.tradeDate || String(options.updatedAt || new Date().toISOString()).slice(0, 10),
     generated_at: options.updatedAt || new Date().toISOString(),
-    definition: 'retained historical universe plus latest TWSE_TOP100; only active_top100 receives rolling updates',
+    definition: 'retained historical universe plus latest TWSE_TOP50; only active_top50 receives rolling updates',
     latest_successful_trade_date: options.tradeDate || '',
     symbol_count: rows.length,
-    current_top100_count: rows.filter(row => row.active_top100).length,
+    current_top50_count: rows.filter(row => row.active_top50).length,
+    current_top100_count: rows.filter(row => row.active_top50).length,
     analysis_ready_count: rows.length - pending.length,
     pending_backfill_count: pending.length,
     pending_symbols: pending.map(row => row.stock_code),

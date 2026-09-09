@@ -146,7 +146,8 @@ function updateMopsRollingData() {
     });
 
     const results = {
-      company_basic: mopsReplaceSnapshot(MOPS_DRIVE.companyBasicFolder, 'company_basic_latest.jsonl', companyRows),
+      company_basic: mopsMergeJsonl(MOPS_DRIVE.companyBasicFolder, 'company_basic_latest.jsonl', companyRows,
+        function(row) { return row.stock_code; }),
       monthly_revenue: mopsMergeJsonl(MOPS_DRIVE.monthlyRevenueFolder, 'monthly_revenue_' + year + '.jsonl', revenueRows,
         function(row) { return row.stock_code + '|' + row.data_year_month; }),
       quarterly_financials: mopsMergeJsonl(MOPS_DRIVE.quarterlyFinancialFolder, 'quarterly_openapi_' + year + '.jsonl', financialRows,
@@ -158,7 +159,7 @@ function updateMopsRollingData() {
     };
     const manifest = {
       dataset: 'MOPS_ROLLING', generated_at: now.toISOString(), status: financialErrors.length ? 'complete_with_warnings' : 'complete',
-      universe: 'historical TWSE_TOP50 union latest TWSE_TOP100', symbol_count: Object.keys(allowed).length,
+      universe: 'retained historical universe union latest TWSE_TOP50', symbol_count: Object.keys(allowed).length,
       source: 'TWSE OpenAPI', source_base: MOPS_OPENAPI_BASE,
       point_in_time_rule: 'Only official filing_date and filing_time form available_from; statutory deadlines are never substituted.',
       results: results, warnings: financialErrors,
@@ -174,9 +175,18 @@ function updateMopsRollingData() {
 }
 
 function mopsAllowedSymbols() {
-  const manifest = historyReadJson(HISTORY_DRIVE.stockDailyManifest);
   const out = {};
-  (manifest.stock_codes || []).forEach(function(code) { if (/^\d{4}$/.test(String(code))) out[String(code)] = true; });
+  historyLatestRaw50Rows().slice(0, 50).forEach(function(row) {
+    const code = String(row.stock_code || '');
+    if (/^\d{4}$/.test(code)) out[code] = true;
+  });
+  if (!Object.keys(out).length) {
+    mopsReadJsonl(mopsFindFile(MOPS_DRIVE.validationFolder, ANALYSIS_UNIVERSE_FILE)).forEach(function(row) {
+      const active = row.active_top50 === true || (row.active_top50 == null && row.active_top100 === true);
+      const code = String(row.stock_code || '');
+      if (active && Number(row.current_top50_rank || row.current_top100_rank || 9999) <= 50 && /^\d{4}$/.test(code)) out[code] = true;
+    });
+  }
   return out;
 }
 
@@ -330,26 +340,29 @@ function updateTenYearHistoryToLatestTradeDate() {
       return Number(item.year) === Number(tradeDate.slice(0, 4)) && item.latest_trade_date >= tradeDate;
     });
     if (latestDates.every(function(value) { return value >= tradeDate; }) && rawCurrent) {
-      const currentTop100 = marketRows.slice().sort(function(a, b) { return b.trade_volume - a.trade_volume; }).slice(0, 100);
-      currentTop100.forEach(function(row, index) { row.rank = index + 1; });
+      const currentTop50 = marketRows.slice().sort(function(a, b) { return b.trade_volume - a.trade_volume; }).slice(0, 50);
+      currentTop50.forEach(function(row, index) { row.rank = index + 1; });
       const currentRawFile = historyEnsureRaw100File(manifests.top50, Number(tradeDate.slice(0, 4)));
       const correctedRawCsv = historyReplaceDateRows(historyReadText(currentRawFile.file_id), HISTORY_TOP50_HEADER, tradeDate,
-        currentTop100.map(function(row) { return historyTop50Values(tradeDate, row); }));
+        currentTop50.map(function(row) { return historyTop50Values(tradeDate, row); }));
       historyReplaceText(currentRawFile.file_id, correctedRawCsv, 'text/csv');
+      currentRawFile.rows = Math.max(0, correctedRawCsv.trim().split(/\r?\n/).length - 1);
+      currentRawFile.updated_at = new Date().toISOString();
+      manifests.top50.selection_source_count = 50;
+      manifests.top50.selection_count = 50;
+      historyReplaceText(HISTORY_DRIVE.top50Manifest, JSON.stringify(manifests.top50, null, 2) + '\n', 'application/json');
       const historicalCodes = (manifests.daily.stock_codes || []).slice();
-      const queued = historyQueueNewTop100(manifests.daily, currentTop100, tradeDate);
+      const queued = historyQueueNewTop50(manifests.daily, currentTop50, tradeDate);
       historyReplaceText(HISTORY_DRIVE.stockDailyManifest, JSON.stringify(manifests.daily, null, 2) + '\n', 'application/json');
       if ((manifests.daily.pending_backfill || []).some(function(item) { return item.status !== 'complete'; })) historyEnsureBackfillTrigger();
       const universe = rebuildAnalysisUniverseIndex({
-        tradeDate: tradeDate, currentTop100: currentTop100,
+        tradeDate: tradeDate, currentTop50: currentTop50,
         historicalTop50Codes: historicalCodes, dailyManifest: manifests.daily
       });
       return { ok: true, status: 'already_current', tradeDate: tradeDate, latestDates: latestDates, newCodes: queued, universe: universe };
     }
 
-    const volumeTop100 = marketRows.slice().sort(function(a, b) { return b.trade_volume - a.trade_volume; }).slice(0, 100);
-    volumeTop100.forEach(function(row, index) { row.rank = index + 1; });
-    const top50 = volumeTop100.slice(0, 50);
+    const top50 = marketRows.slice().sort(function(a, b) { return b.trade_volume - a.trade_volume; }).slice(0, 50);
     top50.forEach(function(row, index) { row.rank = index + 1; });
     const top50Rank = {};
     top50.forEach(function(row) { top50Rank[row.stock_code] = row.rank; });
@@ -364,13 +377,13 @@ function updateTenYearHistoryToLatestTradeDate() {
 
     const knownCodes = {};
     (manifests.daily.stock_codes || []).forEach(function(code) { knownCodes[String(code)] = true; });
-    const newCodes = volumeTop100.filter(function(row) { return !knownCodes[row.stock_code]; }).map(function(row) { return row.stock_code; });
-    // 每日只續寫當日前 100 名；離開前 100 的股票保留歷史但暫停增量更新。
-    const dailyRows = volumeTop100.slice();
+    const newCodes = top50.filter(function(row) { return !knownCodes[row.stock_code]; }).map(function(row) { return row.stock_code; });
+    // 每日只續寫當日前 50 名；離開前 50 的股票保留歷史但暫停增量更新。
+    const dailyRows = top50.slice();
 
     const flowPayload = historyFetchAlignedFlow(market.date);
-    const flowRows = historyBuildFlowRows(volumeTop100, flowPayload);
-    if (flowRows.length !== 100) throw new Error('市場資金流向資料不足 100 筆');
+    const flowRows = historyBuildFlowRows(top50, flowPayload);
+    if (flowRows.length !== 50) throw new Error('市場資金流向資料不足 50 筆');
 
     const nextTopCsv = historyAppendRows(topCsv, HISTORY_TOP50_HEADER, tradeDate,
       top50.map(function(row) { return historyTop50Values(tradeDate, row); }));
@@ -382,7 +395,7 @@ function updateTenYearHistoryToLatestTradeDate() {
     const raw100File = historyEnsureRaw100File(manifests.top50, year);
     const raw100Csv = historyReadText(raw100File.file_id);
     const nextRaw100Csv = historyAppendRows(raw100Csv, HISTORY_TOP50_HEADER, tradeDate,
-      volumeTop100.map(function(row) { return historyTop50Values(tradeDate, row); }));
+      top50.map(function(row) { return historyTop50Values(tradeDate, row); }));
 
     historyReplaceText(topFile.file_id, nextTopCsv, 'text/csv');
     historyReplaceText(dailyFile.file_id, nextDailyCsv, 'text/csv');
@@ -392,10 +405,10 @@ function updateTenYearHistoryToLatestTradeDate() {
     const now = new Date().toISOString();
     historyAdvanceManifest(manifests.top50, topFile, tradeDate, 50, now);
     historyAdvanceManifest(manifests.daily, dailyFile, tradeDate, dailyRows.length, now);
-    historyAdvanceManifest(manifests.flow, flowFile, tradeDate, 100, now);
-    raw100File.rows = Number(raw100File.rows || 0) + (raw100File.latest_trade_date >= tradeDate ? 0 : 100);
+    historyAdvanceManifest(manifests.flow, flowFile, tradeDate, 50, now);
+    raw100File.rows = Number(raw100File.rows || 0) + (raw100File.latest_trade_date >= tradeDate ? 0 : 50);
     raw100File.latest_trade_date = tradeDate; raw100File.updated_at = now;
-    manifests.top50.selection_source_count = 100;
+    manifests.top50.selection_source_count = 50;
     manifests.top50.selection_count = 50;
     manifests.top50.raw_ranking_files = manifests.top50.raw_ranking_files || [];
     if (!manifests.top50.raw_ranking_files.some(function(item) { return item.file_id === raw100File.file_id; })) {
@@ -416,18 +429,17 @@ function updateTenYearHistoryToLatestTradeDate() {
       institutional_latest: tradeDate, margin_latest: tradeDate, lending_latest: tradeDate
     };
     manifests.flow.top50_alignment = { top50_latest: tradeDate, aligned: true };
-    manifests.flow.top100_alignment = { top100_latest: tradeDate, aligned: true };
     historyReplaceText(HISTORY_DRIVE.top50Manifest, JSON.stringify(manifests.top50, null, 2) + '\n', 'application/json');
     historyReplaceText(HISTORY_DRIVE.stockDailyManifest, JSON.stringify(manifests.daily, null, 2) + '\n', 'application/json');
     historyReplaceText(HISTORY_DRIVE.marketFlowManifest, JSON.stringify(manifests.flow, null, 2) + '\n', 'application/json');
 
     PropertiesService.getScriptProperties().setProperty('HISTORY_LAST_SUCCESS', JSON.stringify({
-      at: now, tradeDate: tradeDate, rawRankingRows: 100, top50Rows: 50,
-      dailyRows: dailyRows.length, flowRows: 100, newCodes: newCodes
+      at: now, tradeDate: tradeDate, rawRankingRows: 50, top50Rows: 50,
+      dailyRows: dailyRows.length, flowRows: 50, newCodes: newCodes
     }));
     rebuildAnalysisUniverseIndex({
       tradeDate: tradeDate,
-      currentTop100: volumeTop100,
+      currentTop50: top50,
       historicalTop50Codes: Object.keys(knownCodes),
       dailyManifest: manifests.daily
     });
@@ -437,7 +449,7 @@ function updateTenYearHistoryToLatestTradeDate() {
   }
 }
 
-/** 分批補齊新進 TOP100 股票自 2016-08-26（或上市日）起的官方月日線，避免 Apps Script 單次逾時。 */
+/** 分批補齊新進 TOP50 股票自 2016-08-26（或上市日）起的官方月日線，避免 Apps Script 單次逾時。 */
 function backfillNewTop50History() {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -467,7 +479,7 @@ function backfillNewTop50History() {
 }
 
 /**
- * 建立「保留歷史母體 + 最新 TOP100」唯一索引；只有 active_top100 持續滾動更新。
+ * 建立「保留歷史母體 + 最新 TOP50」唯一索引；只有 active_top50 持續滾動更新。
  * 回填或 MOPS 尚未完整時 analysis_ready 維持 false，供後續 Cloud Run 接軌使用。
  */
 function rebuildAnalysisUniverseIndex(options) {
@@ -476,9 +488,9 @@ function rebuildAnalysisUniverseIndex(options) {
   const previousFile = mopsFindFile(MOPS_DRIVE.validationFolder, ANALYSIS_UNIVERSE_FILE);
   const previous = {};
   mopsReadJsonl(previousFile).forEach(function(row) { if (row.stock_code) previous[row.stock_code] = row; });
-  const currentTop100 = options.currentTop100 || historyLatestRaw100Rows();
+  const currentTop50 = options.currentTop50 || options.currentTop100 || historyLatestRaw50Rows();
   const current = {};
-  currentTop100.forEach(function(row) { current[row.stock_code] = row; });
+  currentTop50.slice(0, 50).forEach(function(row) { current[row.stock_code] = row; });
   const historicalTop50 = {};
   const initialHistorical = options.historicalTop50Codes || (!Object.keys(previous).length ? (dailyManifest.stock_codes || []) : []);
   initialHistorical.forEach(function(code) { historicalTop50[String(code)] = true; });
@@ -514,11 +526,13 @@ function rebuildAnalysisUniverseIndex(options) {
       stock_name: quote.stock_name || basic.stock_name || old.stock_name || '',
       industry: basic.industry || old.industry || '',
       listing_date: basic.listing_date || old.listing_date || '',
-      first_top100_date: old.first_top100_date || (current[code] ? tradeDate : ''),
-      last_top100_date: current[code] ? tradeDate : (old.last_top100_date || ''),
+      first_top50_date: old.first_top50_date || old.first_top100_date || (current[code] ? tradeDate : ''),
+      last_top50_date: current[code] ? tradeDate : (old.last_top50_date || old.last_top100_date || ''),
+      active_top50: Boolean(current[code]),
       active_top100: Boolean(current[code]),
       retained_in_master_index: true,
       daily_update_active: Boolean(current[code]),
+      current_top50_rank: current[code] ? Number(current[code].rank || 0) : null,
       current_top100_rank: current[code] ? Number(current[code].rank || 0) : null,
       historical_top50: Boolean(historicalTop50[code] || old.historical_top50),
       daily_history_status: dailyComplete ? 'complete' : String(task.status || 'pending'),
@@ -530,8 +544,9 @@ function rebuildAnalysisUniverseIndex(options) {
   });
   const manifest = {
     dataset: 'TWSE_ANALYSIS_UNIVERSE', version: tradeDate || now.slice(0, 10), generated_at: now,
-    definition: 'retained historical universe plus latest TWSE_TOP100; only active_top100 receives rolling updates', latest_successful_trade_date: tradeDate,
-    symbol_count: rows.length, current_top100_count: rows.filter(function(row) { return row.active_top100; }).length,
+    definition: 'retained historical universe plus latest TWSE_TOP50; only active_top50 receives rolling updates', latest_successful_trade_date: tradeDate,
+    symbol_count: rows.length, current_top50_count: rows.filter(function(row) { return row.active_top50; }).length,
+    current_top100_count: rows.filter(function(row) { return row.active_top50; }).length,
     analysis_ready_count: rows.filter(function(row) { return row.analysis_ready; }).length,
     pending_backfill_count: rows.filter(function(row) { return !row.analysis_ready; }).length,
     pending_symbols: rows.filter(function(row) { return !row.analysis_ready; }).map(function(row) { return row.stock_code; }),
@@ -542,7 +557,7 @@ function rebuildAnalysisUniverseIndex(options) {
   return manifest;
 }
 
-function historyLatestRaw100Rows() {
+function historyLatestRaw50Rows() {
   const manifest = historyReadJson(HISTORY_DRIVE.top50Manifest);
   const files = (manifest.raw_ranking_files || []).slice().sort(function(a, b) {
     return String(b.latest_trade_date || '').localeCompare(String(a.latest_trade_date || ''));
@@ -550,12 +565,15 @@ function historyLatestRaw100Rows() {
   if (!files.length) return [];
   const latest = files[0].latest_trade_date || manifest.latest_successful_trade_date;
   const lines = historyReadText(files[0].file_id).replace(/^\uFEFF/, '').trim().split(/\r?\n/);
-  return lines.slice(1).map(historyParseCsvLine).filter(function(row) { return row[0] === latest; }).map(function(row) {
+  return lines.slice(1).map(historyParseCsvLine).filter(function(row) { return row[0] === latest; }).slice(0, 50).map(function(row) {
     return { trade_date: row[0], rank: Number(row[1]), stock_code: row[2], stock_name: row[3] };
   });
 }
 
-function historyQueueNewTop100(manifest, currentTop100, tradeDate) {
+// 舊函式名稱保留給既有部署或觸發器；回傳內容已限縮為最新 Top50。
+function historyLatestRaw100Rows() { return historyLatestRaw50Rows(); }
+
+function historyQueueNewTop50(manifest, currentTop50, tradeDate) {
   const originalStockCount = (manifest.stock_codes || []).length;
   const originalPendingCount = (manifest.pending_backfill || []).length;
   const known = {};
@@ -566,7 +584,7 @@ function historyQueueNewTop100(manifest, currentTop100, tradeDate) {
   manifest.pending_backfill = (manifest.pending_backfill || []).filter(function(item) {
     return historyIsListedCommonStock(String(item.stock_code || ''), '');
   });
-  (currentTop100 || []).forEach(function(row) {
+  (currentTop50 || []).slice(0, 50).forEach(function(row) {
     const code = String(row.stock_code || '');
     if (!/^\d{4}$/.test(code) || known[code]) return;
     known[code] = true; added.push(code);
@@ -578,6 +596,11 @@ function historyQueueNewTop100(manifest, currentTop100, tradeDate) {
     manifest.generated_at = new Date().toISOString();
   }
   return added;
+}
+
+// 舊函式名稱保留給既有部署或觸發器；只會處理 Top50。
+function historyQueueNewTop100(manifest, currentTop100, tradeDate) {
+  return historyQueueNewTop50(manifest, currentTop100, tradeDate);
 }
 
 function historyFetchStockMonth(code, year, month) {

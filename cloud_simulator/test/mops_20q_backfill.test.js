@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  CORE_METRICS, activeTop100Symbols, metricCoverage, normalizeQuarterlyRows
+  CORE_METRICS, activeTop50Symbols, metricCoverage, normalizeQuarterlyRows
 } = require('../scripts/backfill_mops_20q_to_drive');
 
 function flow(metric, value, start, end) {
@@ -14,16 +14,16 @@ function instant(metric, value, date) {
   return { metric, value, start_date: '', end_date: '', instant: date, concept: metric, context_ref: `${metric}:${date}`, unit: 'TWD' };
 }
 
-test('MOPS 20Q universe includes only active current TOP100 and supports bounded trial symbols', () => {
+test('MOPS 20Q universe includes only active current TOP50 and supports bounded trial symbols', () => {
   const rows = [
-    { stock_code: '2330', active_top100: true },
-    { stock_code: '2317', active_top100: false, historical_top50: true },
-    { stock_code: '2303', active_top100: true },
-    { stock_code: '0050', active_top100: true }
+    { stock_code: '2330', active_top50: true },
+    { stock_code: '2317', active_top50: false, historical_top50: true },
+    { stock_code: '2303', active_top50: true },
+    { stock_code: '0050', active_top50: true }
   ];
-  assert.deepEqual(activeTop100Symbols(rows), ['2303', '2330']);
-  assert.deepEqual(activeTop100Symbols(rows, { requestedSymbols: ['2330', '2317'] }), ['2330']);
-  assert.deepEqual(activeTop100Symbols(rows, { limit: 1 }), ['2303']);
+  assert.deepEqual(activeTop50Symbols(rows), ['2303', '2330']);
+  assert.deepEqual(activeTop50Symbols(rows, { requestedSymbols: ['2330', '2317'] }), ['2330']);
+  assert.deepEqual(activeTop50Symbols(rows, { limit: 1 }), ['2303']);
 });
 
 test('MOPS 20Q validates all fourteen required fundamental metrics', () => {
