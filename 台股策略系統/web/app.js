@@ -927,7 +927,7 @@ function renderAGradeCandidates(day) {
     target.innerHTML = `
       <div class="empty-candidates">
         <strong>今日尚無 A 級候選股</strong>
-        <span>${dateMessage} 系統先從成交量前 ${source.candidateSelectionPoolLimit || 50} 名，以籌碼 50%、成交量／流動性 30%、價格動能 20% 選出 30 檔；無完整評分、未達 80 分或交易計畫不允許進場時，不列為 A 級候選。</span>
+        <span>${dateMessage} 系統先從成交量前 ${source.candidateSelectionPoolLimit || 50} 名依完整心法排序前 10 檔；無完整評分、未達 80 分或交易計畫不允許進場時，不列為 A 級候選。</span>
       </div>
     `;
     return;
@@ -994,10 +994,10 @@ function renderCandidateUniverse(universe) {
   const target = document.querySelector('#candidateUniverse');
   const summary = document.querySelector('#candidateUniverseSummary');
   if (!target) return;
-  const candidateLimit = Number(universe?.limit || 30);
+  const candidateLimit = Math.min(10, Number(universe?.limit || 10));
   const items = Array.isArray(universe?.items) ? universe.items.slice(0, candidateLimit) : [];
   if (summary && universe?.tradeDate) {
-    summary.textContent = `${universe.tradeDate} 檢討成交量前 ${universe.reviewedCount || 100} 名，取出 ${items.length} 檔；這是追蹤母體，不代表已符合買進條件。`;
+    summary.textContent = `${universe.tradeDate} 檢討成交量前 ${universe.reviewedCount || 50} 名，取出排名前 ${items.length} 檔；這是觀察候選，不代表已符合買進條件。`;
   }
   if (!items.length) {
     target.innerHTML = '<div class="empty-candidates"><strong>候選名單尚未產生</strong><span>最近交易日資料完成後會自動顯示。</span></div>';
@@ -1092,7 +1092,7 @@ function displayTradeReason(reason) {
   return String(reason)
     .replace(/Intraday rule simulation using current ask\/bid/g, '當沖規則模擬，使用目前委買／委賣價估算')
     .replace(/Rotate out of non-A holding because A-grade candidates are available/g, '出現 A 級候選股，非 A 持倉輪動轉出')
-    .replace(/Existing holding quote supplement; not in current top-volume target scan/g, '既有持倉補報價；未列入今日成交量前 100 名目標族群掃描')
+    .replace(/Existing holding quote supplement; not in current top-volume target scan/g, '既有持倉補報價；未列入今日成交量前 50 名目標族群掃描')
     .replace(/([ABC]) rule entry; fee ([0-9,.]+)/g, '$1 級共振，強制依規則買進；手續費 $2')
     .replace(/Stop loss/g, '跌破停損價')
     .replace(/Target reached/g, '達到目標價')
