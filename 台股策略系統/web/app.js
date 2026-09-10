@@ -686,7 +686,7 @@ function renderLastUpdated(result, latestDay) {
   if (!label) return;
   const sourceTime = result?.generatedAt || latestDay?.source?.generatedAt || window.PRECOMPUTED_SIMULATION?.generatedAt;
   const mode = latestDay?.source?.refreshMode === 'quick' ? '快速報價' : '完整資料';
-  label.textContent = `最後更新：${formatTaipeiDateTime(sourceTime)}（${mode}）`;
+  label.textContent = `模擬快照：${formatTaipeiDateTime(sourceTime)}（${mode}）`;
 }
 
 function renderRefreshFallback(error) {
@@ -695,7 +695,7 @@ function renderRefreshFallback(error) {
   activeTradeSignature = resultTradeSignature(result);
   render(result);
   const label = document.querySelector('#lastUpdatedAt');
-  if (label) label.textContent = `最後更新：${formatTaipeiDateTime(new Date().toISOString())}（使用備援資料）`;
+  if (label) label.textContent = `模擬快照：${formatTaipeiDateTime(new Date().toISOString())}（使用備援資料）`;
 }
 
 function renderHistoryReturns(result) {
@@ -1461,7 +1461,7 @@ async function refreshData(options = {}) {
     button.textContent = '更新中...';
   }
   const lastUpdatedLabel = document.querySelector('#lastUpdatedAt');
-  if (lastUpdatedLabel) lastUpdatedLabel.textContent = '最後更新：更新中...';
+  if (lastUpdatedLabel) lastUpdatedLabel.textContent = '模擬快照：更新中...';
 
   try {
     const loadedFromAppsScript = await loadAppsScriptPayload(force ? 'refresh' : 'read', {
@@ -1489,7 +1489,7 @@ async function refreshData(options = {}) {
       button.textContent = '更新資料';
     }
     if (lastUpdatedLabel && lastUpdatedLabel.textContent.includes('更新中')) {
-      lastUpdatedLabel.textContent = `最後更新：${formatTaipeiDateTime(new Date().toISOString())}（使用目前畫面資料）`;
+      lastUpdatedLabel.textContent = `模擬快照：${formatTaipeiDateTime(new Date().toISOString())}（使用目前畫面資料）`;
     }
   }
 }
