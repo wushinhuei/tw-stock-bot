@@ -317,6 +317,24 @@ test('MOPS XBRL retries transient throttling and server failures only', () => {
   assert.equal(retryableXbrlHttpStatus(404), false);
 });
 
+test('MOPS XBRL follows only bounded same-host HTTPS redirects', async () => {
+  const { fetchXbrlArchive } = require('../src/mops_history');
+  const calls = [];
+  const response = await fetchXbrlArchive(xbrlArchiveUrl(2025, 4), {
+    fetchImpl: async (url, options) => {
+      calls.push({ url, redirect: options.redirect });
+      if (calls.length === 1) return { status: 307, headers: { get: name => name === 'location' ? '/server-java/official.zip' : null } };
+      return { status: 200, ok: true, body: {}, headers: { get: () => null } };
+    }
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].redirect, 'manual');
+  await assert.rejects(() => fetchXbrlArchive(xbrlArchiveUrl(2025, 4), {
+    fetchImpl: async () => ({ status: 307, headers: { get: () => 'https://example.com/archive.zip' } })
+  }), /refused redirect/);
+});
+
 test('MOPS XBRL parser filters core non-dimensional facts and requires filing time', () => {
   const xml = `<?xml version="1.0"?><xbrl><context id="From20250101To20250331"><entity><identifier>2330</identifier></entity><period><startDate>2025-01-01</startDate><endDate>2025-03-31</endDate></period></context><context id="AsOf20250331"><entity><identifier>2330</identifier></entity><period><instant>2025-03-31</instant></period></context><context id="Dim"><entity><identifier>2330</identifier></entity><period><instant>2025-03-31</instant></period><scenario><member>segment</member></scenario></context><tifrs:Revenue contextRef="From20250101To20250331" unitRef="TWD" decimals="-3">1000</tifrs:Revenue><tifrs:ProfitLossFromOperatingActivities contextRef="From20250101To20250331" unitRef="TWD">700</tifrs:ProfitLossFromOperatingActivities><tifrs:NetCashFlowsFromUsedInOperatingActivities contextRef="From20250101To20250331" unitRef="TWD">600</tifrs:NetCashFlowsFromUsedInOperatingActivities><tifrs:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities contextRef="From20250101To20250331" unitRef="TWD">200</tifrs:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities><tifrs:OperatingExpense contextRef="From20250101To20250331" unitRef="TWD">300</tifrs:OperatingExpense><tifrs:CurrentAssets contextRef="AsOf20250331" unitRef="TWD">5000</tifrs:CurrentAssets><tifrs:CurrentLiabilities contextRef="AsOf20250331" unitRef="TWD">1800</tifrs:CurrentLiabilities><tifrs:NoncurrentLiabilities contextRef="AsOf20250331" unitRef="TWD">1200</tifrs:NoncurrentLiabilities><tifrs:Revenue contextRef="Dim" unitRef="TWD">99</tifrs:Revenue></xbrl>`;
   const identity = archiveEntryIdentity('tifrs-fr1-m1-ci-cr-2330-2025Q1.xml');

@@ -93,6 +93,28 @@ function xbrlArchiveUrl(year, quarter) {
   return `${MOPS_ARCHIVE_BASE}?${new URLSearchParams({ step: '9', functionName: 'show_file2', fileName, filePath: `/ifrs/${year}/` })}`;
 }
 
+async function fetchXbrlArchive(url, options = {}) {
+  const fetchImpl = options.fetchImpl || fetch;
+  const allowedHost = new URL(MOPS_ARCHIVE_BASE).hostname;
+  let currentUrl = String(url);
+  for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
+    const response = await fetchImpl(currentUrl, {
+      headers: { accept: 'application/zip,application/octet-stream', 'user-agent': 'tw-stock-bot-mops-history/1.0 (+official-XBRL-bulk-download)' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(30 * 60 * 1000)
+    });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers?.get?.('location');
+    if (!location) return response;
+    const nextUrl = new URL(location, currentUrl);
+    if (nextUrl.protocol !== 'https:' || nextUrl.hostname !== allowedHost) {
+      throw new Error(`MOPS XBRL refused redirect to ${nextUrl.hostname}`);
+    }
+    currentUrl = nextUrl.toString();
+  }
+  throw new Error('MOPS XBRL exceeded safe redirect limit');
+}
+
 const CORE_FACT_PATTERNS = Object.freeze({
   revenue: /(?:^|:)(?:Revenue|Revenues|OperatingRevenue|TotalOperatingRevenue)$/i,
   operating_income: /(?:^|:)(?:OperatingIncome|OperatingProfitLoss|ProfitLossFromOperatingActivities)$/i,
@@ -313,10 +335,7 @@ async function downloadXbrlArchives(options = {}) {
         files.push({ year, quarter, name, bytes: fs.statSync(target).size, resumed: true });
         continue;
       }
-      const response = await fetchImpl(xbrlArchiveUrl(year, quarter), {
-        headers: { accept: 'application/zip,application/octet-stream', 'user-agent': 'tw-stock-bot-mops-history/1.0 (+official-XBRL-bulk-download)' },
-        signal: AbortSignal.timeout(30 * 60 * 1000)
-      });
+      const response = await fetchXbrlArchive(xbrlArchiveUrl(year, quarter), { fetchImpl });
       if (response.status === 404 || response.status === 500) continue;
       if (!response.ok || !response.body) throw new Error(`MOPS XBRL ${year}Q${quarter} HTTP ${response.status}`);
       await writeFetchBody(response, `${target}.part`);
@@ -342,10 +361,7 @@ async function downloadXbrlArchive(year, quarter, options = {}) {
   if (!fs.existsSync(target) || fs.statSync(target).size <= 4) {
     let response;
     try {
-      response = await fetchImpl(xbrlArchiveUrl(year, quarter), {
-        headers: { accept: 'application/zip,application/octet-stream', 'user-agent': 'tw-stock-bot-mops-history/1.0 (+official-XBRL-bulk-download)' },
-        signal: AbortSignal.timeout(30 * 60 * 1000)
-      });
+      response = await fetchXbrlArchive(xbrlArchiveUrl(year, quarter), { fetchImpl });
     } catch (error) {
       if (attempt >= 3) throw error;
       await sleep(1500 * attempt);
@@ -557,7 +573,7 @@ async function downloadMopsHistory(options = {}) {
 module.exports = {
   CORE_FACT_PATTERNS, DATASETS, DriveFolderWriter, MopsClient, SECURITY_BLOCK,
   archiveEntryIdentity, attachFilingTimes, buildQuarterlyXbrlHistory, canonicalRow, cleanText, dedupeCompanyQuarters,
-  downloadMopsHistory, downloadXbrlArchive, downloadXbrlArchives, parseContexts, parseHtmlTables, parseXbrlArchive,
+  downloadMopsHistory, downloadXbrlArchive, downloadXbrlArchives, fetchXbrlArchive, parseContexts, parseHtmlTables, parseXbrlArchive,
   parseXbrlInstance, requestParams, rowsFromTable, toCsv, top50SymbolSet,
   retryableXbrlHttpStatus, validZipFile, validateMopsCompleteness, validateOfficialBatch, xbrlArchiveUrl
 };
