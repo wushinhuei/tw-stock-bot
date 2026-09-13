@@ -6,7 +6,7 @@ const { MopsMcpHistory } = require('./mops_mcp_history');
 const { callTool: callYahooMcpTool } = require('./yahoo_mcp');
 
 const POLICY = Object.freeze({
-  mode: 'MCP_FIRST_DAILY_DRIVE_PERSISTENCE',
+  mode: 'MCP_REALTIME_DRIVE_AUDIT_CACHE',
   marketPrimary: 'TWSE_MCP',
   fundamentalsPrimary: 'MOPS_MCP',
   officialEventsPrimary: 'MOPS_MCP',
@@ -15,9 +15,9 @@ const POLICY = Object.freeze({
   institutionalPrimary: 'TWSE_MCP',
   marginPrimary: 'TWSE_MCP',
   supplementalMarketPrimary: 'YAHOO_FINANCE_MCP',
-  fallbackOrder: Object.freeze(['GOOGLE_DRIVE_CACHE', 'YAHOO_FINANCE_MCP', 'OTHER_PROVIDER']),
-  persistPrimaryToDrive: true,
-  persistFallbackToDriveWithProvenance: true,
+  fallbackOrder: Object.freeze(['YAHOO_FINANCE_MCP']),
+  persistPrimaryToDrive: false,
+  persistFallbackToDriveWithProvenance: false,
   dailyRefreshRequired: true,
   fallbackOnlyWhenPrimaryUnavailable: true,
   externalProviderMayOverwriteOfficial: false,
@@ -34,7 +34,6 @@ const POLICY = Object.freeze({
     filingIndex: Object.freeze({ primary: 'MOPS_MCP', driveFolder: 'MOPS_MCP_PRIMARY' }),
     intradayHistorical: Object.freeze({ primary: 'MCP_WHEN_AVAILABLE', supplement: 'YAHOO_FINANCE_MCP', fallback: 'AUTHORIZED_PROVIDER_ONLY', driveFolder: 'SUPPLEMENTAL_HISTORY' }),
     internationalMarket: Object.freeze({ primary: 'YAHOO_FINANCE_MCP', driveFolder: 'YAHOO_FINANCE_MCP_SUPPLEMENT' }),
-    mediaNews: Object.freeze({ primary: 'MCP_WHEN_AVAILABLE', fallback: 'APPROVED_MEDIA_ONLY', driveFolder: 'SUPPLEMENTAL_NEWS' })
   })
 });
 

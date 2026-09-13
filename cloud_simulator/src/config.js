@@ -13,7 +13,6 @@ const CONFIG = Object.freeze({
   // Top50 只作為高流動性的可交易母池；Top10 觀察排序改由四大面向決定。
   candidateSelectionWeights: Object.freeze({ chip: 0.50, volume: 0.30, momentum: 0.20 }),
   schedulerIntervalMinutes: 5,
-  rssPollMs: 15 * 60 * 1000,
   sessionStart: '08:50',
   tradingStart: '09:10',
   dayTradeEntryCutoff: '12:30',
@@ -42,16 +41,7 @@ const CONFIG = Object.freeze({
   maxSpreadPct: 0.006,
   quoteMaxAgeMs: 10 * 60 * 1000,
   liveScoreConcurrency: 6,
-  scoreThresholds: Object.freeze({ A: 80, B: 65, C: 50 }),
-  investingRssUrls: Object.freeze([
-    'https://www.investing.com/rss/news_25.rss',
-    'https://www.investing.com/rss/news_11.rss',
-    'https://www.investing.com/rss/news_95.rss',
-    'https://www.investing.com/rss/news_14.rss'
-  ]),
-  taiwanMediaRss: Object.freeze([
-    Object.freeze({ source: '中央通訊社', url: 'https://feeds.feedburner.com/rsscna/finance', acquisitionMethod: 'RSS' })
-  ])
+  scoreThresholds: Object.freeze({ A: 80, B: 75, C: 50 })
 });
 
 module.exports = { CONFIG };

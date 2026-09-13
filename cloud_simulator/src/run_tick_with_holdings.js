@@ -4,7 +4,7 @@ const { spawnSync } = require('node:child_process');
 const { CONFIG } = require('./config');
 const { SimulationEngine, taipeiDate } = require('./engine');
 const { loadCandidates, repositoryFromEnvironment, tickDecision } = require('./main');
-const { fetchQuotes } = require('./twse');
+const { mcpLiveQuotes } = require('./mcp_market');
 const { isTwseTradingDay } = require('./trading_calendar');
 const { enrichCandidatesWithLiveScores } = require('./live_scoring');
 const { triggerStaticBackupOnTrades } = require('./static_backup');
@@ -221,19 +221,13 @@ async function runTickWithHoldings(options = {}) {
 
   if (CONFIG.strategyMode !== 'LONG_ONLY') throw new Error(`Unsupported strategy mode: ${CONFIG.strategyMode}`);
 
-  const minute = Number(decision.time.slice(3, 5));
-  if (minute % 10 === 0) {
-    const news = await engine.refreshNews().catch(error => ({ items: [], errors: [String(error)] }));
-    if (news.errors.length) console.warn(JSON.stringify({ event: 'rss-warning', errors: news.errors }));
-  }
-
   const hasPositions = Array.isArray(engine.account.positions) && engine.account.positions.length > 0;
   if (decision.time >= CONFIG.tradingStart && (watchlistCandidates.length || hasPositions)) {
     const symbols = [...new Set(
       watchlistCandidates.map(item => item.symbol)
         .concat((engine.account.positions || []).map(item => item.symbol))
     )];
-    const quotes = options.quotes || await fetchQuotes(symbols);
+    const quotes = options.quotes || await mcpLiveQuotes(symbols);
 
     // 名單順位一小時內不重排，但報價與正式交易評分仍可隨每個 tick 更新。
     watchlistCandidates = watchlistCandidates.map(candidate => ({ ...candidate, ...(quotes[candidate.symbol] || {}) }));

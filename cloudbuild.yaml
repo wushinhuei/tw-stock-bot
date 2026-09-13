@@ -32,7 +32,7 @@ steps:
       - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA
       - --region=${_REGION}
       - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
-      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},RUN_MODE=tick,CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL},DATA_SOURCE_POLICY=MCP_FIRST_DAILY_DRIVE_PERSISTENCE,MOPS_SOURCE_POLICY=MOPS_MCP_PRIMARY,TWSE_DRIVE_SYNC=1,TWSE_DRIVE_PARENT_FOLDER_ID=${_TWSE_DRIVE_PARENT_FOLDER_ID},MOPS_DRIVE_PARENT_FOLDER_ID=${_MOPS_DRIVE_PARENT_FOLDER_ID},MCP_DRIVE_PARENT_FOLDER_ID=${_TWSE_DRIVE_PARENT_FOLDER_ID},STATIC_BACKUP_ON_TRADE=1,GITHUB_STATIC_BACKUP_REPOSITORY=wushinhuei/tw-stock-bot,GITHUB_STATIC_BACKUP_WORKFLOW=update-static-dashboard.yml,GITHUB_STATIC_BACKUP_REF=main,STATIC_BACKUP_COOLDOWN_MS=120000,DEPLOY_COMMIT_SHA=$COMMIT_SHA
+      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},RUN_MODE=tick,DATA_SOURCE_POLICY=MCP_REALTIME_DRIVE_AUDIT_CACHE,MOPS_SOURCE_POLICY=MOPS_MCP_CURRENT_SUMMARY,STATIC_BACKUP_ON_TRADE=1,GITHUB_STATIC_BACKUP_REPOSITORY=wushinhuei/tw-stock-bot,GITHUB_STATIC_BACKUP_WORKFLOW=update-static-dashboard.yml,GITHUB_STATIC_BACKUP_REF=main,STATIC_BACKUP_COOLDOWN_MS=120000,DEPLOY_COMMIT_SHA=$COMMIT_SHA
       - --update-secrets=GITHUB_STATIC_BACKUP_TOKEN=github-static-backup-token:latest
       - --tasks=1
       - --max-retries=0
@@ -52,7 +52,7 @@ steps:
       - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
       - --command=node
       - --args=cloud_simulator/src/pretrade_prepare_job.js
-      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},CANDIDATE_SNAPSHOT_URL=${_CANDIDATE_SNAPSHOT_URL},DATA_SOURCE_POLICY=MCP_FIRST_DAILY_DRIVE_PERSISTENCE,MOPS_SOURCE_POLICY=MOPS_MCP_PRIMARY,TWSE_DRIVE_SYNC=1,TWSE_DRIVE_PARENT_FOLDER_ID=${_TWSE_DRIVE_PARENT_FOLDER_ID},MOPS_DRIVE_PARENT_FOLDER_ID=${_MOPS_DRIVE_PARENT_FOLDER_ID},MCP_DRIVE_PARENT_FOLDER_ID=${_TWSE_DRIVE_PARENT_FOLDER_ID},DEPLOY_COMMIT_SHA=$COMMIT_SHA
+      - --set-env-vars=SIMULATION_ENV=staging,GCS_BUCKET=${_GCS_BUCKET},DATA_SOURCE_POLICY=MCP_REALTIME_DRIVE_AUDIT_CACHE,MOPS_SOURCE_POLICY=MOPS_MCP_CURRENT_SUMMARY,DEPLOY_COMMIT_SHA=$COMMIT_SHA
       - --tasks=1
       - --max-retries=1
       - --task-timeout=1200s
@@ -96,25 +96,6 @@ steps:
       - --task-timeout=1800s
       - --cpu=1
       - --memory=512Mi
-
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: gcloud
-    args:
-      - run
-      - jobs
-      - deploy
-      - tw-stock-mops-20q-backfill
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/tw-stock-simulator:$COMMIT_SHA
-      - --region=${_REGION}
-      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
-      - --command=node
-      - --args=cloud_simulator/scripts/backfill_mops_20q_to_drive.js
-      - --set-env-vars=DATA_SOURCE_POLICY=MCP_FIRST_DAILY_DRIVE_PERSISTENCE,MOPS_SOURCE_POLICY=MOPS_MCP_PRIMARY,GCS_BUCKET=${_GCS_BUCKET},MOPS_20Q_COUNT=20,MOPS_20Q_DRIVE_PARENT_FOLDER_ID=${_MOPS_20Q_DRIVE_PARENT_FOLDER_ID},MOPS_20Q_DRIVE_FOLDER_NAME=20Q_MCP_PRIMARY,NODE_OPTIONS=--max-old-space-size=3072,DEPLOY_COMMIT_SHA=$COMMIT_SHA
-      - --tasks=1
-      - --max-retries=0
-      - --task-timeout=7200s
-      - --cpu=2
-      - --memory=4Gi
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
@@ -176,9 +157,6 @@ steps:
         HEALTH_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-data-health:run"
         upsert_scheduler tw-stock-pretrade-after-close '0 14 * * 1-5' "$$PREP_URI"
         upsert_scheduler tw-stock-pretrade-0800 '0 8 * * 1-5' "$$PREP_URI"
-        upsert_scheduler tw-stock-twse-drive-sync-after-close '5 14 * * 1-5' "$$TWSE_SYNC_URI"
-        upsert_scheduler tw-stock-mops-drive-sync-evening '30 20 * * 1-5' "$$MOPS_SYNC_URI"
-        upsert_scheduler tw-stock-mcp-daily-sync-evening '45 20 * * 1-5' "$$MCP_DAILY_URI"
         upsert_scheduler tw-stock-data-health-evening '15 21 * * 1-5' "$$HEALTH_URI"
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -186,9 +164,14 @@ steps:
     args:
       - -ceu
       - |
+        gcloud scheduler jobs pause tw-stock-mops-20q-backfill --location="${_REGION}" || true
+        gcloud scheduler jobs pause tw-stock-twse-drive-sync-after-close --location="${_REGION}" || true
+        gcloud scheduler jobs pause tw-stock-mops-drive-sync-evening --location="${_REGION}" || true
+        gcloud scheduler jobs pause tw-stock-mcp-daily-sync-evening --location="${_REGION}" || true
+        gcloud run jobs delete tw-stock-mops-20q-backfill --region="${_REGION}" --quiet || true
         gcloud scheduler jobs delete tw-stock-growth-top10-evening --location="${_REGION}" --quiet || true
         gcloud run jobs delete tw-stock-growth-top10-sync --region="${_REGION}" --quiet || true
-        echo "Retired obsolete potential-stock scheduler and Cloud Run job; historical data was preserved."
+        echo "Stopped obsolete backfill and potential-stock jobs; historical Drive data was preserved."
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
@@ -199,12 +182,12 @@ steps:
         SERVICE_IMAGE="$$(gcloud run services describe tw-stock-dashboard-api --region="${_REGION}" --format='value(spec.template.spec.containers[0].image)')"
         echo "tw-stock-dashboard-api -> $$SERVICE_IMAGE"
         test "$$SERVICE_IMAGE" = "$$EXPECTED_IMAGE"
-        for JOB in tw-stock-simulator tw-stock-pretrade-prepare tw-stock-twse-drive-sync tw-stock-mops-drive-sync tw-stock-mops-20q-backfill tw-stock-mcp-daily-sync tw-stock-data-health; do
+        for JOB in tw-stock-simulator tw-stock-pretrade-prepare tw-stock-twse-drive-sync tw-stock-mops-drive-sync tw-stock-mcp-daily-sync tw-stock-data-health; do
           IMAGE="$$(gcloud run jobs describe "$$JOB" --region="${_REGION}" --format='value(spec.template.spec.template.spec.containers[0].image)')"
           echo "$$JOB -> $$IMAGE"
           test "$$IMAGE" = "$$EXPECTED_IMAGE"
         done
-        for SCHEDULER in tw-stock-pretrade-after-close tw-stock-pretrade-0800 tw-stock-twse-drive-sync-after-close tw-stock-mops-drive-sync-evening tw-stock-mcp-daily-sync-evening tw-stock-data-health-evening; do
+        for SCHEDULER in tw-stock-pretrade-after-close tw-stock-pretrade-0800 tw-stock-data-health-evening; do
           STATE="$$(gcloud scheduler jobs describe "$$SCHEDULER" --location="${_REGION}" --format='value(state)')"
           echo "$$SCHEDULER -> $$STATE"
           test "$$STATE" = "ENABLED"

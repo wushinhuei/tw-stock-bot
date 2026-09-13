@@ -39,21 +39,30 @@ function legacyComponents(candidate) {
   const chip = scoreChipSignals(chipMetrics, candidate.chipOk ? 1 : 0).score;
   const spread = Number(metrics.spreadPct ?? candidate.executionPlan?.spreadPct ?? 1);
   return {
-    technical: clamp(technical, 0, 35), volumeObv: clamp(volumeObv, 0, 20),
-    chip: clamp(chip, 0, 15), fundamental: candidate.fundamentalOk ? 10 : 0,
-    officialNews: 8, liquidity: spread <= CONFIG.maxSpreadPct ? 5 : 0
+    technical: Math.round(clamp(technical / 35, 0, 1) * 41),
+    volumeObv: Math.round(clamp(volumeObv / 20, 0, 1) * 23),
+    chip: Math.round(clamp(chip / 15, 0, 1) * 18),
+    fundamental: candidate.fundamentalOk ? 12 : 0,
+    liquidity: spread <= CONFIG.maxSpreadPct ? 6 : 0
   };
 }
 
 function adaptCandidate(candidate, context = {}) {
-  const components = candidate.components || legacyComponents(candidate);
+  const sourceComponents = candidate.components || legacyComponents(candidate);
+  const components = {
+    technical: clamp(sourceComponents.technical, 0, 41),
+    volumeObv: clamp(sourceComponents.volumeObv, 0, 23),
+    chip: clamp(sourceComponents.chip, 0, 18),
+    fundamental: clamp(sourceComponents.fundamental, 0, 12),
+    liquidity: clamp(sourceComponents.liquidity, 0, 6)
+  };
   const score = Object.values(components).reduce((sum, value) => sum + Number(value || 0), 0);
   const blockedReasons = [...(candidate.blockedReasons || [])];
   const quoteTime = candidate.metrics && candidate.metrics.latestQuoteTime;
   if (!candidate.bidPrice || !candidate.askPrice) blockedReasons.push('缺少零股買一或賣一價');
   if (Number(candidate.metrics?.spreadPct ?? candidate.executionPlan?.spreadPct ?? 0) > CONFIG.maxSpreadPct) blockedReasons.push('零股價差超標');
   blockedReasons.push(...executionRiskReasons({ ...candidate, chipSignals: candidate.metrics?.chip }));
-  const grade = blockedReasons.length ? 'BLOCKED' : score >= 80 ? 'A' : score >= 65 ? 'B' : score >= 50 ? 'C' : 'BLOCKED';
+  const grade = blockedReasons.length ? 'BLOCKED' : score >= 80 ? 'A' : score >= 75 ? 'B' : score >= 50 ? 'C' : 'BLOCKED';
   return {
     ...candidate, score, grade, components, blockedReasons,
     strategy: longOnlyStrategy(candidate, context.time),

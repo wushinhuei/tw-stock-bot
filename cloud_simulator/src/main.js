@@ -3,7 +3,7 @@
 const { CONFIG } = require('./config');
 const { SimulationEngine, taipeiDate, taipeiTime } = require('./engine');
 const { GoogleRepository, MemoryRepository } = require('./repository');
-const { fetchQuotes } = require('./twse');
+const { latestMarketSnapshot, mcpLiveQuotes } = require('./mcp_market');
 const { buildUniverse } = require('./scanner');
 const { adaptCandidatePayload } = require('./candidate_adapter');
 const { isTwseTradingDay } = require('./trading_calendar');
@@ -50,16 +50,10 @@ function persistDailyEquitySnapshot(engine, context = {}) {
   });
 }
 
-async function loadCandidates() {
-  // Candidate bars and official-event enrichment are supplied by the daily scanner/backtest input.
-  // The session runner intentionally refuses to manufacture missing prices or scores.
-  if (!process.env.CANDIDATE_SNAPSHOT_URL) return [];
-  const sourceUrl = candidateSourceUrl(process.env.CANDIDATE_SNAPSHOT_URL);
-  const response = await fetch(sourceUrl, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache, no-store, max-age=0', Pragma: 'no-cache' } });
-  if (!response.ok) throw new Error(`Candidate snapshot HTTP ${response.status}`);
-  const payload = await response.json();
-  if (Array.isArray(payload.volumeRows)) return buildUniverse(payload.volumeRows, payload.enrichmentBySymbol || {});
-  return adaptCandidatePayload(payload, { time: taipeiTime() }).candidates;
+async function loadCandidates(options = {}) {
+  const snapshot = await latestMarketSnapshot(options.now || new Date(), options);
+  const rows = snapshot.rows.map(row => ({ ...row, quoteFresh: true, liquidityScore: 1, fundamentalScore: 0 }));
+  return buildUniverse(rows, options.enrichmentBySymbol || {});
 }
 
 async function publishDashboardAndSyncBackup(repository, engine, candidates, tradesBefore) {
@@ -79,20 +73,14 @@ async function runSession() {
   const engine = new SimulationEngine({ config: CONFIG, repository });
   await engine.restore();
   let candidates = await loadCandidates();
-  let lastNewsAt = 0;
   let latestDashboard = null;
   while (taipeiTime() <= CONFIG.sessionEnd) {
     const now = new Date();
     const time = taipeiTime(now);
     const date = taipeiDate(now);
-    if (Date.now() - lastNewsAt >= CONFIG.rssPollMs) {
-      const news = await engine.refreshNews().catch(error => ({ items: [], errors: [String(error)] }));
-      if (news.errors.length) console.warn(JSON.stringify({ event: 'rss-warning', errors: news.errors }));
-      lastNewsAt = Date.now();
-    }
     if (time >= CONFIG.tradingStart && candidates.length) {
       const symbols = [...new Set(candidates.map(item => item.symbol).concat(engine.account.positions.map(item => item.symbol)))];
-      const quotes = await fetchQuotes(symbols);
+      const quotes = await mcpLiveQuotes(symbols);
       candidates = candidates.map(candidate => ({ ...candidate, ...(quotes[candidate.symbol] || {}) }));
       candidates = await enrichCandidatesWithLiveScores(candidates, { now });
       const context = { date, time, signalTimestamp: now.toISOString(), marketMode: 'NORMAL', session: 'REGULAR' };
@@ -143,17 +131,9 @@ async function runTick(options = {}) {
 
   if (CONFIG.strategyMode !== 'LONG_ONLY') throw new Error(`Unsupported strategy mode: ${CONFIG.strategyMode}`);
 
-  // RSS is advisory-only and comparatively slow. Refresh on ten-minute boundaries;
-  // quotes, positions and orders are still evaluated on every five-minute tick.
-  const minute = Number(decision.time.slice(3, 5));
-  if (minute % 10 === 0) {
-    const news = await engine.refreshNews().catch(error => ({ items: [], errors: [String(error)] }));
-    if (news.errors.length) console.warn(JSON.stringify({ event: 'rss-warning', errors: news.errors }));
-  }
-
   if (decision.time >= CONFIG.tradingStart && candidates.length) {
     const symbols = [...new Set(candidates.map(item => item.symbol).concat(engine.account.positions.map(item => item.symbol)))];
-    const quotes = options.quotes || await fetchQuotes(symbols);
+    const quotes = options.quotes || await mcpLiveQuotes(symbols);
     candidates = candidates.map(candidate => ({ ...candidate, ...(quotes[candidate.symbol] || {}) }));
     const liveScorer = options.enrichCandidates || enrichCandidatesWithLiveScores;
     candidates = await liveScorer(candidates, { now });

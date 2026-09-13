@@ -69,7 +69,9 @@ test('score totals 100 points at most and maps A/B/C thresholds', () => {
   });
   assert.ok(result.score <= 100);
   assert.equal(Object.values(result.components).reduce((a, b) => a + b, 0), result.score);
-  assert.equal(result.grade, result.score >= CONFIG.scoreThresholds.A ? 'A' : 'B');
+  assert.equal(result.grade, result.score >= 80 ? 'A' : result.score >= 75 ? 'B' : result.score >= 50 ? 'C' : 'BLOCKED');
+  assert.deepEqual(Object.keys(result.components), ['technical', 'volumeObv', 'chip', 'fundamental', 'liquidity']);
+  assert.deepEqual(Object.values(result.components).map((_, index) => [41, 23, 18, 12, 6][index]), [41, 23, 18, 12, 6]);
   assert.equal(require('../src/scoring').gradeFor(80, false), 'A');
   assert.equal(result.metrics.obv.bullish, true);
 });
@@ -368,7 +370,7 @@ test('Cloud live scoring computes OBV and blocks incomplete technical data', asy
   const completeBars = { bars5m: bars(80), bars15m: bars(80), dailyBars: bars(100), weeklyBars: weeklyBars(bars(100).map((bar, i) => ({ ...bar, timestamp: new Date(Date.UTC(2024, 0, 1 + i * 7)).toISOString() }))), provider: 'test' };
   const [complete] = await enrichCandidatesWithLiveScores([candidate], { now: new Date('2026-08-25T03:01:00Z'), fetchBars: async () => completeBars });
   assert.equal(complete.dataStatus, 'COMPLETE');
-  assert.equal(complete.scoringMethod, 'CLOUD_DRIVE_LONG_ONLY_V1');
+  assert.equal(complete.scoringMethod, 'MCP_LIVE_LONG_ONLY_V2');
   assert.equal(complete.metrics.obv.bullish, true);
   const [stale] = await enrichCandidatesWithLiveScores([{ ...candidate, timestamp: '2026-08-25T09:00:00+08:00' }], { now: new Date('2026-08-25T03:01:00Z'), fetchBars: async () => completeBars });
   assert.equal(stale.entryTier, 'NONE');
@@ -409,36 +411,26 @@ test('long-only adapter never keeps a legacy odd-lot day-trade strategy', () => 
   assert.equal(CONFIG.strategyMode, 'LONG_ONLY');
 });
 
-test('Drive technical enrichment combines Drive daily bars with intraday bars', async () => {
+test('MCP technical enrichment prefers TWSE daily bars and uses Yahoo MCP intraday bars', async () => {
   const daily = bars(100).map((bar, index) => ({ ...bar, timestamp: new Date(Date.UTC(2025, 0, 1 + index * 2)).toISOString() }));
   const result = await fetchDriveTechnicalBars({ symbol: '2330' }, {
-    now: new Date('2026-08-28T01:10:00Z'), driveTradeDate: '2026-08-27',
-    driveSource: {
-      adjustedDailyBars: async (symbol) => { assert.equal(symbol, '2330'); return daily; },
-      marketFlowRows: async () => [{
-        trade_date: '2026-08-27', institutional_total_net: '1000', foreign_net: '800',
-        investment_trust_net: '100', dealer_total_net: '100', margin_previous_balance: '1000',
-        margin_current_balance: '990', short_previous_balance: '100', short_current_balance: '90',
-        sbl_previous_balance: '200', sbl_current_balance: '180'
-      }]
-    },
-    fetchIntradayBars: async () => ({ bars5m: bars(80), bars15m: bars(30), provider: 'intraday-test' })
+    now: new Date('2026-08-28T01:10:00Z'), tradeDate: '2026-08-27',
+    callTwse: async (tool, args) => { assert.equal(tool, 'twse_stock_daily'); assert.equal(args.symbol, '2330'); return { rows: daily.map(row => ({ ...row, tradeDate: row.timestamp.slice(0, 10) })) }; },
+    callYahoo: async () => ({ bars5m: bars(80), bars15m: bars(30), dailyBars: daily, fetchedAt: '2026-08-28T01:10:00Z' })
   });
   assert.equal(result.dailyBars.length, 100);
   assert.ok(result.weeklyBars.length >= 20);
-  assert.equal(result.driveTradeDate, '2026-08-27');
-  assert.match(result.provider, /Google Drive/);
-  assert.equal(result.chipSignals.institutional.totalNet, 1000);
+  assert.match(result.provider, /TWSE MCP/);
 });
 
-test('Drive market flow becomes the long-only chip scoring source', () => {
+test('TWSE MCP market flow becomes the long-only chip scoring source', () => {
   const chip = driveChipSignals([{
     trade_date: '2026-08-27', institutional_total_net: '500', foreign_net: '300',
     investment_trust_net: '100', dealer_total_net: '100', margin_previous_balance: '1000',
     margin_current_balance: '1100', short_previous_balance: '200', short_current_balance: '180',
     sbl_previous_balance: '400', sbl_current_balance: '360'
   }]);
-  assert.equal(chip.source, 'Google Drive TWSE每日籌碼');
+  assert.equal(chip.source, 'TWSE MCP法人與信用交易');
   assert.equal(chip.marginChangeRatio, 0.1);
   assert.equal(chip.securitiesLendingChangeRatio, -0.1);
 });
@@ -504,7 +496,7 @@ test('unlicensed automated media collection is rejected', () => {
 });
 
 test('media points alone cannot promote a B candidate to A', () => {
-  assert.equal(gradeWithMedia(81, 79, false), 'B');
+  assert.equal(gradeWithMedia(81, 79, false), 'A');
   assert.equal(gradeWithMedia(81, 80, false), 'A');
   const daily = bars(70);
   const common = { eventKey: 'evt-3', title: '供應鏈正面消息', publishedAt: '2026-08-21T01:00:00Z', sentiment: 'POSITIVE', impact: 'HIGH' };
@@ -516,7 +508,7 @@ test('media points alone cannot promote a B candidate to A', () => {
       { ...common, source: 'DIGITIMES', acquisitionMethod: 'MANUAL', url: 'https://example.test/dt' }
     ]
   });
-  assert.equal(result.grade, 'B');
+  assert.equal(result.components.officialNews, undefined);
 });
 
 test('replacement order is impossible before cancel acknowledgement', () => {

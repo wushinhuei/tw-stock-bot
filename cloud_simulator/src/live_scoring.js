@@ -2,8 +2,12 @@
 
 const { CONFIG } = require('./config');
 const { scoreCandidate } = require('./scoring');
-const { DriveHistorySource } = require('./drive_history');
-const { fetchIntradayBars, weeklyBars } = require('./yahoo');
+const { callTool: callTwse } = require('./twse_mcp_history');
+const { callTool: callYahoo } = require('./yahoo_mcp');
+const { weeklyBars } = require('./yahoo');
+const { MopsMcpHistory } = require('./mops_mcp_history');
+
+const fundamentalCache = new Map();
 
 function ymd(date) { return date.toISOString().slice(0, 10); }
 function monthsBefore(date, months) {
@@ -17,12 +21,12 @@ function ratio(current, previous) {
   return Number.isFinite(base) && base !== 0 ? (Number(current || 0) - base) / Math.abs(base) : null;
 }
 
-function driveChipSignals(rows, fallback = {}) {
+function mcpChipSignals(rows, fallback = {}) {
   const latest = rows.at(-1);
   if (!latest) return fallback;
   return {
     ...fallback,
-    source: 'Google Drive TWSE每日籌碼',
+    source: 'TWSE MCP法人與信用交易',
     tradeDate: latest.trade_date,
     institutional: {
       totalNet: Number(latest.institutional_total_net || 0),
@@ -36,23 +40,24 @@ function driveChipSignals(rows, fallback = {}) {
   };
 }
 
-async function fetchDriveTechnicalBars(candidate, options) {
+async function fetchMcpTechnicalBars(candidate, options = {}) {
   const now = options.now || new Date();
-  const source = options.driveSource;
   const symbol = String(candidate.metrics?.sourceSymbol || candidate.symbol).replace(/\.TW$/i, '');
   const start = monthsBefore(now, 18);
-  const [intraday, dailyBars, marketFlow] = await Promise.all([
-    (options.fetchIntradayBars || fetchIntradayBars)(candidate.metrics?.sourceSymbol || candidate.symbol),
-    source.adjustedDailyBars(symbol, start, options.driveTradeDate),
-    source.marketFlowRows(symbol, start, options.driveTradeDate)
-  ]);
+  const end = options.tradeDate || ymd(now);
+  const yahoo = await (options.callYahoo || callYahoo)('yahoo_supplemental_history', { symbol: `${symbol}.TW`, dailyRange: '2y', intradayRange: '5d' }, options.yahoo || {});
+  let official;
+  try { official = await (options.callTwse || callTwse)('twse_stock_daily', { symbol, start, end }, options.twse || {}); }
+  catch (error) { official = { rows: [] }; }
+  const dailyBars = (official.rows || []).map(row => ({ ...row, timestamp: `${row.tradeDate}T00:00:00.000Z` }));
+  const selectedDaily = dailyBars.length >= 50 ? dailyBars : (yahoo.dailyBars || []);
   return {
-    ...intraday,
-    dailyBars,
-    weeklyBars: weeklyBars(dailyBars),
-    chipSignals: driveChipSignals(marketFlow, candidate.metrics?.chip),
-    provider: `${intraday.provider} + Google Drive TWSE日線`,
-    driveTradeDate: options.driveTradeDate
+    bars5m: yahoo.bars5m || [], bars15m: yahoo.bars15m || [],
+    dailyBars: selectedDaily,
+    weeklyBars: weeklyBars(selectedDaily),
+    chipSignals: candidate.metrics?.chip || {},
+    provider: `${dailyBars.length >= 50 ? 'TWSE MCP日線' : 'Yahoo Finance MCP日線備援'} + Yahoo Finance MCP盤中K線`,
+    sourceTimestamps: { fetchedAt: yahoo.fetchedAt || now.toISOString(), officialEnd: end }
   };
 }
 
@@ -60,6 +65,28 @@ function fraction(value, maximum, fallback = 0) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(0, Math.min(1, number > 1 ? number / maximum : number));
+}
+
+async function mopsFundamentalSummary(symbol, now = new Date(), options = {}) {
+  const key = `${symbol}:${ymd(now)}`;
+  if (fundamentalCache.has(key)) return fundamentalCache.get(key);
+  const service = options.mopsService || new MopsMcpHistory(options.mops || {});
+  const year = Number(ymd(now).slice(0, 4));
+  try {
+    const [revenue, financials] = await Promise.all([
+      service.callTool('mops_monthly_revenue', { year, symbol, asOf: now.toISOString() }),
+      service.callTool('mops_quarterly_financials', { year, symbol, asOf: now.toISOString() })
+    ]);
+    const revenueRows = revenue.structuredContent?.rows || [];
+    const financialRows = financials.structuredContent?.rows || [];
+    const factCount = new Set(financialRows.flatMap(row => (row.facts || []).map(fact => fact.metric))).size;
+    const score = Math.min(1, (revenueRows.length ? 0.4 : 0) + Math.min(0.6, factCount / 8 * 0.6));
+    const result = { score, missing: [...(!revenueRows.length ? ['monthly_revenue'] : []), ...(!financialRows.length ? ['quarterly_financials'] : [])], source: 'MOPS_MCP', fetchedAt: new Date().toISOString() };
+    fundamentalCache.set(key, result);
+    return result;
+  } catch (error) {
+    return { score: 0, missing: ['mops_summary'], source: 'MOPS_MCP', error: String(error.message || error), fetchedAt: new Date().toISOString() };
+  }
 }
 
 function quoteIsFresh(candidate, now = new Date()) {
@@ -80,9 +107,8 @@ function scoringInput(candidate, bars, now = new Date()) {
     quoteFresh: quoteIsFresh(candidate, now),
     spreadPct: spread,
     chipSignals: candidate.metrics?.chip,
-    chipScore: fraction(candidate.components?.chip, 15, candidate.chipOk ? 1 : 0),
-    fundamentalScore: fraction(candidate.components?.fundamental, 10, candidate.fundamentalOk ? 1 : 0),
-    officialNewsScore: fraction(candidate.components?.officialNews, 15, 8 / 15),
+    chipScore: fraction(candidate.components?.chip, 18, candidate.chipOk ? 1 : 0),
+    fundamentalScore: fraction(candidate.components?.fundamental, 12, candidate.fundamentalOk ? 1 : 0),
     liquidityScore: spread <= CONFIG.maxSpreadPct ? 1 : 0,
     scoringTime: now.toISOString()
   };
@@ -110,17 +136,20 @@ async function mapWithConcurrency(rows, limit, mapper) {
 
 async function enrichCandidatesWithLiveScores(candidates, options = {}) {
   const now = options.now || new Date();
-  const driveSource = options.driveSource || (options.fetchBars ? null : new DriveHistorySource());
-  const driveStatus = options.driveStatus || (driveSource ? await driveSource.analysisStatus() : { tradeDate: null });
-  const fetchBars = options.fetchBars || (candidate => fetchDriveTechnicalBars(candidate, {
-    ...options, now, driveSource, driveTradeDate: driveStatus.tradeDate
-  }));
+  const mopsService = options.mopsService || (options.fetchBars ? null : new MopsMcpHistory(options.mops || {}));
+  const fetchBars = options.fetchBars || (candidate => fetchMcpTechnicalBars(candidate, { ...options, now }));
   return mapWithConcurrency(candidates || [], options.concurrency || CONFIG.liveScoreConcurrency, async candidate => {
     try {
       const bars = await fetchBars(candidate);
       if (!dataComplete(candidate.strategy, bars)) throw new Error('insufficient bars');
+      const fundamental = options.fetchFundamental
+        ? await options.fetchFundamental(candidate, now)
+        : options.fetchBars
+          ? { score: fraction(candidate.components?.fundamental, 12, candidate.fundamentalOk ? 1 : 0), missing: [], source: 'TEST_INJECTED', fetchedAt: now.toISOString() }
+          : await mopsFundamentalSummary(candidate.symbol, now, { ...options, mopsService });
       const scored = scoreCandidate(scoringInput({
-        ...candidate, metrics: { ...candidate.metrics, chip: bars.chipSignals || candidate.metrics?.chip }
+        ...candidate, fundamentalScore: fundamental.score,
+        metrics: { ...candidate.metrics, chip: bars.chipSignals || candidate.metrics?.chip }
       }, bars, now));
       const eligibleData = scored.grade !== 'BLOCKED' && scored.blockedReasons.length === 0;
       const entryTier = eligibleData && scored.grade === 'A' ? 'STANDARD' : 'NONE';
@@ -131,9 +160,11 @@ async function enrichCandidatesWithLiveScores(candidates, options = {}) {
         dataStatus: 'COMPLETE',
         metrics: {
           ...candidate.metrics, ...scored.metrics, liveScoringProvider: bars.provider,
-          driveTradeDate: bars.driveTradeDate || driveStatus.tradeDate, liveScoredAt: now.toISOString()
+          sourceTimestamps: { ...bars.sourceTimestamps, fundamental: fundamental.fetchedAt },
+          fundamentalDataSource: fundamental.source, fundamentalMissing: fundamental.missing,
+          liveScoredAt: now.toISOString()
         },
-        scoringMethod: 'CLOUD_DRIVE_LONG_ONLY_V1'
+        scoringMethod: 'MCP_LIVE_LONG_ONLY_V2'
       };
     } catch (error) {
       const blockedReasons = [...new Set([...(candidate.blockedReasons || []), '即時技術資料或OBV不足'])];
@@ -141,10 +172,10 @@ async function enrichCandidatesWithLiveScores(candidates, options = {}) {
         ...candidate,
         grade: 'BLOCKED', entryTier: 'NONE', dataStatus: 'INCOMPLETE', blockedReasons,
         metrics: { ...candidate.metrics, liveScoredAt: now.toISOString(), liveScoringError: String(error) },
-        scoringMethod: 'CLOUD_DRIVE_LONG_ONLY_V1'
+        scoringMethod: 'MCP_LIVE_LONG_ONLY_V2'
       };
     }
   });
 }
 
-module.exports = { dataComplete, driveChipSignals, enrichCandidatesWithLiveScores, fetchDriveTechnicalBars, quoteIsFresh, scoringInput };
+module.exports = { dataComplete, driveChipSignals: mcpChipSignals, enrichCandidatesWithLiveScores, fetchDriveTechnicalBars: fetchMcpTechnicalBars, fetchMcpTechnicalBars, mcpChipSignals, mopsFundamentalSummary, quoteIsFresh, scoringInput };

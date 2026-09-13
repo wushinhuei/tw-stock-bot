@@ -3,7 +3,7 @@
 const { Storage } = require('@google-cloud/storage');
 const { DriveHistorySource } = require('../src/drive_history');
 const { DrivePrimaryWriter } = require('../src/drive_primary_writer');
-const { latestReportableQuarter, quarterKey } = require('./backfill_mops_20q_to_drive');
+const { latestMarketSnapshot } = require('../src/mcp_market');
 
 function taipeiDate(now = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
@@ -34,53 +34,45 @@ async function buildReport(options = {}) {
   const today = taipeiDate(now);
   const root = process.env.MCP_DRIVE_PARENT_FOLDER_ID || process.env.TWSE_DRIVE_PARENT_FOLDER_ID || '';
   const mopsParent = process.env.MOPS_DRIVE_PARENT_FOLDER_ID || root;
-  const q20Parent = process.env.MOPS_20Q_DRIVE_PARENT_FOLDER_ID || '1oNlmeY46SpjBoZCUUlLCGGu8AV1W-knd';
   const history = new DriveHistorySource();
   const checks = [];
+
+  checks.push(await safeCheck('twseMcpTop50', async () => {
+    const snapshot = await latestMarketSnapshot(now);
+    return { ok: snapshot.rows.length >= 50, latestDate: snapshot.date, rowCount: snapshot.rows.length, source: snapshot.source, status: snapshot.rows.length >= 50 ? 'complete' : 'incomplete' };
+  }));
 
   for (const dataset of ['stockDaily', 'marketFlow', 'top50']) {
     checks.push(await safeCheck(dataset, async () => {
       const manifest = await history.manifest(dataset);
       return { ok: true, latestDate: latestDateOf(manifest), status: manifest.status || manifest.last_update?.status || 'complete' };
-    }));
+    }, false));
   }
   checks.push(await safeCheck('mopsRollingOfficial', async () => {
     const manifest = await history.mopsManifest();
     return { ok: manifest.status === 'complete', latestDate: latestDateOf(manifest), status: manifest.status };
-  }));
-  checks.push(await safeCheck('mcpDailyAudit', async () => {
+  }, false));
+  checks.push(await safeCheck('mcpDailyAuditArchive', async () => {
     const manifest = await readFolderManifest(root, process.env.MCP_DRIVE_AUDIT_FOLDER_NAME || 'MCP_DAILY_SYNC_AUDIT');
     return { ok: manifest.ok === true && manifest.latestDate === today, latestDate: manifest.latestDate, status: manifest.ok ? 'complete' : 'failed' };
-  }));
+  }, false));
   checks.push(await safeCheck('mopsDailySync', async () => {
     const manifest = await readFolderManifest(mopsParent, process.env.MOPS_DRIVE_FOLDER_NAME || 'MOPS_MCP_PRIMARY');
     const counts = manifest.counts || {};
     const hasCore = Number(counts.monthlyRevenue || 0) > 0 && Number(counts.quarterlyFinancials || 0) > 0;
     return { ok: manifest.latestDate === today && hasCore, latestDate: manifest.latestDate, counts, status: hasCore ? 'complete' : 'incomplete' };
-  }));
-  checks.push(await safeCheck('taiwanFinancialNews', async () => {
-    const manifest = await readFolderManifest(root, process.env.TAIWAN_NEWS_DRIVE_FOLDER_NAME || 'TAIWAN_FINANCIAL_NEWS_MCP');
-    return { ok: manifest.latestDate === today, latestDate: manifest.latestDate, rowCount: manifest.rowCount, status: manifest.latestDate === today ? 'complete' : 'stale' };
-  }));
-  checks.push(await safeCheck('mops20Q', async () => {
-    const manifest = await readFolderManifest(q20Parent, process.env.MOPS_20Q_DRIVE_FOLDER_NAME || '20Q_MCP_PRIMARY');
-    const expected = latestReportableQuarter(now);
-    const expectedQuarter = quarterKey(expected.year, expected.quarter);
-    const latestQuarter = manifest.endQuarter || manifest.latestReportableQuarter || null;
-    const ok = manifest.status === 'complete' && Number(manifest.quarterCount || 0) >= 20 && latestQuarter === expectedQuarter;
-    return { ok, latestQuarter, expectedQuarter, quarterCount: manifest.quarterCount, status: ok ? 'complete' : 'stale' };
-  }));
+  }, false));
 
   const marketDates = checks.filter(x => ['stockDaily','marketFlow','top50'].includes(x.name) && x.ok && x.latestDate).map(x => x.latestDate);
   const latestCompleteTradeDate = marketDates.length ? marketDates.slice().sort().at(-1) : null;
   const marketAligned = marketDates.length === 3 && new Set(marketDates).size === 1;
-  checks.push({ name: 'marketDateAlignment', blocking: true, ok: marketAligned, latestDate: latestCompleteTradeDate, dates: marketDates, status: marketAligned ? 'complete' : 'mismatch' });
+  checks.push({ name: 'marketDateAlignment', blocking: false, ok: marketAligned, latestDate: latestCompleteTradeDate, dates: marketDates, status: marketAligned ? 'complete' : 'mismatch' });
 
   const failures = checks.filter(x => x.blocking && !x.ok);
   return {
-    schemaVersion: 1, generatedAt: now.toISOString(), checkedForDate: today,
+    schemaVersion: 2, generatedAt: now.toISOString(), checkedForDate: today,
     status: failures.length ? 'PARTIAL' : 'COMPLETE', ok: failures.length === 0, latestCompleteTradeDate,
-    gatePolicy: 'ALL_BLOCKING_DATA_SOURCES_MUST_PASS; INCOMPLETE_DATA_MUST_NOT_REPLACE_LAST_COMPLETE_DATASET',
+    gatePolicy: 'MCP_MARKET_AND_AUDIT_ONLY; NEWS_AND_MOPS_20Q_ARE_NON_BLOCKING_ARCHIVES',
     checks, failedChecks: failures.map(x => x.name)
   };
 }

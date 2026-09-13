@@ -670,7 +670,6 @@ function render(result) {
   renderTodayDecision(result, latestDay);
   renderCandidateUniverse(window.CANDIDATE_UNIVERSE);
   renderAGradeCandidates(latestDay);
-  renderInternationalNews(latestDay.internationalNews || result.internationalNews || []);
   renderPositions(result, latestDay);
   renderTrades(result.trades, todayTaipeiDate());
   renderCurve(result.daily);
@@ -956,7 +955,7 @@ function renderAGradeCandidates(day) {
         </div>
         <div class="candidate-price">${price(candidate.price)}</div>
         <div class="candidate-quote"><strong>${candidate.score ?? '-'} 分</strong> · ${candidate.strategy || '策略待判定'}</div>
-        ${candidate.components ? `<div class="candidate-signals"><span>技術 ${candidate.components.technical}/35</span><span>OBV量價 ${candidate.components.volumeObv}/20</span><span>籌碼 ${candidate.components.chip}/15</span><span>基本 ${candidate.components.fundamental}/10</span><span>官方＋媒體消息 ${candidate.components.officialNews}/15</span><span>執行 ${candidate.components.liquidity}/5</span></div>` : ''}
+        ${candidate.components ? `<div class="candidate-signals"><span>技術 ${candidate.components.technical}/41</span><span>OBV量價 ${candidate.components.volumeObv}/23</span><span>籌碼 ${candidate.components.chip}/18</span><span>基本 ${candidate.components.fundamental}/12</span><span>執行 ${candidate.components.liquidity}/6</span></div>` : ''}
         <div class="candidate-quote">${bidAsk}<br>${quoteTime}</div>
         <div class="candidate-signals">
           <span>${volumeRatio}</span>
@@ -1384,9 +1383,6 @@ async function loadAppsScriptPayload(action, options = {}) {
     payload.simulation.positions || [],
   );
   window.CANDIDATE_UNIVERSE = payload.candidateUniverse || null;
-  if (Array.isArray(payload.internationalNews) && payload.scenario.length) {
-    payload.scenario[payload.scenario.length - 1].internationalNews = payload.internationalNews;
-  }
   window.ACTUAL_SCENARIO = payload.scenario;
   window.PRECOMPUTED_SIMULATION = payload.simulation;
   return true;
@@ -1538,7 +1534,6 @@ async function checkTradeUpdate() {
 }
 
 initRulesModal();
-initInternationalNewsModal();
 initReturnsModal();
 initPositionStatusModal();
 initDataRefresh();

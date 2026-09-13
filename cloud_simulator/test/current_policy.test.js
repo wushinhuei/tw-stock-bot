@@ -39,8 +39,8 @@ test('current engine admits A only and rejects legacy B trial entry', () => {
   assert.equal(engine.account.orders.length, 0);
 });
 
-test('media modifier never promotes a sub-A base score into A', () => {
-  assert.notEqual(gradeWithMedia(81, 79, false), 'A');
+test('media input no longer changes formal grade', () => {
+  assert.equal(gradeWithMedia(81, 79, false), 'A');
   assert.equal(gradeWithMedia(81, 80, false), 'A');
 });
 

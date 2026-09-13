@@ -2,7 +2,6 @@
 
 const { CONFIG } = require('./config');
 const { analyzeObv, atr, breakoutRetest, clamp, emaSeries, macd, rsi, sma, supportResistance, vwap } = require('./indicators');
-const { scoreTaiwanMedia } = require('./news');
 const { executionRiskReasons, scoreChipSignals } = require('./chip');
 
 function gradeFor(score, blocked) {
@@ -13,10 +12,8 @@ function gradeFor(score, blocked) {
   return 'BLOCKED';
 }
 
-function gradeWithMedia(total, totalWithoutMedia, blocked) {
-  const grade = gradeFor(total, blocked);
-  return grade === 'A' && totalWithoutMedia < CONFIG.scoreThresholds.A ? 'B' : grade;
-}
+// Backward-compatible export for archived replay tests. Media no longer changes grades.
+function gradeWithMedia(total, _totalWithoutMedia, blocked) { return gradeFor(total, blocked); }
 
 function timeframeScore(bars, maxScore) {
   if (!Array.isArray(bars) || bars.length < 20) return { score: 0, reasons: ['技術資料不足'] };
@@ -84,8 +81,8 @@ function scoreCandidate(input) {
   const strategy = input.strategy || 'SWING';
   const fastBars = strategy === 'DAY_TRADE' ? input.bars5m : input.bars15m;
   const slowBars = strategy === 'SWING' ? input.weeklyBars : input.dailyBars;
-  const fast = timeframeScore(fastBars || [], 18);
-  const slow = timeframeScore(slowBars || input.dailyBars || [], 17);
+  const fast = timeframeScore(fastBars || [], 21);
+  const slow = timeframeScore(slowBars || input.dailyBars || [], 20);
   const dailyBars = input.dailyBars || [];
   const obv = analyzeObv(dailyBars, 42, 20);
   const volumes = dailyBars.map(row => Number(row.volume || 0));
@@ -100,16 +97,13 @@ function scoreCandidate(input) {
   if (obv.breakoutConfirmed) volumeObv += 3;
   if (obv.topDivergence) volumeObv = Math.max(0, volumeObv - 5);
 
-  const officialNewsBase = Math.round(clamp(input.officialNewsScore, 0, 1) * 15);
-  const mediaNews = scoreTaiwanMedia(input.taiwanMediaItems, input.officialEventKeys, input.scoringTime ? new Date(input.scoringTime) : new Date());
   const chipResult = scoreChipSignals(input.chipSignals || input.metrics?.chip, input.chipScore);
   const components = {
-    technical: clamp(fast.score + slow.score, 0, 35),
-    volumeObv: clamp(volumeObv, 0, 20),
-    chip: chipResult.score,
-    fundamental: Math.round(clamp(input.fundamentalScore, 0, 1) * 10),
-    officialNews: clamp(officialNewsBase + mediaNews.modifier, 0, 15),
-    liquidity: Math.round(clamp(input.liquidityScore, 0, 1) * 5)
+    technical: clamp(fast.score + slow.score, 0, 41),
+    volumeObv: Math.round(clamp(volumeObv / 20, 0, 1) * 23),
+    chip: Math.round(clamp(chipResult.score / 15, 0, 1) * 18),
+    fundamental: Math.round(clamp(input.fundamentalScore, 0, 1) * 12),
+    liquidity: Math.round(clamp(input.liquidityScore, 0, 1) * 6)
   };
   const total = Object.values(components).reduce((sum, value) => sum + value, 0);
   const blockedReasons = [...(input.blockedReasons || [])];
@@ -117,8 +111,7 @@ function scoreCandidate(input) {
   if (input.officialRiskBlocked) blockedReasons.push('官方重大風險尚未解除');
   if (Number(input.spreadPct || 0) > CONFIG.maxSpreadPct) blockedReasons.push('零股價差超標');
   blockedReasons.push(...executionRiskReasons(input));
-  const totalWithoutMedia = total - components.officialNews + officialNewsBase;
-  const grade = gradeWithMedia(total, totalWithoutMedia, blockedReasons.length > 0);
+  const grade = gradeFor(total, blockedReasons.length > 0);
   return {
     score: total,
     grade,
@@ -126,7 +119,7 @@ function scoreCandidate(input) {
     strategy,
     blockedReasons,
     technicalReasons: [...fast.reasons, ...slow.reasons],
-    metrics: { ...fast.metrics, slow: slow.metrics, volumeRatio, obv, chip: { ...(input.chipSignals || input.metrics?.chip), scoring: chipResult.details }, mediaNews, officialNewsBase }
+    metrics: { ...fast.metrics, slow: slow.metrics, volumeRatio, obv, chip: { ...(input.chipSignals || input.metrics?.chip), scoring: chipResult.details } }
   };
 }
 

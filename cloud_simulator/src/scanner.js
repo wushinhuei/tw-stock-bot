@@ -27,7 +27,7 @@ function candidateSelectionScore(row, rankOrConfig = CONFIG, poolLimit) {
   // 這組權重只決定 Top10 觀察順位；正式交易仍使用完整 100 分心法。
   const chipFraction = row.chipSelectionScore != null
     ? clamp(row.chipSelectionScore)
-    : row.chipScore != null ? clamp(row.chipScore) : row.chipOk === true ? 1 : clamp(Number(components.chip || 0) / 15);
+    : row.chipScore != null ? clamp(row.chipScore) : row.chipOk === true ? 1 : clamp(Number(components.chip || 0) / 18);
   const volumeFraction = clamp((sourceLimit - volumeRank + 1) / sourceLimit);
   const changePct = Number(row.priceChangePct ?? row.changePct);
   const momentumFraction = Number.isFinite(changePct) ? clamp((changePct + 0.05) / 0.10) : 0.5;
