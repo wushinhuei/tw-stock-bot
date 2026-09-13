@@ -40,6 +40,23 @@ function deploymentMetadata() {
   };
 }
 
+function sanitizeLegacyNews(value) {
+  if (Array.isArray(value)) return value.map(sanitizeLegacyNews);
+  if (!value || typeof value !== 'object') return value;
+  const blocked = new Set([
+    'internationalnews',
+    'taiwanmedianews',
+    'officialnews',
+    'medianews',
+    'newsscore',
+    'officialnewsscore',
+    'mediascore'
+  ]);
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !blocked.has(key.toLowerCase()))
+    .map(([key, item]) => [key, sanitizeLegacyNews(item)]));
+}
+
 function createDashboardServer(options = {}) {
   const readDashboard = lazyStorageReader(options.readDashboard, storageDashboardReader);
   const readDataHealth = lazyStorageReader(options.readDataHealth, storageDataHealthReader);
@@ -58,7 +75,7 @@ function createDashboardServer(options = {}) {
     }
     if (path !== '/' && path !== '/dashboard') return json(response, 404, { ok: false, error: 'NOT_FOUND' });
     try {
-      const payload = await readDashboard();
+      const payload = sanitizeLegacyNews(await readDashboard());
       return json(response, 200, { ...payload, cloudApiAt: new Date().toISOString(), ...deploymentMetadata() });
     } catch (error) {
       console.warn(JSON.stringify({ event: 'dashboard-not-ready', error: String(error) }));
@@ -74,4 +91,4 @@ function startDashboardApi() {
   return server;
 }
 
-module.exports = { createDashboardServer, deploymentMetadata, startDashboardApi, storageDashboardReader, storageDataHealthReader };
+module.exports = { createDashboardServer, deploymentMetadata, sanitizeLegacyNews, startDashboardApi, storageDashboardReader, storageDataHealthReader };

@@ -835,6 +835,24 @@ test('dashboard API exposes only read-only dashboard and health routes', async t
   assert.equal((await fetch(`http://127.0.0.1:${port}/dashboard`, { method: 'POST' })).status, 405);
 });
 
+test('dashboard API strips legacy news fields from persisted snapshots', async t => {
+  const server = createDashboardServer({
+    readDashboard: async () => ({
+      internationalNews: [{ title: 'legacy' }],
+      candidates: [{ symbol: '2330', officialNews: { score: 3 }, metrics: { newsScore: 5, technical: 40 } }]
+    }),
+    readDataHealth: async () => ({ ok: true })
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+
+  const payload = await (await fetch(`http://127.0.0.1:${server.address().port}/dashboard`)).json();
+  assert.equal('internationalNews' in payload, false);
+  assert.equal('officialNews' in payload.candidates[0], false);
+  assert.equal('newsScore' in payload.candidates[0].metrics, false);
+  assert.equal(payload.candidates[0].metrics.technical, 40);
+});
+
 test('dashboard API returns 503 until first cloud dashboard is available', async t => {
   const server = createDashboardServer({ readDashboard: async () => { throw new Error('missing'); } });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
