@@ -21,7 +21,6 @@
       <button type="button" id="refreshDataButton" class="primary-action">更新資料</button>
       <button type="button" id="openReturnsButton" class="primary-action secondary-action">歷史報酬率</button>
       <button type="button" id="openRulesButton" class="primary-action secondary-action">查閱操作規則</button>
-      <button type="button" id="openInternationalNewsButton" class="primary-action secondary-action">國際風險提示</button>
       <span id="lastUpdatedAt" class="last-updated">模擬快照：-</span>
     </div>
   </header>
@@ -143,23 +142,6 @@
       </div>
     </section>
   </main>
-
-  <div id="internationalNewsModal" class="rules-modal" hidden>
-    <div class="rules-backdrop" data-close-international-news></div>
-    <section class="rules-dialog news-dialog" role="dialog" aria-modal="true" aria-labelledby="internationalNewsTitle">
-      <div class="rules-header">
-        <div>
-          <p class="eyebrow">International risk</p>
-          <h2 id="internationalNewsTitle">國際風險提示</h2>
-          <p>Investing.com RSS 僅顯示合法摘要、來源與原文連結，不改變正式 100 分，也不直接觸發交易。</p>
-        </div>
-        <button type="button" class="icon-close" data-close-international-news aria-label="關閉國際風險提示">×</button>
-      </div>
-      <div class="rules-content news-modal-content">
-        <div id="internationalNews" class="news-grid"></div>
-      </div>
-    </section>
-  </div>
 
   <div id="returnsModal" class="rules-modal" hidden>
     <div class="rules-backdrop" data-close-returns></div>
@@ -287,7 +269,7 @@
             <li>同一股票同時只允許一種策略；下跌禁止攤平，只有獲利且 OBV 確認時才允許一次策略加碼。</li>
             <li>本網址固定為純做多版本：零股只做先買後賣的隔日沖與波段，不建立無券、融券或其他空方部位。</li>
             <li>每日從上市普通股成交量前 50 名建立母池，再依完整心法指標排序前 10 檔作為觀察候選；候選不等於買進訊號。</li>
-            <li>隔日沖或波段由技術、OBV量價、籌碼、基本面、官方與媒體消息及執行品質共同判斷，不以單一指標決定。</li>
+            <li>隔日沖或波段由技術、OBV量價、籌碼、基本面及流動性與執行品質共同判斷，不以單一指標決定。</li>
           </ul>
         </section>
 
@@ -301,16 +283,15 @@
             <li>確認 MACD 零軸上、柱狀圖翻紅，代表多頭動能較強。</li>
             <li>RSI 站上 50 偏多；強勢股 RSI 大於 70 不一定立刻賣出。</li>
             <li>依 A/B/C 等級決定是否交易與部位。</li>
-            <li>開盤前檢查國際股市、費半、台指期、匯率、重大新聞與族群題材。</li>
+            <li>開盤前檢查市場方向、流動性、籌碼與價格動能。</li>
             <li>下單前確認限價、追價上限與抽單條件；達到日損、週損或每日小賺目標即停止新增風險。</li>
             <li>Cloud Run 於交易日 08:50–13:20 每 5 分鐘取得行情並執行模擬；盤中以最新 5 分鐘與日線 K 線重新彙整 15 分鐘及週線，計算技術面、量比與 OBV_MA42。</li>
             <li>網頁每 1 分鐘檢查交易狀態；發現新交易時立即更新畫面。沒有交易異動時，完整頁面資料每 30 分鐘自動更新。</li>
             <li>週末及證交所休市日不執行交易工作；按下頁面上方「更新資料」可立即強制更新。</li>
             <li>盤中股價、最佳買價及最佳賣價以臺灣證券交易所 TWSE MIS 行情為主要來源。</li>
             <li>上市股票成交量排名及候選母體使用 TWSE MI_INDEX 資料。</li>
-            <li>日線、週線與 OBV 使用 Google Drive 中日期一致且完整的 TWSE 歷史資料；盤中 5 分鐘與 15 分鐘線使用 Yahoo Finance Chart API 補充技術分析，兩者都不視為券商成交價。</li>
+            <li>日線、週線與 OBV 優先使用 TWSE MCP；盤中 5 分鐘與 15 分鐘線可用 Yahoo Finance MCP 補充，並顯示來源與時間戳。</li>
             <li>收盤後若有盤後定價交易，使用 TWSE BFT41U 的盤後成交價及成交量。</li>
-            <li>Investing.com 與財經新聞網站只供消息查核，不作為台股模擬成交價格。</li>
             <li>行情缺漏、時間戳過期、買賣價無效，或技術 K 線／OBV 資料不足時，標示資料不完整並阻擋新交易，不以 0 分或假價格補單。</li>
           </ol>
         </section>
@@ -327,16 +308,14 @@
         <section>
           <h3>100 分評分與 A/B/C 分級</h3>
           <div class="rules-table">
-            <div><strong>多週期技術面 35 分</strong><span>VWAP、EMA、MA20、MA50、MACD、RSI、ATR 與支撐壓力。</span></div>
-            <div><strong>量價與 OBV 20 分</strong><span>成交量比、OBV 趨勢及 OBV_MA42 確認；背離時降低評價。</span></div>
-            <div><strong>法人及籌碼 15 分</strong><span>法人流向 6 分、融資變化 3 分、融券／借券賣出壓力 3 分、當沖熱度 3 分；缺項採中性，不把單一指標當成買進訊號。</span></div>
-            <div><strong>基本面 10 分</strong><span>營收、獲利、財務品質與產業條件。</span></div>
-            <div><strong>官方消息事件 15 分</strong><span>TWSE／MOPS、月營收、財報、法說、處置、停復牌與公司行動。</span></div>
-            <div><strong>流動性及執行品質 5 分</strong><span>成交量、買賣價差與限價成交品質。</span></div>
+            <div><strong>多週期技術面 41 分</strong><span>VWAP、EMA、MA20、MA50、MACD、RSI、ATR 與支撐壓力。</span></div>
+            <div><strong>量價與 OBV 23 分</strong><span>成交量比、OBV 趨勢及 OBV_MA42 確認；背離時降低評價。</span></div>
+            <div><strong>法人及籌碼 18 分</strong><span>法人、融資融券與借券資料；缺項給0分並標示缺漏。</span></div>
+            <div><strong>基本面 12 分</strong><span>MOPS MCP 當下可取得的營收、獲利及財務品質摘要；缺漏不回填歷史。</span></div>
+            <div><strong>流動性及執行品質 6 分</strong><span>成交量、買賣價差、時間戳與限價成交品質。</span></div>
             <div><strong>A 級：80 分以上</strong><span>仍須資料完整、無重大阻擋且交易計畫允許進場；首次部位最高總資產 10%。</span></div>
             <div><strong>小額試單：75–79 分</strong><span>僅限資料完整、技術面至少 20 分、量價與 OBV 至少 8 分且無阻擋；首次最高總資產 5%。</span></div>
-            <div><strong>B 級：65–74 分</strong><span>只觀察，不主動買進。</span></div>
-            <div><strong>C 級：50–64 分</strong><span>只觀察；低於 50 分或重大風險直接阻擋。</span></div>
+            <div><strong>C 級：50–74 分</strong><span>只觀察；低於 50 分或重大風險直接阻擋。</span></div>
           </div>
         </section>
 
