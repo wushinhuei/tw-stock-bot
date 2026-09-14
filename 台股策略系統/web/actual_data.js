@@ -175,11 +175,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -191,7 +186,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 15,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -389,11 +383,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -405,7 +394,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 10,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -605,11 +593,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -621,7 +604,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 17,
           "chip": 10,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -825,11 +807,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": false,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -841,7 +818,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 3,
           "chip": 8,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -1039,11 +1015,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": false,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -1055,7 +1026,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 3,
           "chip": 9,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -1257,11 +1227,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -1273,7 +1238,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 12,
           "chip": 9,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -1471,11 +1435,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -1487,7 +1446,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 10,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -1686,11 +1644,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -1702,7 +1655,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 12,
           "chip": 12,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -1901,11 +1853,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -1917,7 +1864,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 7,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -2117,11 +2063,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -2133,7 +2074,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 7,
           "chip": 11,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -2330,11 +2270,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -2346,7 +2281,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 12,
           "chip": 8,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -2546,11 +2480,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": false,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -2562,7 +2491,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 14,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -2762,11 +2690,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -2778,7 +2701,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 15,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -2978,11 +2900,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -2994,7 +2911,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 20,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -3189,11 +3105,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -3205,7 +3116,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 7,
           "chip": 8,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -3404,11 +3314,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -3420,7 +3325,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 15,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -3618,11 +3522,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -3634,7 +3533,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 15,
           "chip": 9,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -3832,11 +3730,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -3848,7 +3741,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 17,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -4059,11 +3951,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -4075,7 +3962,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 20,
           "chip": 9,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -4274,11 +4160,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -4290,7 +4171,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 7,
           "chip": 10,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -4500,11 +4380,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -4516,7 +4391,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 7,
           "chip": 9,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -4714,11 +4588,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -4730,7 +4599,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 20,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -4934,11 +4802,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -4950,7 +4813,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 20,
           "chip": 9,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -5150,11 +5012,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -5166,7 +5023,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 17,
           "chip": 7,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -5368,11 +5224,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -5384,7 +5235,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 17,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -5582,11 +5432,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -5598,7 +5443,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 7,
           "chip": 7,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -5808,11 +5652,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": false,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -5824,7 +5663,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 14,
           "chip": 4,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -6023,11 +5861,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -6039,7 +5872,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 17,
           "chip": 7,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -6239,11 +6071,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": true,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -6255,7 +6082,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 20,
           "chip": 13,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -6453,11 +6279,6 @@ window.ACTUAL_SCENARIO = [
             "bullish": false,
             "topDivergence": false
           },
-          "mediaNews": {
-            "modifier": 0,
-            "evidence": [],
-            "acceptedCount": 0
-          },
           "officialNewsBase": 8,
           "liveScoringProvider": "Yahoo Finance Chart API + Google Drive TWSE日線",
           "driveTradeDate": "2026-09-02",
@@ -6469,7 +6290,6 @@ window.ACTUAL_SCENARIO = [
           "volumeObv": 0,
           "chip": 7,
           "fundamental": 10,
-          "officialNews": 8,
           "liquidity": 5
         },
         "strategy": "SWING",
@@ -6495,430 +6315,6 @@ window.ACTUAL_SCENARIO = [
         ],
         "entryTier": "NONE",
         "dataStatus": "COMPLETE"
-      }
-    ],
-    "internationalNews": [
-      {
-        "source": "Investing.com",
-        "title": "Nikkei 225 teeters above 64,006 support: Live levels",
-        "summary": "",
-        "publishedAt": "2026-09-03T05:06:51.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/nikkei-225-threatens-breakdown-at-65035-support-live-levels-93CH-4882095",
-        "hash": "714b417b665e38b0449e523159d140e591cb17200dc91b2cef41cbb5c1e0baef",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "SK Hynix doji atop key floor as bear flag forms: Live levels",
-        "summary": "",
-        "publishedAt": "2026-09-03T05:06:22.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/sk-hynix-trapped-in-krw-range-live-breakout-levels-93CH-4882096",
-        "hash": "3d579deef79cbfacb21ccb3e4520f382ec0d2a137d7959aaa8063e59a0cfa709",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Fast Retailing shares at near five-month low after Uniqlo August sales decline",
-        "summary": "",
-        "publishedAt": "2026-09-03T05:00:08.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/fast-retailing-shares-at-near-fivemonth-low-after-uniqlo-august-sales-decline-4886978",
-        "hash": "a6e69805b081b1408c7abccc3f3daf07d9783daf192ea9717f21c668dbdcd0b3",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "BOJ set to hike rates further: These stocks are best-positioned for higher rates",
-        "summary": "",
-        "publishedAt": "2026-09-03T04:58:59.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/boj-set-to-hike-rates-further-these-stocks-are-bestpositioned-for-higher-rates-93CH-4886977",
-        "hash": "879c8f11d74494fd35970d6e552170edbcdc6b78f5b2cd3b8a508d793d9a7b48",
-        "category": "總體經濟",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Audi and SAIC Motor launch innovation hub for China brand",
-        "summary": "",
-        "publishedAt": "2026-09-03T04:57:57.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/audi-and-saic-motor-launch-innovation-hub-for-china-brand-93CH-4886976",
-        "hash": "0a9b77b98641796c03129e0e49725d7f02ead45413668da0181efce0e57608dd",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Jefferies Names Top India Stock Picks Across Sectors",
-        "summary": "",
-        "publishedAt": "2026-09-03T04:45:59.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/jefferies-names-top-india-stock-picks-across-sectors-93CH-4886974",
-        "hash": "3749f9912db6ce7c607a6f592301780f0f782b206ddd5378eeb1c679182de8ff",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Why are Japan’s top 5 trading houses rallying today?",
-        "summary": "",
-        "publishedAt": "2026-09-03T04:40:45.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/why-are-japans-top-5-trading-houses-rallying-today-93CH-4886973",
-        "hash": "a5e3423f9287149e4b1e79421884efba7897affb8c7f2123353a1bd36cfe5fb9",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "ByteDance secures $29.6 billion loan as AI spending accelerates: Bloomberg",
-        "summary": "",
-        "publishedAt": "2026-09-03T04:24:35.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/bytedance-secures-296-billion-loan-as-ai-spending-accelerates-bloomberg-4886971",
-        "hash": "24308b2275ca2b5ba72ac6677ce5f415be0b541d1955d621728a2546f37fa487",
-        "category": "AI設備",
-        "relatedIndustries": [
-          "AI設備"
-        ],
-        "riskLevel": "MEDIUM",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Why is Nitori stock surging today?",
-        "summary": "",
-        "publishedAt": "2026-09-03T04:13:45.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/why-is-nitori-stock-surging-today-93CH-4886969",
-        "hash": "2d0fb5f9c0e5dddfea803f80f883122bd10653f4566388b35bc6120f79b3baf7",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Why is Fast Retailing stock falling today?",
-        "summary": "",
-        "publishedAt": "2026-09-03T04:13:41.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.301Z",
-        "url": "https://www.investing.com/news/stock-market-news/why-is-fast-retailing-stock-falling-today-93CH-4886968",
-        "hash": "3ba7c48132547ebcdb7bdf7d58c74660f24d1ed362785fc79872255360aa70d5",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEGATIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Oil dips after 3-day rally as Trump signals Iran campaign may be brief",
-        "summary": "",
-        "publishedAt": "2026-09-03T00:57:50.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.231Z",
-        "url": "https://www.investing.com/news/commodities-news/oil-dips-after-3day-rally-as-trump-signals-iran-campaign-may-be-brief-4886909",
-        "hash": "2961c59d7e5f80601ff4e7483d12a7acaf4ac0a60af253341792b622e38ac849",
-        "category": "原物料",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Gold holds near $4,400 after rebound as Trump, Fed remarks ease inflation fears",
-        "summary": "",
-        "publishedAt": "2026-09-03T00:55:05.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.231Z",
-        "url": "https://www.investing.com/news/commodities-news/gold-holds-near-4400-after-rebound-as-trump-fed-remarks-ease-inflation-fears-4886908",
-        "hash": "8c182b2cea66e55d5864dd732084a176bf973467e8564fb2d11421fe8493987d",
-        "category": "原物料",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Oil edges down as investors weigh uncertainty over U.S.-Iran strikes",
-        "summary": "",
-        "publishedAt": "2026-09-03T00:54:31.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.232Z",
-        "url": "https://www.investing.com/news/commodities-news/oil-edges-down-as-investors-weigh-uncertainty-over-usiran-strikes-4886907",
-        "hash": "f6ff7bb4022f9647322d2143539d83b45f73298db8cd701d6ceecf1984eec569",
-        "category": "原物料",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Oil posts slight gain after previous session’s rally, amid high U.S.-Iran tensions",
-        "summary": "",
-        "publishedAt": "2026-09-02T22:06:45.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.232Z",
-        "url": "https://www.investing.com/news/commodities-news/oil-climbs-for-3rd-straight-day-brent-tops-96-on-renewed-usiran-fighting-4885235",
-        "hash": "f97cdce797c9d5c94793f868dfb101cf1aa55bed779efefcf797ad7400543694",
-        "category": "原物料",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Chevron, Eni commit to expand oil projects in Venezuela under US eye",
-        "summary": "",
-        "publishedAt": "2026-09-02T21:30:48.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.232Z",
-        "url": "https://www.investing.com/news/commodities-news/chevron-eni-ink-pacts-for-large-oil-project-expansions-in-venezuela-4886580",
-        "hash": "20f817bfdf7508e7198309bf0f83d3952e85f1261a2633e1e75b34ade4968ed2",
-        "category": "原物料",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Gold rises about 1% amid weaker dollar as oil prices and yields stabilize",
-        "summary": "",
-        "publishedAt": "2026-09-02T20:58:32.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.232Z",
-        "url": "https://www.investing.com/news/commodities-news/gold-falls-as-oil-bond-yields-and-fed-hike-bets-climb-on-iran-escalation-4885255",
-        "hash": "22e3fdd2aad730a4e71ca8378d88b0c77fec1a498afa80b7d0ea22a3b527f281",
-        "category": "原物料",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "UNCERTAIN",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Trump says renewed US campaign against Iran won’t last long",
-        "summary": "",
-        "publishedAt": "2026-09-02T20:13:27.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.232Z",
-        "url": "https://www.investing.com/news/commodities-news/trump-says-renewed-us-campaign-against-iran-wont-last-long-4886633",
-        "hash": "24ed2e78e09a3e23ff1c12f287a2d2423d665338bdf5e20aa2dfccb356bb908a",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "US crude oil production and demand increase in June",
-        "summary": "",
-        "publishedAt": "2026-09-02T19:57:36.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.232Z",
-        "url": "https://www.investing.com/news/commodities-news/us-crude-oil-production-and-demand-increase-in-june-93CH-4886673",
-        "hash": "025546d5e31386a0871349db0997c446239c547325953e1fc590e5ab27e6c648",
-        "category": "原物料",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Raw sugar futures reach 16-month peak on supply worries",
-        "summary": "",
-        "publishedAt": "2026-09-02T19:47:48.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.232Z",
-        "url": "https://www.investing.com/news/commodities-news/raw-sugar-futures-reach-16month-peak-on-supply-worries-93CH-4886668",
-        "hash": "3fc6009f778c401db895fca313c6ff0647a7746c4ef4c4c36dda4087057689d9",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Oil settles 1% higher, as US-Iran strikes threaten supplies",
-        "summary": "",
-        "publishedAt": "2026-09-02T19:36:55.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.232Z",
-        "url": "https://www.investing.com/news/commodities-news/oil-up-nearly-1-as-us-and-iran-trade-fresh-strikes-4885234",
-        "hash": "ff252acd46eca64fbd102049f3ecbc340ac7be6112ac26383168bd8e280a2f33",
-        "category": "原物料",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEUTRAL",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "China services activity beats forecast in Aug as new orders rise - RatingDog PMI",
-        "summary": "",
-        "publishedAt": "2026-09-03T02:05:25.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/china-services-pmi-beats-forecast-in-aug-as-new-orders-rise--ratingdog-pmi-4886930",
-        "hash": "276216994c61befbdaf20852f661ab9cf7cfd7fd2dcca7a068481d62ba866249",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Australia trade surplus beats forecasts in July despite weaker exports",
-        "summary": "",
-        "publishedAt": "2026-09-03T02:01:30.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/australia-trade-surplus-beats-forecasts-in-july-despite-weaker-exports-4886929",
-        "hash": "a8ad212910e60ee44605e8db36715c3d571674ba195f51638c9684c94598927e",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "UNCERTAIN",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Japan services growth hits five-month high, PMI shows",
-        "summary": "",
-        "publishedAt": "2026-09-03T01:36:29.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/japan-services-growth-hits-fivemonth-high-pmi-shows-4886903",
-        "hash": "63ca3c5abf9febe2a27d382d6a74b55f3f7e50337c0595ffa0da2b8ead8c7ff6",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "DIW raises German economic growth forecasts as exports beat expectations",
-        "summary": "",
-        "publishedAt": "2026-09-02T18:54:43.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/diw-raises-german-economic-growth-forecasts-as-exports-beat-expectations-4886638",
-        "hash": "ed0894b60a209c4d9759a33836adc149d91d67878e65d744555abfc8df50467c",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "US private payroll growth slows in August; factory orders rebound in July",
-        "summary": "",
-        "publishedAt": "2026-09-02T15:49:07.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/us-private-payrolls-growth-slows-in-august-adp-says-4886102",
-        "hash": "6f6f222941314eff7a41e7c1e006a795d90ac59705c4215d727f3dd16a6a5a2a",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Rise in US factory orders beats expectations in July",
-        "summary": "",
-        "publishedAt": "2026-09-02T14:36:52.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/rise-in-us-factory-orders-beats-expectations-in-july-4886440",
-        "hash": "d0d8964cb271780054b12ed35312f80ef6dee7059420b91fdc9afe3ffae6ed4d",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Crude Oil Inventories Drop Sharply, Surpassing Expectations",
-        "summary": "",
-        "publishedAt": "2026-09-02T14:32:09.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/crude-oil-inventories-drop-sharply-surpassing-expectations-93CH-4886443",
-        "hash": "740fa80ac4446a1dc32d9e83b3ff300654ee74b204c0890352dea62a60a98ca6",
-        "category": "原物料",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "NEGATIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Factory orders rise, surpassing expectations and previous figures",
-        "summary": "",
-        "publishedAt": "2026-09-02T14:00:10.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/factory-orders-rise-surpassing-expectations-and-previous-figures-93CH-4886348",
-        "hash": "560b923f0e1ccac1025e35b8651979753642d85f5bc8ed967023f0b40b2faf4a",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "U.S. private sector job growth underwhelms with 38K gain",
-        "summary": "",
-        "publishedAt": "2026-09-02T12:16:09.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/us-private-sector-job-growth-underwhelms-with-38k-gain-93CH-4886080",
-        "hash": "8dcac4fd3ad3326fa3d3b8cd75a8dd9c05d727bc03cfce0cd689cc4c072f0552",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
-      },
-      {
-        "source": "Investing.com",
-        "title": "Tesla’s China-made EV sales extend growth streak, but momentum fades",
-        "summary": "",
-        "publishedAt": "2026-09-02T10:42:52.000Z",
-        "fetchedAt": "2026-09-03T05:20:42.235Z",
-        "url": "https://www.investing.com/news/economic-indicators/teslas-chinamade-ev-sales-extend-growth-streak-but-momentum-fades-4885779",
-        "hash": "7f39dc8ac4088eb10f4dbad614e612b9e6275aac073268d9c6a77a42655671bb",
-        "category": "全球市場",
-        "relatedIndustries": [],
-        "riskLevel": "LOW",
-        "sentiment": "POSITIVE",
-        "advisoryOnly": true
       }
     ],
     "market": {
