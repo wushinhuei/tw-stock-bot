@@ -37,13 +37,18 @@ async function fetchJson(url, options = {}) {
   const retries = options.retries ?? 4;
   const retryDelayMs = options.retryDelayMs ?? 1200;
   for (let attempt = 1; attempt <= retries; attempt += 1) {
-    const response = await fetchImpl(url, {
-      headers: { accept: 'application/json', 'user-agent': USER_AGENT, ...(options.headers || {}) },
-      signal: AbortSignal.timeout(options.timeoutMs || 30000)
-    });
-    if (response.ok) return response.json();
-    if (attempt === retries) throw new Error(`TWSE HTTP ${response.status}: ${url}`);
-    await sleep(response.status === 403 || response.status === 429 ? Math.max(retryDelayMs, 5000) : retryDelayMs * attempt);
+    try {
+      const response = await fetchImpl(url, {
+        headers: { accept: 'application/json', 'user-agent': USER_AGENT, ...(options.headers || {}) },
+        signal: AbortSignal.timeout(options.timeoutMs || 30000)
+      });
+      if (response.ok) return response.json();
+      if (attempt === retries) throw new Error(`TWSE HTTP ${response.status}: ${url}`);
+      await sleep(response.status === 403 || response.status === 429 ? Math.max(retryDelayMs, 5000) : retryDelayMs * attempt);
+    } catch (error) {
+      if (attempt === retries || /^TWSE HTTP /.test(String(error.message || error))) throw error;
+      await sleep(retryDelayMs * attempt);
+    }
   }
   throw new Error(`TWSE request failed: ${url}`);
 }
@@ -94,7 +99,8 @@ async function stockDaily(symbol, start, end, options = {}) {
   if (from > to) throw new Error('start must be <= end');
   const rows = [];
   const sourceUrls = [];
-  for (const month of monthsBetween(from, to)) {
+  const months = monthsBetween(from, to);
+  for (const [monthIndex, month] of months.entries()) {
     const url = `${TWSE_BASE}/afterTrading/STOCK_DAY?response=json&date=${compact(month)}&stockNo=${code}`;
     sourceUrls.push(url);
     const payload = await fetchJson(url, options);
@@ -118,6 +124,7 @@ async function stockDaily(symbol, start, end, options = {}) {
         transactions: number(row[index['成交筆數']])
       });
     }
+    if (options.interRequestDelayMs && monthIndex < months.length - 1) await sleep(options.interRequestDelayMs);
   }
   rows.sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
   return { symbol: code, period: { start: from, end: to }, rows, source: 'TWSE_STOCK_DAY', sourceUrls };

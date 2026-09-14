@@ -76,7 +76,7 @@ async function syncTop10DailyHistory(options = {}) {
       const latestCached = existingRows.length ? existingRows[existingRows.length - 1].tradeDate : null;
       const fetchStart = cachedCoversStart && latestCached ? addDays(latestCached, 1) : windowStart;
       const incoming = fetchStart <= tradeDate
-        ? (await fetchDaily(symbol, fetchStart, tradeDate, options.fetchOptions || {})).rows
+        ? (await fetchDaily(symbol, fetchStart, tradeDate, { interRequestDelayMs: 250, ...(options.fetchOptions || {}) })).rows
         : [];
       const rows = mergeDailyRows(existingRows, incoming, windowStart, tradeDate);
       const payload = {

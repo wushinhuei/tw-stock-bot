@@ -61,6 +61,22 @@ test('stockDaily converts ROC dates and filters requested period', async () => {
   assert.equal(result.rows[0].close, 105);
 });
 
+test('TWSE requests retry transient network failures', async () => {
+  let attempts = 0;
+  const payload = { stat: 'OK', fields: [], data: [] };
+  const result = await stockDaily('2330', '2026-04-01', '2026-04-01', {
+    retries: 2,
+    retryDelayMs: 0,
+    fetchImpl: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new TypeError('fetch failed');
+      return { ok: true, status: 200, async json() { return payload; } };
+    }
+  });
+  assert.equal(attempts, 2);
+  assert.equal(result.rows.length, 0);
+});
+
 test('MCP tools/call returns structured TWSE result', async () => {
   const payload = {
     stat: 'OK',
