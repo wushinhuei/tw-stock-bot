@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { handleMcpMessage, stockDaily } = require('../src/twse_mcp_history');
+const { aggregateStockBars, handleMcpMessage, stockDaily } = require('../src/twse_mcp_history');
 
 function mockFetch(payloads) {
   let index = 0;
@@ -16,9 +16,33 @@ function mockFetch(payloads) {
 test('MCP tools/list exposes TWSE historical read-only tools', async () => {
   const response = await handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_stock_daily'), true);
+  assert.equal(response.result.tools.some(tool => tool.name === 'twse_stock_weekly'), true);
+  assert.equal(response.result.tools.some(tool => tool.name === 'twse_stock_monthly'), true);
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_market_daily'), true);
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_institutional_daily'), true);
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_margin_daily'), true);
+});
+
+test('weekly and monthly bars aggregate official daily OHLCV consistently', () => {
+  const rows = [
+    { tradeDate: '2026-03-30', symbol: '2330', open: 100, high: 105, low: 99, close: 104, volume: 10, value: 1000, transactions: 2 },
+    { tradeDate: '2026-03-31', symbol: '2330', open: 104, high: 108, low: 103, close: 107, volume: 20, value: 2100, transactions: 3 },
+    { tradeDate: '2026-04-01', symbol: '2330', open: 107, high: 109, low: 101, close: 102, volume: 30, value: 3100, transactions: 4 },
+    { tradeDate: '2026-04-06', symbol: '2330', open: 103, high: 110, low: 102, close: 109, volume: 40, value: 4200, transactions: 5 }
+  ];
+  const weekly = aggregateStockBars(rows, 'week');
+  assert.deepEqual(weekly.map(row => row.periodStart), ['2026-03-30', '2026-04-06']);
+  assert.deepEqual(weekly[0], {
+    periodStart: '2026-03-30', periodEnd: '2026-04-01', tradeDate: '2026-04-01', symbol: '2330',
+    open: 100, high: 109, low: 99, close: 102, volume: 60, value: 6200, transactions: 9, tradingDays: 3
+  });
+  const monthly = aggregateStockBars(rows, 'month');
+  assert.equal(monthly[0].periodStart, '2026-03-01');
+  assert.equal(monthly[0].open, 100);
+  assert.equal(monthly[0].close, 107);
+  assert.equal(monthly[0].volume, 30);
+  assert.equal(monthly[1].periodStart, '2026-04-01');
+  assert.equal(monthly[1].high, 110);
 });
 
 test('stockDaily converts ROC dates and filters requested period', async () => {
@@ -49,4 +73,14 @@ test('MCP tools/call returns structured TWSE result', async () => {
   }, { fetchImpl: mockFetch([payload]) });
   assert.equal(response.result.isError, false);
   assert.equal(response.result.structuredContent.rows[0].close, 104);
+
+  for (const name of ['twse_stock_weekly', 'twse_stock_monthly']) {
+    const aggregateResponse = await handleMcpMessage({
+      jsonrpc: '2.0', id: name, method: 'tools/call',
+      params: { name, arguments: { symbol: '2330', start: '2026-04-01', end: '2026-04-01' } }
+    }, { fetchImpl: mockFetch([payload]) });
+    assert.equal(aggregateResponse.result.isError, false);
+    assert.equal(aggregateResponse.result.structuredContent.rows[0].close, 104);
+    assert.equal(aggregateResponse.result.structuredContent.rows[0].tradingDays, 1);
+  }
 });

@@ -123,6 +123,70 @@ async function stockDaily(symbol, start, end, options = {}) {
   return { symbol: code, period: { start: from, end: to }, rows, source: 'TWSE_STOCK_DAY', sourceUrls };
 }
 
+function periodKey(tradeDate, interval) {
+  if (interval === 'month') return `${tradeDate.slice(0, 7)}-01`;
+  const date = new Date(`${tradeDate}T00:00:00Z`);
+  const mondayOffset = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - mondayOffset);
+  return date.toISOString().slice(0, 10);
+}
+
+function aggregateStockBars(rows, interval) {
+  if (!['week', 'month'].includes(interval)) throw new Error(`invalid interval: ${interval}`);
+  const groups = new Map();
+  for (const row of [...rows].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))) {
+    const key = periodKey(row.tradeDate, interval);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  return [...groups.entries()].map(([periodStart, group]) => {
+    const first = group[0];
+    const last = group[group.length - 1];
+    const finite = field => group.map(row => row[field]).filter(Number.isFinite);
+    const highs = finite('high');
+    const lows = finite('low');
+    const sum = field => {
+      const values = finite(field);
+      return values.length ? values.reduce((total, value) => total + value, 0) : null;
+    };
+    return {
+      periodStart,
+      periodEnd: last.tradeDate,
+      tradeDate: last.tradeDate,
+      symbol: last.symbol,
+      open: first.open,
+      high: highs.length ? Math.max(...highs) : null,
+      low: lows.length ? Math.min(...lows) : null,
+      close: last.close,
+      volume: sum('volume'),
+      value: sum('value'),
+      transactions: sum('transactions'),
+      tradingDays: group.length
+    };
+  });
+}
+
+async function stockPeriod(symbol, start, end, interval, options = {}) {
+  const daily = await stockDaily(symbol, start, end, options);
+  return {
+    symbol: daily.symbol,
+    period: daily.period,
+    interval,
+    rows: aggregateStockBars(daily.rows, interval),
+    source: interval === 'week' ? 'TWSE_STOCK_DAY_WEEKLY_AGGREGATE' : 'TWSE_STOCK_DAY_MONTHLY_AGGREGATE',
+    sourceDaily: daily.source,
+    sourceUrls: daily.sourceUrls
+  };
+}
+
+function stockWeekly(symbol, start, end, options = {}) {
+  return stockPeriod(symbol, start, end, 'week', options);
+}
+
+function stockMonthly(symbol, start, end, options = {}) {
+  return stockPeriod(symbol, start, end, 'month', options);
+}
+
 async function institutionalDaily(date, options = {}) {
   const day = isoDate(date);
   const url = `${TWSE_BASE}/fund/T86?response=json&date=${compact(day)}&selectType=ALLBUT0999`;
@@ -187,6 +251,16 @@ const TOOL_DEFINITIONS = Object.freeze([
     inputSchema: { type: 'object', properties: { symbol: { type: 'string' }, start: { type: 'string' }, end: { type: 'string' } }, required: ['symbol', 'start', 'end'], additionalProperties: false }
   },
   {
+    name: 'twse_stock_weekly',
+    description: '以證交所官方日線彙整單一上市股票在指定日期區間的唯讀週線 OHLCV。',
+    inputSchema: { type: 'object', properties: { symbol: { type: 'string' }, start: { type: 'string' }, end: { type: 'string' } }, required: ['symbol', 'start', 'end'], additionalProperties: false }
+  },
+  {
+    name: 'twse_stock_monthly',
+    description: '以證交所官方日線彙整單一上市股票在指定日期區間的唯讀月線 OHLCV。',
+    inputSchema: { type: 'object', properties: { symbol: { type: 'string' }, start: { type: 'string' }, end: { type: 'string' } }, required: ['symbol', 'start', 'end'], additionalProperties: false }
+  },
+  {
     name: 'twse_institutional_daily',
     description: '讀取指定交易日上市股票三大法人買賣超歷史資料。',
     inputSchema: { type: 'object', properties: { date: { type: 'string' } }, required: ['date'], additionalProperties: false }
@@ -206,6 +280,8 @@ const TOOL_DEFINITIONS = Object.freeze([
 async function callTool(name, args = {}, options = {}) {
   if (name === 'twse_market_daily') return marketDaily(args.date, options);
   if (name === 'twse_stock_daily') return stockDaily(args.symbol, args.start, args.end, options);
+  if (name === 'twse_stock_weekly') return stockWeekly(args.symbol, args.start, args.end, options);
+  if (name === 'twse_stock_monthly') return stockMonthly(args.symbol, args.start, args.end, options);
   if (name === 'twse_institutional_daily') return institutionalDaily(args.date, options);
   if (name === 'twse_margin_daily') return marginDaily(args.date, options);
   if (name === 'twse_holidays') return holidays(args.year, options);
@@ -271,6 +347,7 @@ function startStdioServer(options = {}) {
 
 module.exports = {
   TOOL_DEFINITIONS,
+  aggregateStockBars,
   callTool,
   fetchJson,
   handleMcpMessage,
@@ -279,5 +356,7 @@ module.exports = {
   marginDaily,
   marketDaily,
   startStdioServer,
-  stockDaily
+  stockDaily,
+  stockMonthly,
+  stockWeekly
 };
