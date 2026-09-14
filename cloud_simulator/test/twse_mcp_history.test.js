@@ -18,6 +18,7 @@ test('MCP tools/list exposes TWSE historical read-only tools', async () => {
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_stock_daily'), true);
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_stock_weekly'), true);
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_stock_monthly'), true);
+  assert.equal(response.result.tools.some(tool => tool.name === 'twse_stock_quarterly'), true);
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_market_daily'), true);
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_institutional_daily'), true);
   assert.equal(response.result.tools.some(tool => tool.name === 'twse_margin_daily'), true);
@@ -43,6 +44,12 @@ test('weekly and monthly bars aggregate official daily OHLCV consistently', () =
   assert.equal(monthly[0].volume, 30);
   assert.equal(monthly[1].periodStart, '2026-04-01');
   assert.equal(monthly[1].high, 110);
+  const quarterly = aggregateStockBars(rows, 'quarter');
+  assert.equal(quarterly.length, 2);
+  assert.equal(quarterly[0].periodStart, '2026-01-01');
+  assert.equal(quarterly[0].close, 107);
+  assert.equal(quarterly[1].periodStart, '2026-04-01');
+  assert.equal(quarterly[1].close, 109);
 });
 
 test('stockDaily converts ROC dates and filters requested period', async () => {
@@ -90,7 +97,7 @@ test('MCP tools/call returns structured TWSE result', async () => {
   assert.equal(response.result.isError, false);
   assert.equal(response.result.structuredContent.rows[0].close, 104);
 
-  for (const name of ['twse_stock_weekly', 'twse_stock_monthly']) {
+  for (const name of ['twse_stock_weekly', 'twse_stock_monthly', 'twse_stock_quarterly']) {
     const aggregateResponse = await handleMcpMessage({
       jsonrpc: '2.0', id: name, method: 'tools/call',
       params: { name, arguments: { symbol: '2330', start: '2026-04-01', end: '2026-04-01' } }

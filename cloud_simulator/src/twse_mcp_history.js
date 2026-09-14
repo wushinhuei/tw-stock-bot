@@ -132,6 +132,11 @@ async function stockDaily(symbol, start, end, options = {}) {
 
 function periodKey(tradeDate, interval) {
   if (interval === 'month') return `${tradeDate.slice(0, 7)}-01`;
+  if (interval === 'quarter') {
+    const month = Number(tradeDate.slice(5, 7));
+    const quarterMonth = Math.floor((month - 1) / 3) * 3 + 1;
+    return `${tradeDate.slice(0, 4)}-${String(quarterMonth).padStart(2, '0')}-01`;
+  }
   const date = new Date(`${tradeDate}T00:00:00Z`);
   const mondayOffset = (date.getUTCDay() + 6) % 7;
   date.setUTCDate(date.getUTCDate() - mondayOffset);
@@ -139,7 +144,7 @@ function periodKey(tradeDate, interval) {
 }
 
 function aggregateStockBars(rows, interval) {
-  if (!['week', 'month'].includes(interval)) throw new Error(`invalid interval: ${interval}`);
+  if (!['week', 'month', 'quarter'].includes(interval)) throw new Error(`invalid interval: ${interval}`);
   const groups = new Map();
   for (const row of [...rows].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))) {
     const key = periodKey(row.tradeDate, interval);
@@ -180,7 +185,7 @@ async function stockPeriod(symbol, start, end, interval, options = {}) {
     period: daily.period,
     interval,
     rows: aggregateStockBars(daily.rows, interval),
-    source: interval === 'week' ? 'TWSE_STOCK_DAY_WEEKLY_AGGREGATE' : 'TWSE_STOCK_DAY_MONTHLY_AGGREGATE',
+    source: `TWSE_STOCK_DAY_${interval.toUpperCase()}LY_AGGREGATE`,
     sourceDaily: daily.source,
     sourceUrls: daily.sourceUrls
   };
@@ -192,6 +197,10 @@ function stockWeekly(symbol, start, end, options = {}) {
 
 function stockMonthly(symbol, start, end, options = {}) {
   return stockPeriod(symbol, start, end, 'month', options);
+}
+
+function stockQuarterly(symbol, start, end, options = {}) {
+  return stockPeriod(symbol, start, end, 'quarter', options);
 }
 
 async function institutionalDaily(date, options = {}) {
@@ -268,6 +277,11 @@ const TOOL_DEFINITIONS = Object.freeze([
     inputSchema: { type: 'object', properties: { symbol: { type: 'string' }, start: { type: 'string' }, end: { type: 'string' } }, required: ['symbol', 'start', 'end'], additionalProperties: false }
   },
   {
+    name: 'twse_stock_quarterly',
+    description: '以證交所官方日線彙整單一上市股票在指定日期區間的唯讀季線 OHLCV。',
+    inputSchema: { type: 'object', properties: { symbol: { type: 'string' }, start: { type: 'string' }, end: { type: 'string' } }, required: ['symbol', 'start', 'end'], additionalProperties: false }
+  },
+  {
     name: 'twse_institutional_daily',
     description: '讀取指定交易日上市股票三大法人買賣超歷史資料。',
     inputSchema: { type: 'object', properties: { date: { type: 'string' } }, required: ['date'], additionalProperties: false }
@@ -289,6 +303,7 @@ async function callTool(name, args = {}, options = {}) {
   if (name === 'twse_stock_daily') return stockDaily(args.symbol, args.start, args.end, options);
   if (name === 'twse_stock_weekly') return stockWeekly(args.symbol, args.start, args.end, options);
   if (name === 'twse_stock_monthly') return stockMonthly(args.symbol, args.start, args.end, options);
+  if (name === 'twse_stock_quarterly') return stockQuarterly(args.symbol, args.start, args.end, options);
   if (name === 'twse_institutional_daily') return institutionalDaily(args.date, options);
   if (name === 'twse_margin_daily') return marginDaily(args.date, options);
   if (name === 'twse_holidays') return holidays(args.year, options);
@@ -365,5 +380,6 @@ module.exports = {
   startStdioServer,
   stockDaily,
   stockMonthly,
+  stockQuarterly,
   stockWeekly
 };

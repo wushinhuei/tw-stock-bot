@@ -16,15 +16,15 @@ function row(symbol, tradeDate, close = 100) {
   return { symbol, tradeDate, open: close, high: close, low: close, close, volume: 10, value: 1000, transactions: 1 };
 }
 
-test('four-quarter window is a rolling twelve-month period', () => {
+test('initial four-quarter backfill is a twelve-month starting period', () => {
   assert.equal(fourQuarterStart('2026-09-14'), '2025-09-15');
 });
 
 test('Top10 daily history backfills entrants, increments members and pauses exits', async () => {
   const store = new MemoryStore({
     manifest: { symbols: [{ symbol: '2303', name: '聯電', active: true, status: 'COMPLETE', latestTradeDate: '2026-09-11' }] },
-    2330: { symbol: '2330', windowStart: '2025-09-15', rows: [row('2330', '2026-09-11')] },
-    2303: { symbol: '2303', windowStart: '2025-09-15', rows: [row('2303', '2026-09-11')] }
+    2330: { symbol: '2330', initialBackfillStart: '2025-09-15', rows: [row('2330', '2024-01-02'), row('2330', '2026-09-11')] },
+    2303: { symbol: '2303', initialBackfillStart: '2025-09-15', rows: [row('2303', '2026-09-11')] }
   });
   const calls = [];
   const manifest = await syncTop10DailyHistory({
@@ -41,7 +41,11 @@ test('Top10 daily history backfills entrants, increments members and pauses exit
     { symbol: '2330', start: '2026-09-12', end: '2026-09-14' },
     { symbol: '2317', start: '2025-09-15', end: '2026-09-14' }
   ]);
-  assert.equal(store.files['2330'].rowCount, 2);
+  assert.equal(store.files['2330'].rowCount, 3);
+  assert.equal(store.files['2330'].rows[0].tradeDate, '2024-01-02');
+  assert.ok(store.files['2330'].weeklyRows.length > 0);
+  assert.ok(store.files['2330'].monthlyRows.length > 0);
+  assert.ok(store.files['2330'].quarterlyRows.length > 0);
   assert.equal(store.files['2317'].latestTradeDate, '2026-09-14');
   assert.equal(manifest.symbols.find(item => item.symbol === '2303').status, 'PAUSED');
   assert.equal(manifest.complete, true);
@@ -64,7 +68,7 @@ test('Top10 daily history deduplicates dates and reports incomplete latest data'
 test('a paused symbol resumes from the day after its last stored trade date', async () => {
   const store = new MemoryStore({
     manifest: { symbols: [{ symbol: '2303', name: '聯電', active: false, status: 'PAUSED', latestTradeDate: '2026-08-31' }] },
-    2303: { symbol: '2303', name: '聯電', windowStart: '2025-09-15', rows: [row('2303', '2026-08-31')] }
+    2303: { symbol: '2303', name: '聯電', initialBackfillStart: '2025-09-15', rows: [row('2303', '2026-08-31')] }
   });
   const calls = [];
   const manifest = await syncTop10DailyHistory({

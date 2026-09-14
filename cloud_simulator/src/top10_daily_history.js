@@ -1,6 +1,6 @@
 'use strict';
 
-const { stockDaily } = require('./twse_mcp_history');
+const { aggregateStockBars, stockDaily } = require('./twse_mcp_history');
 
 const MANIFEST_OBJECT = 'cache/top10_daily/manifest.json';
 
@@ -16,10 +16,10 @@ function fourQuarterStart(ymd) {
   return addDays(date.toISOString().slice(0, 10), 1);
 }
 
-function mergeDailyRows(existing, incoming, start, end) {
+function mergeDailyRows(existing, incoming, end) {
   const byDate = new Map();
   for (const row of [...(existing || []), ...(incoming || [])]) {
-    if (row?.tradeDate >= start && row?.tradeDate <= end) byDate.set(row.tradeDate, row);
+    if (row?.tradeDate <= end) byDate.set(row.tradeDate, row);
   }
   return [...byDate.values()].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
 }
@@ -61,7 +61,7 @@ async function syncTop10DailyHistory(options = {}) {
   if (!store) throw new Error('Top10 daily history store is required');
   const fetchDaily = options.fetchDaily || stockDaily;
   const now = options.now || new Date();
-  const windowStart = fourQuarterStart(tradeDate);
+  const initialBackfillStart = fourQuarterStart(tradeDate);
   const previousManifest = await store.readManifest().catch(() => null);
   const previousBySymbol = new Map((previousManifest?.symbols || []).map(row => [row.symbol, row]));
   const activeSymbols = new Set(candidates.map(row => String(row.symbol)));
@@ -72,23 +72,25 @@ async function syncTop10DailyHistory(options = {}) {
     try {
       const cached = await store.readSymbol(symbol).catch(() => null);
       const existingRows = cached?.rows || [];
-      const cachedCoversStart = cached?.windowStart && cached.windowStart <= windowStart;
       const latestCached = existingRows.length ? existingRows[existingRows.length - 1].tradeDate : null;
-      const fetchStart = cachedCoversStart && latestCached ? addDays(latestCached, 1) : windowStart;
+      const fetchStart = latestCached ? addDays(latestCached, 1) : initialBackfillStart;
       const incoming = fetchStart <= tradeDate
         ? (await fetchDaily(symbol, fetchStart, tradeDate, { interRequestDelayMs: 250, ...(options.fetchOptions || {}) })).rows
         : [];
-      const rows = mergeDailyRows(existingRows, incoming, windowStart, tradeDate);
+      const rows = mergeDailyRows(existingRows, incoming, tradeDate);
       const payload = {
         symbol,
         name: candidate.name || cached?.name || symbol,
-        windowStart,
+        initialBackfillStart: cached?.initialBackfillStart || cached?.windowStart || initialBackfillStart,
         requestedThrough: tradeDate,
         latestTradeDate: rows.at(-1)?.tradeDate || null,
         rowCount: rows.length,
         source: 'TWSE_STOCK_DAY',
         updatedAt: now.toISOString(),
-        rows
+        rows,
+        weeklyRows: aggregateStockBars(rows, 'week'),
+        monthlyRows: aggregateStockBars(rows, 'month'),
+        quarterlyRows: aggregateStockBars(rows, 'quarter')
       };
       await store.writeSymbol(symbol, payload);
       results.push({ symbol, name: payload.name, active: true, status: 'COMPLETE', rowCount: rows.length, latestTradeDate: payload.latestTradeDate, fetchedRows: incoming.length });
@@ -104,10 +106,10 @@ async function syncTop10DailyHistory(options = {}) {
   const active = results.filter(row => row.active);
   const complete = active.length === candidates.length && active.every(row => row.status === 'COMPLETE' && row.latestTradeDate === tradeDate);
   const manifest = {
-    policy: 'DAILY_TOP10_ROLLING_FOUR_QUARTERS',
+    policy: 'DAILY_TOP10_ACCUMULATING_FROM_INITIAL_FOUR_QUARTERS',
     generatedAt: now.toISOString(),
     tradeDate,
-    windowStart,
+    initialBackfillStart,
     activeSymbols: [...activeSymbols],
     activeCount: active.length,
     complete,
