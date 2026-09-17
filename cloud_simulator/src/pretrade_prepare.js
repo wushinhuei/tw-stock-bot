@@ -18,8 +18,8 @@ async function preparePretradeTop50(options = {}) {
     activeTop50Count: Number(CONFIG.candidateSelectionPoolLimit), completeCount: checks.length,
     incompleteCount: 0, incompleteSymbols: [], globalErrors: checks.length >= expected ? [] : [`top10_count:${checks.length}/${expected}`],
     policy: {
-      universe: 'TWSE MCP MI_INDEX上市普通股成交量Top50；不依賴Drive或analysis_ready',
-      ranking: 'Top50內按籌碼50%、成交量30%、動能20%取Top10',
+      universe: 'TWSE全體上市普通股先通過風險與資料門檻，再以既有Drive 20日資料選40檔核心流動性＋10檔流動性潛力',
+      ranking: '最終Top50內按籌碼50%、技術30%、流動性20%取Top10',
       fundamental: 'MOPS MCP當下摘要；缺漏給0分並標示，不啟動歷史回填',
       tradingGate: '個別報價過期或風險阻擋才禁止該股票下單，不以Drive完整性阻擋全池'
     }, checks

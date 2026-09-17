@@ -12,20 +12,22 @@ const { candidateRankingKey, loadHourlyCandidateRanking, selectPremiumEntryCandi
 function strongRow(symbol, volume) {
   const bars = Array.from({ length: 80 }, (_, i) => ({ open: 100 + i * 0.2, high: 101 + i * 0.2, low: 99 + i * 0.2, close: 100.5 + i * 0.2, volume: 1000 + i * 50 }));
   return {
-    symbol, volume, market: 'TWSE', securityType: 'COMMON_STOCK', strategy: 'SWING',
+    symbol, volume, tradeValue: volume * 100, transactions: Math.max(1, Math.floor(volume / 100)),
+    history: bars.slice(-20).map(row => ({ volume: row.volume, tradeValue: row.volume * row.close, transactions: Math.floor(row.volume / 10) })),
+    market: 'TWSE', securityType: 'COMMON_STOCK', strategy: 'SWING',
     dailyBars: bars, weeklyBars: bars.slice(0, 60), quoteFresh: true,
     chipScore: 1, fundamentalScore: 1, officialNewsScore: 1, liquidityScore: 1, spreadPct: 0.001
   };
 }
 
 test('current scanner uses Top50 pool and chip-weighted Top10 ranking', () => {
-  assert.equal(CONFIG.rawVolumeReviewLimit, 50);
+  assert.equal(CONFIG.rawVolumeReviewLimit, 0);
   assert.equal(CONFIG.candidateSelectionPoolLimit, 50);
   assert.equal(CONFIG.maxCandidates, 10);
   assert.equal(CONFIG.maxOpenPositions, 5);
   assert.equal(CONFIG.minCashReservePct, 0.30);
   assert.deepEqual(CONFIG.strategyCaps, { SWING: 0.50, OVERNIGHT: 0.30, DAY_TRADE: 0.15 });
-  assert.deepEqual(CONFIG.candidateSelectionWeights, { chip: 0.50, volume: 0.30, momentum: 0.20 });
+  assert.deepEqual(CONFIG.candidateSelectionWeights, { chip: 0.50, technical: 0.30, liquidity: 0.20 });
   const rows = Array.from({ length: 120 }, (_, i) => strongRow(String(1100 + i), 100000 - i));
   const selected = buildUniverse(rows);
   assert.equal(selected.length, 10);

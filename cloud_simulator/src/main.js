@@ -52,7 +52,19 @@ function persistDailyEquitySnapshot(engine, context = {}) {
 
 async function loadCandidates(options = {}) {
   const snapshot = await latestMarketSnapshot(options.now || new Date(), options);
-  const rows = snapshot.rows.map(row => ({ ...row, quoteFresh: true, liquidityScore: 1, fundamentalScore: 0 }));
+  const end = snapshot.date;
+  const startDate = new Date(`${end}T00:00:00Z`);
+  startDate.setUTCDate(startDate.getUTCDate() - 45);
+  let historyBySymbol = options.historyBySymbol;
+  if (!historyBySymbol) {
+    const { DriveHistorySource } = require('./drive_history');
+    const source = options.driveHistorySource || new DriveHistorySource();
+    historyBySymbol = await source.dailyBarsBySymbols(snapshot.rows.map(row => row.symbol), startDate.toISOString().slice(0, 10), end);
+  }
+  const rows = snapshot.rows.map(row => ({
+    ...row, history: historyBySymbol instanceof Map ? (historyBySymbol.get(row.symbol) || []) : (historyBySymbol[row.symbol] || []),
+    quoteFresh: true, fundamentalScore: 0
+  }));
   return buildUniverse(rows, options.enrichmentBySymbol || {});
 }
 

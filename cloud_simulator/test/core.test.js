@@ -76,12 +76,13 @@ test('score totals 100 points at most and maps A/B/C thresholds', () => {
   assert.equal(result.metrics.obv.bullish, true);
 });
 
-test('scanner selects final 10 from volume top 50 using 50% chip weight across industries', () => {
+test('scanner builds 40 core plus 10 emerging and selects Top10', () => {
   assert.equal(CONFIG.topVolumeLimit, 10);
   assert.equal(CONFIG.candidateSelectionPoolLimit, 50);
-  assert.deepEqual(CONFIG.candidateSelectionWeights, { chip: 0.50, volume: 0.30, momentum: 0.20 });
+  assert.deepEqual(CONFIG.candidateSelectionWeights, { chip: 0.50, technical: 0.30, liquidity: 0.20 });
   const rows = Array.from({ length: 60 }, (_, i) => ({
-    symbol: String(1000 + i), volume: 10000 - i, market: 'TWSE',
+    symbol: String(1000 + i), volume: 10000 - i, tradeValue: (10000 - i) * 50, transactions: 1000 - i,
+    history: Array.from({ length: 20 }, (_, day) => ({ volume: 8000 - i + day, tradeValue: (8000 - i + day) * 50, transactions: 800 - i + day })), market: 'TWSE',
     securityType: i === 0 ? 'ETF' : 'COMMON_STOCK', group: i % 2 ? '半導體' : '金融'
   }));
   const enrichment = Object.fromEntries(rows.map(row => [row.symbol, { chipOk: false, changePct: 0 }]));
@@ -93,9 +94,8 @@ test('scanner selects final 10 from volume top 50 using 50% chip weight across i
   assert.ok(result.some(row => row.group === '半導體'));
   assert.ok(result.some(row => row.symbol === '1040'));
   assert.ok(result.every(row => row.volumeRank <= 50));
-  assert.ok(result.every(row => row.symbol !== '1051'));
-  const score = candidateSelectionScore({ chipOk: true, changePct: 0.05 }, 1, 50);
-  assert.deepEqual(score, { total: 100, chip: 50, volume: 30, momentum: 20 });
+  const score = candidateSelectionScore({ chipOk: true, changePct: 0.05, liquidityScore: 100 }, 1, 50);
+  assert.deepEqual(score, { total: 100, chip: 50, technical: 30, liquidity: 20 });
 });
 
 test('Apps Script volume universe rejects ETF codes before candidate weighting', () => {

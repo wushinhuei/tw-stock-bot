@@ -207,6 +207,26 @@ class DriveHistorySource {
     return result.sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
   }
 
+  async dailyBarsBySymbols(symbols, start, end) {
+    await this.manifest('stockDaily');
+    const wanted = new Set((symbols || []).map(String));
+    const result = new Map([...wanted].map(symbol => [symbol, []]));
+    for (const year of yearsBetween(start, end)) {
+      for (const row of await this.rows('stockDaily', year)) {
+        if (!wanted.has(row.stock_code) || row.trade_date < start || row.trade_date > end || !validBar(row)) continue;
+        result.get(row.stock_code).push({
+          timestamp: `${row.trade_date}T00:00:00.000Z`, tradeDate: row.trade_date, symbol: row.stock_code, name: row.stock_name,
+          open: Number(row.open), high: Number(row.high), low: Number(row.low), close: Number(row.close),
+          volume: Number(row.trade_volume || 0), tradeValue: Number(row.trade_value || 0),
+          transactions: Number(row.transactions || 0), top50Rank: row.top50_rank ? Number(row.top50_rank) : null,
+          isTop50: row.is_top50 === '1'
+        });
+      }
+    }
+    for (const rows of result.values()) rows.sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+    return result;
+  }
+
   async marketFlowRows(symbol, start, end) {
     await this.manifest('marketFlow');
     const result = [];
@@ -263,7 +283,7 @@ class DriveHistorySource {
   async analysisReady(symbol) {
     const code = String(symbol);
     const row = (await this.analysisUniverse()).find(item => item.stock_code === code);
-    return Boolean(row && row.analysis_ready);
+    return Boolean(row && row.active_top50 === true && row.analysis_ready === true);
   }
 
   async analysisStatus() {

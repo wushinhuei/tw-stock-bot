@@ -19,6 +19,8 @@ This folder is the Apps Script version of the simulation backend. It is designed
 
 `updateMopsRollingData()` updates the existing Traditional-Chinese Drive folders with the minimum data used by analysis: company basics, monthly revenue, current quarterly financial tables, daily material messages, and exact filing timestamps found in official messages. Files are merged by stable keys so retries do not duplicate rows. Statutory deadlines are never substituted for an unavailable official filing timestamp.
 
+`updateTenYearHistoryToLatestTradeDate()` reuses the existing Drive history to build the final Top50: 40 core-liquidity stocks plus 10 emerging-liquidity stocks. Only missing symbols enter the incremental backfill queue. Prices, institutional and margin data, securities lending, corporate actions, adjustment factors and TWSE notice/disposition events remain aligned to the same trade date. The final Top50 is then ranked into Top10 using chip 50%, technical momentum 30% and liquidity quality 20%. Same-date writes replace existing rows, so the 21:15 retry is idempotent.
+
 The ten-year quarterly XBRL build remains a separate initial Cloud Run/local backfill because forty ZIP archives exceed a normal Apps Script execution window. Rolling OpenAPI updates preserve that archive and add newly published periods.
 
 ## Web API

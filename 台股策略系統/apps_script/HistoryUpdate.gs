@@ -313,6 +313,144 @@ function mopsMergeJsonl(folderId, name, incoming, keyFn) {
   return mopsWriteJsonl(folderId, name, rows);
 }
 
+const HISTORY_MOTHER_POOL_RULE_VERSION = 'top50-40core-10emerging-v1';
+
+function historyRecentDailyByCode(manifest, targetDate) {
+  const out = {};
+  const year = Number(targetDate.slice(0, 4));
+  const source = manifest.files || {};
+  const files = (Array.isArray(source) ? source : Object.keys(source).map(function(key) {
+    return Object.assign({ year: Number(key) }, source[key]);
+  })).filter(function(file) { return Number(file.year) === year || Number(file.year) === year - 1; });
+  files.forEach(function(file) {
+    const lines = historyReadText(file.file_id).replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+    const header = historyParseCsvLine(lines[0]);
+    const index = {};
+    header.forEach(function(name, position) { index[name] = position; });
+    lines.slice(1).forEach(function(line) {
+      if (!line) return;
+      const row = historyParseCsvLine(line);
+      const code = row[index.stock_code];
+      const date = row[index.trade_date];
+      if (!/^\d{4}$/.test(code || '') || !date || date > targetDate) return;
+      if (!out[code]) out[code] = [];
+      out[code].push({ date: date, volume: Number(row[index.trade_volume] || 0), tradeValue: Number(row[index.trade_value] || 0), transactions: Number(row[index.transactions] || 0) });
+    });
+  });
+  Object.keys(out).forEach(function(code) {
+    const unique = {};
+    out[code].forEach(function(row) { unique[row.date] = row; });
+    out[code] = Object.keys(unique).sort().map(function(date) { return unique[date]; }).slice(-20);
+  });
+  return out;
+}
+
+function historyMedian(values) {
+  const rows = (values || []).map(Number).filter(Number.isFinite).sort(function(a, b) { return a - b; });
+  if (!rows.length) return 0;
+  const middle = Math.floor(rows.length / 2);
+  return rows.length % 2 ? rows[middle] : (rows[middle - 1] + rows[middle]) / 2;
+}
+
+function historyPercentiles(rows, getter) {
+  const ranked = rows.map(function(row, index) { return { index: index, value: Number(getter(row) || 0) }; }).sort(function(a, b) { return a.value - b.value || a.index - b.index; });
+  const out = new Array(rows.length).fill(0); const divisor = Math.max(1, ranked.length - 1);
+  ranked.forEach(function(item, rank) { out[item.index] = rank / divisor; });
+  return out;
+}
+
+function historyLiquidityMetrics(row, history, targetDate) {
+  const prior = (history || []).filter(function(item) { return item.date < targetDate; }).slice(-19);
+  const valid = prior.concat([{ date: targetDate, volume: row.trade_volume, tradeValue: row.trade_value, transactions: row.transactions }])
+    .filter(function(item) { return Number(item.volume) > 0 && Number(item.tradeValue) > 0; }).slice(-20);
+  const volumes = valid.map(function(item) { return Number(item.volume); });
+  const values = valid.map(function(item) { return Number(item.tradeValue); });
+  const transactions = valid.map(function(item) { return Number(item.transactions); });
+  const volumeMedian20 = historyMedian(volumes);
+  const deviation = historyMedian(volumes.map(function(value) { return Math.abs(value - volumeMedian20); }));
+  return {
+    activeDays: valid.length, latestDate: valid.length ? valid[valid.length - 1].date : '',
+    currentVolume: Number(row.trade_volume || 0), volumeMedian20: volumeMedian20, volumeMedian5: historyMedian(volumes.slice(-5)),
+    currentValue: Number(row.trade_value || 0), valueMedian20: historyMedian(values),
+    currentTransactions: Number(row.transactions || 0), transactionMedian20: historyMedian(transactions),
+    stability: Math.max(0, Math.min(1, valid.length / 20 * (1 - Math.min(1, volumeMedian20 ? deviation / volumeMedian20 : 1))))
+  };
+}
+
+function historyDispositionCodes() {
+  const out = {};
+  try {
+    const text = historyReadText(HISTORY_DRIVE.dispositionCurrentFile).replace(/^\uFEFF/, '').trim();
+    if (!text) return out;
+    if (text.indexOf('\n') >= 0 && text[0] === '{') {
+      text.split(/\r?\n/).filter(Boolean).forEach(function(line) { const row = JSON.parse(line); const code = String(row.stock_code || row.code || ''); if (/^\d{4}$/.test(code)) out[code] = true; });
+      return out;
+    }
+    const parsed = JSON.parse(text); const rows = Array.isArray(parsed) ? parsed : (parsed.rows || parsed.data || []);
+    rows.forEach(function(row) { const code = String(row.stock_code || row.code || ''); if (/^\d{4}$/.test(code)) out[code] = true; });
+  } catch (error) { console.warn('處置股票清單讀取失敗：' + error.message); }
+  return out;
+}
+
+function historyBuildFinalMotherPool(marketRows, dailyManifest, targetDate) {
+  const recent = historyRecentDailyByCode(dailyManifest, targetDate);
+  const dispositions = historyDispositionCodes();
+  const rows = (marketRows || []).filter(function(row) {
+    return historyIsListedCommonStock(row.stock_code, row.stock_name) && !dispositions[row.stock_code]
+      && Number(row.trade_volume) > 0 && Number(row.trade_value) > 0 && Number(row.transactions) > 0 && Number(row.close) > 0;
+  }).map(function(row) { return Object.assign({}, row, { liquidity_metrics: historyLiquidityMetrics(row, recent[row.stock_code] || [], targetDate) }); });
+  const currentVolume = historyPercentiles(rows, function(row) { return row.liquidity_metrics.currentVolume; });
+  const medianVolume = historyPercentiles(rows, function(row) { return row.liquidity_metrics.volumeMedian20; });
+  const medianValue = historyPercentiles(rows, function(row) { return row.liquidity_metrics.valueMedian20; });
+  const currentValue = historyPercentiles(rows, function(row) { return row.liquidity_metrics.currentValue; });
+  const transactions = historyPercentiles(rows, function(row) { return row.liquidity_metrics.currentTransactions; });
+  rows.forEach(function(row, index) {
+    const m = row.liquidity_metrics;
+    row.liquidity_score = round2(100 * (0.25 * currentVolume[index] + 0.25 * medianVolume[index] + 0.25 * medianValue[index] + 0.10 * currentValue[index] + 0.10 * m.stability + 0.05 * transactions[index]));
+    row.emerging_score = round2(100 * (0.35 * Math.min(5, m.currentVolume / Math.max(1, m.volumeMedian20)) / 5
+      + 0.30 * Math.min(5, m.currentValue / Math.max(1, m.valueMedian20)) / 5
+      + 0.25 * Math.min(3, m.volumeMedian5 / Math.max(1, m.volumeMedian20)) / 3
+      + 0.10 * Math.min(5, m.currentTransactions / Math.max(1, m.transactionMedian20)) / 5));
+  });
+  const preliminary = rows.slice().sort(function(a, b) { return b.liquidity_score - a.liquidity_score || b.trade_volume - a.trade_volume; }).slice(0, 50);
+  const complete = rows.filter(function(row) { return row.liquidity_metrics.activeDays >= 18; });
+  const core = complete.slice().sort(function(a, b) { return b.liquidity_score - a.liquidity_score || b.trade_volume - a.trade_volume; }).slice(0, 40);
+  const used = {}; core.forEach(function(row) { used[row.stock_code] = true; row.mother_pool_tier = 'CORE'; });
+  const emerging = complete.filter(function(row) { return !used[row.stock_code]; }).sort(function(a, b) { return b.emerging_score - a.emerging_score || b.liquidity_score - a.liquidity_score; }).slice(0, 10);
+  emerging.forEach(function(row) { row.mother_pool_tier = 'EMERGING'; });
+  const result = core.concat(emerging).map(function(row, index) { row.rank = index + 1; return row; });
+  result.pendingBackfill = preliminary.filter(function(row) { return row.liquidity_metrics.activeDays < 18; });
+  return result;
+}
+
+function historyWriteMotherPoolSnapshot(top50, sourceCount, tradeDate) {
+  const rows = (top50 || []).map(function(row) {
+    const m = row.liquidity_metrics || {};
+    return {
+      trade_date: tradeDate, rank: row.rank, stock_code: row.stock_code, stock_name: row.stock_name,
+      tier: row.mother_pool_tier, liquidity_score: row.liquidity_score, emerging_score: row.emerging_score,
+      active_days_20: m.activeDays, current_volume: m.currentVolume, median_volume_20: m.volumeMedian20,
+      current_trade_value: m.currentValue, median_trade_value_20: m.valueMedian20,
+      current_transactions: m.currentTransactions, stability: m.stability,
+      rule_version: HISTORY_MOTHER_POOL_RULE_VERSION
+    };
+  });
+  mopsWriteJsonl(HISTORY_DRIVE.top50Folder, 'final_top50_latest.jsonl', rows);
+  mopsReplaceSnapshot(HISTORY_DRIVE.top50Folder, 'final_top50_manifest.json', [{
+    trade_date: tradeDate, generated_at: new Date().toISOString(), source_count: sourceCount,
+    selected_count: rows.length, core_count: rows.filter(function(row) { return row.tier === 'CORE'; }).length,
+    emerging_count: rows.filter(function(row) { return row.tier === 'EMERGING'; }).length,
+    pending_backfill: (top50.pendingBackfill || []).map(function(row) { return row.stock_code; }),
+    rule_version: HISTORY_MOTHER_POOL_RULE_VERSION
+  }]);
+}
+
+function historyRecentBackfillStart(tradeDate) {
+  const date = parseYmd(tradeDate);
+  date.setUTCMonth(date.getUTCMonth() - 2);
+  return date.getUTCFullYear() + '-' + String(date.getUTCMonth() + 1).padStart(2, '0');
+}
+
 /**
  * 將三個每日型十年資料庫更新到 TWSE 最近已完成的交易日。
  * 三份資料與三份 manifest 全部成功後才算完成；同一天重跑不會重複寫入。
@@ -340,19 +478,22 @@ function updateTenYearHistoryToLatestTradeDate() {
       return Number(item.year) === Number(tradeDate.slice(0, 4)) && item.latest_trade_date >= tradeDate;
     });
     if (latestDates.every(function(value) { return value >= tradeDate; }) && rawCurrent) {
-      const currentTop50 = marketRows.slice().sort(function(a, b) { return b.trade_volume - a.trade_volume; }).slice(0, 50);
-      currentTop50.forEach(function(row, index) { row.rank = index + 1; });
+      const currentTop50 = historyBuildFinalMotherPool(marketRows, manifests.daily, tradeDate);
       const currentRawFile = historyEnsureRaw100File(manifests.top50, Number(tradeDate.slice(0, 4)));
       const correctedRawCsv = historyReplaceDateRows(historyReadText(currentRawFile.file_id), HISTORY_TOP50_HEADER, tradeDate,
         currentTop50.map(function(row) { return historyTop50Values(tradeDate, row); }));
       historyReplaceText(currentRawFile.file_id, correctedRawCsv, 'text/csv');
       currentRawFile.rows = Math.max(0, correctedRawCsv.trim().split(/\r?\n/).length - 1);
       currentRawFile.updated_at = new Date().toISOString();
-      manifests.top50.selection_source_count = 50;
-      manifests.top50.selection_count = 50;
+      historyWriteMotherPoolSnapshot(currentTop50, marketRows.length, tradeDate);
+      manifests.top50.selection_source_count = marketRows.length;
+      manifests.top50.selection_count = currentTop50.length;
+      manifests.top50.rule_version = HISTORY_MOTHER_POOL_RULE_VERSION;
+      manifests.top50.core_count = currentTop50.filter(function(row) { return row.mother_pool_tier === 'CORE'; }).length;
+      manifests.top50.emerging_count = currentTop50.filter(function(row) { return row.mother_pool_tier === 'EMERGING'; }).length;
       historyReplaceText(HISTORY_DRIVE.top50Manifest, JSON.stringify(manifests.top50, null, 2) + '\n', 'application/json');
       const historicalCodes = (manifests.daily.stock_codes || []).slice();
-      const queued = historyQueueNewTop50(manifests.daily, currentTop50, tradeDate);
+      const queued = historyQueueNewTop50(manifests.daily, currentTop50.concat(currentTop50.pendingBackfill || []), tradeDate);
       historyReplaceText(HISTORY_DRIVE.stockDailyManifest, JSON.stringify(manifests.daily, null, 2) + '\n', 'application/json');
       if ((manifests.daily.pending_backfill || []).some(function(item) { return item.status !== 'complete'; })) historyEnsureBackfillTrigger();
       const universe = rebuildAnalysisUniverseIndex({
@@ -362,8 +503,7 @@ function updateTenYearHistoryToLatestTradeDate() {
       return { ok: true, status: 'already_current', tradeDate: tradeDate, latestDates: latestDates, newCodes: queued, universe: universe };
     }
 
-    const top50 = marketRows.slice().sort(function(a, b) { return b.trade_volume - a.trade_volume; }).slice(0, 50);
-    top50.forEach(function(row, index) { row.rank = index + 1; });
+    const top50 = historyBuildFinalMotherPool(marketRows, manifests.daily, tradeDate);
     const top50Rank = {};
     top50.forEach(function(row) { top50Rank[row.stock_code] = row.rank; });
 
@@ -383,7 +523,7 @@ function updateTenYearHistoryToLatestTradeDate() {
 
     const flowPayload = historyFetchAlignedFlow(market.date);
     const flowRows = historyBuildFlowRows(top50, flowPayload);
-    if (flowRows.length !== 50) throw new Error('市場資金流向資料不足 50 筆');
+    if (flowRows.length !== top50.length) throw new Error('市場資金流向資料不足：' + flowRows.length + '/' + top50.length);
 
     const nextTopCsv = historyAppendRows(topCsv, HISTORY_TOP50_HEADER, tradeDate,
       top50.map(function(row) { return historyTop50Values(tradeDate, row); }));
@@ -403,28 +543,23 @@ function updateTenYearHistoryToLatestTradeDate() {
     historyReplaceText(raw100File.file_id, nextRaw100Csv, 'text/csv');
 
     const now = new Date().toISOString();
-    historyAdvanceManifest(manifests.top50, topFile, tradeDate, 50, now);
+    historyAdvanceManifest(manifests.top50, topFile, tradeDate, top50.length, now);
     historyAdvanceManifest(manifests.daily, dailyFile, tradeDate, dailyRows.length, now);
-    historyAdvanceManifest(manifests.flow, flowFile, tradeDate, 50, now);
-    raw100File.rows = Number(raw100File.rows || 0) + (raw100File.latest_trade_date >= tradeDate ? 0 : 50);
+    historyAdvanceManifest(manifests.flow, flowFile, tradeDate, flowRows.length, now);
+    raw100File.rows = Number(raw100File.rows || 0) + (raw100File.latest_trade_date >= tradeDate ? 0 : top50.length);
     raw100File.latest_trade_date = tradeDate; raw100File.updated_at = now;
-    manifests.top50.selection_source_count = 50;
-    manifests.top50.selection_count = 50;
+    manifests.top50.selection_source_count = marketRows.length;
+    manifests.top50.selection_count = top50.length;
+    manifests.top50.rule_version = HISTORY_MOTHER_POOL_RULE_VERSION;
+    manifests.top50.core_count = top50.filter(function(row) { return row.mother_pool_tier === 'CORE'; }).length;
+    manifests.top50.emerging_count = top50.filter(function(row) { return row.mother_pool_tier === 'EMERGING'; }).length;
     manifests.top50.raw_ranking_files = manifests.top50.raw_ranking_files || [];
     if (!manifests.top50.raw_ranking_files.some(function(item) { return item.file_id === raw100File.file_id; })) {
       manifests.top50.raw_ranking_files.push(raw100File);
     }
-    if (newCodes.length) {
-      manifests.daily.stock_codes = (manifests.daily.stock_codes || []).concat(newCodes).sort();
-      manifests.daily.stock_count = manifests.daily.stock_codes.length;
-      manifests.daily.pending_backfill = manifests.daily.pending_backfill || [];
-      newCodes.forEach(function(code) {
-        if (!manifests.daily.pending_backfill.some(function(item) { return item.stock_code === code && item.status !== 'complete'; })) {
-          manifests.daily.pending_backfill.push({ stock_code: code, detected_on: tradeDate, status: 'pending' });
-        }
-      });
-      historyEnsureBackfillTrigger();
-    }
+    const queued = historyQueueNewTop50(manifests.daily, top50.concat(top50.pendingBackfill || []), tradeDate);
+    if (queued.length || (manifests.daily.pending_backfill || []).some(function(item) { return item.status !== 'complete'; })) historyEnsureBackfillTrigger();
+    historyWriteMotherPoolSnapshot(top50, marketRows.length, tradeDate);
     manifests.flow.source_status = {
       institutional_latest: tradeDate, margin_latest: tradeDate, lending_latest: tradeDate
     };
@@ -459,7 +594,7 @@ function backfillNewTop50History() {
     const task = queue.filter(function(item) { return item.status !== 'complete'; })[0];
     if (!task) { historyDeleteBackfillTriggers(); return { ok: true, status: 'empty' }; }
     const end = parseYmd(task.detected_on);
-    let cursor = task.next_month || manifest.data_start_date.slice(0, 7);
+    let cursor = task.next_month || task.start_month || historyRecentBackfillStart(task.detected_on);
     let processed = 0;
     while (processed < 8 && cursor <= task.detected_on.slice(0, 7)) {
       const parts = cursor.split('-');
@@ -586,9 +721,14 @@ function historyQueueNewTop50(manifest, currentTop50, tradeDate) {
   });
   (currentTop50 || []).slice(0, 50).forEach(function(row) {
     const code = String(row.stock_code || '');
-    if (!/^\d{4}$/.test(code) || known[code]) return;
-    known[code] = true; added.push(code);
-    manifest.pending_backfill.push({ stock_code: code, detected_on: tradeDate, status: 'pending' });
+    if (!/^\d{4}$/.test(code)) return;
+    const needsHistory = row.liquidity_metrics && Number(row.liquidity_metrics.activeDays || 0) < 18;
+    if (known[code] && !needsHistory) return;
+    if (!known[code]) { known[code] = true; added.push(code); }
+    const existing = manifest.pending_backfill.some(function(item) { return item.stock_code === code && item.status !== 'complete'; });
+    if (!existing) manifest.pending_backfill.push({
+      stock_code: code, detected_on: tradeDate, start_month: historyRecentBackfillStart(tradeDate), status: 'pending'
+    });
   });
   if (added.length || Object.keys(known).length !== originalStockCount || manifest.pending_backfill.length !== originalPendingCount) {
     manifest.stock_codes = Object.keys(known).sort();

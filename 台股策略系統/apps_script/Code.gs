@@ -36,14 +36,17 @@ const CONFIG = {
   maxChasePct: 0.003,
   maxMarketOrderSpreadPct: 0.002,
   maxLimitOrderSpreadPct: 0.006,
-  rawVolumeReviewLimit: 50,
+  rawVolumeReviewLimit: 0,
   candidateSelectionPoolLimit: 50,
+  coreLiquidityLimit: 40,
+  emergingLiquidityLimit: 10,
+  motherPoolMinActiveDays: 18,
   topVolumeLimit: 10,
   maxScanCandidates: 10,
   maxOpenPositions: 5,
   candidateChipWeight: 0.50,
-  candidateVolumeWeight: 0.30,
-  candidateMomentumWeight: 0.20,
+  candidateTechnicalWeight: 0.30,
+  candidateLiquidityWeight: 0.20,
   monthlyTargetReturnMin: 0.03,
   monthlyTargetReturnMax: 0.05,
   allowDayTrade: false,
@@ -84,14 +87,14 @@ const STRATEGY_SETTINGS = [
   ['maxChasePct', '追價上限', 'number', CONFIG.maxChasePct, '最多追價幅度'],
   ['maxMarketOrderSpreadPct', '市價允許價差', 'number', CONFIG.maxMarketOrderSpreadPct, '價差小於此值才允許類市價'],
   ['maxLimitOrderSpreadPct', '限價最大價差', 'number', CONFIG.maxLimitOrderSpreadPct, '價差超過此值不進場'],
-  ['rawVolumeReviewLimit', '成交量原始檢討筆數', 'number', CONFIG.rawVolumeReviewLimit, '每日先檢討成交量前 50 名'],
-  ['candidateSelectionPoolLimit', '候選篩選母體筆數', 'number', CONFIG.candidateSelectionPoolLimit, '由成交量前 50 名進行籌碼加權篩選'],
+  ['rawVolumeReviewLimit', '市場掃描上限', 'number', CONFIG.rawVolumeReviewLimit, '0 代表掃描全部上市普通股，再依最終母池規則選50檔'],
+  ['candidateSelectionPoolLimit', '最終母池筆數', 'number', CONFIG.candidateSelectionPoolLimit, '40檔核心流動性＋10檔流動性潛力'],
   ['topVolumeLimit', '最終候選筆數', 'number', CONFIG.topVolumeLimit, '綜合排序後保留 10 名'],
   ['maxScanCandidates', '掃描候選上限', 'number', CONFIG.maxScanCandidates, '最多分析幾檔'],
   ['maxOpenPositions', '最多持有股票數', 'number', CONFIG.maxOpenPositions, '新買進後最多同時持有 5 檔'],
   ['candidateChipWeight', '候選籌碼權重', 'number', CONFIG.candidateChipWeight, '候選排序占 50%，不改正式籌碼 15 分'],
-  ['candidateVolumeWeight', '候選成交量權重', 'number', CONFIG.candidateVolumeWeight, '候選排序占 30%'],
-  ['candidateMomentumWeight', '候選價格動能權重', 'number', CONFIG.candidateMomentumWeight, '候選排序占 20%'],
+  ['candidateTechnicalWeight', '候選技術權重', 'number', CONFIG.candidateTechnicalWeight, 'Top10觀察排序占30%'],
+  ['candidateLiquidityWeight', '候選流動性權重', 'number', CONFIG.candidateLiquidityWeight, 'Top10觀察排序占20%'],
   ['allowDayTrade', '是否允許當沖', 'boolean', CONFIG.allowDayTrade, 'TRUE/FALSE'],
   ['allowOvernight', '是否允許隔日沖', 'boolean', CONFIG.allowOvernight, 'TRUE/FALSE'],
   ['allowChasing', '是否允許追價', 'boolean', CONFIG.allowChasing, 'TRUE/FALSE'],
@@ -219,7 +222,7 @@ function readLatestCandidateUniverse() {
         ok: true, tradeDate: day.date, reviewedCount: CONFIG.candidateSelectionPoolLimit,
         selectedCount: candidates.length, limit: CONFIG.topVolumeLimit,
         generatedAt: day.source && day.source.generatedAt ? day.source.generatedAt : payload.generatedAt,
-        selectionWeights: { chip: CONFIG.candidateChipWeight, volume: CONFIG.candidateVolumeWeight, momentum: CONFIG.candidateMomentumWeight },
+        selectionWeights: { chip: CONFIG.candidateChipWeight, technical: CONFIG.candidateTechnicalWeight, liquidity: CONFIG.candidateLiquidityWeight },
         items: candidates.map(function(candidate, index) {
           return {
             rank: index + 1, volumeRank: candidate.metrics && candidate.metrics.volumeRank,
@@ -482,7 +485,8 @@ function ensureStrategySettingsSheet(workbook) {
     const row = current ? current.row : [];
     const forcePolicyValue = [
       'minCashReservePct', 'rawVolumeReviewLimit', 'candidateSelectionPoolLimit',
-      'topVolumeLimit', 'maxScanCandidates', 'maxOpenPositions'
+      'topVolumeLimit', 'maxScanCandidates', 'maxOpenPositions',
+      'candidateChipWeight', 'candidateTechnicalWeight', 'candidateLiquidityWeight'
     ].indexOf(key) >= 0 && Number(row[2]) !== Number(setting[3]);
     const value = forcePolicyValue
       ? setting[3]
@@ -812,8 +816,24 @@ function buildTradingUniverse(targetDate, existingPositions) {
   };
 
   try {
-    const rawRanked = fetchTopVolumeStocks(targetDate, CONFIG.rawVolumeReviewLimit);
-    const ranked = rawRanked.slice(0, CONFIG.candidateSelectionPoolLimit);
+    const rawRanked = fetchTopVolumeStocks(targetDate, 0);
+    const sourceDate = rawRanked[0] && rawRanked[0].sourceDate ? rawRanked[0].sourceDate : targetDate;
+    const marketRows = rawRanked.map(function(row) {
+      return {
+        stock_code: row.code, stock_name: row.name, trade_volume: row.volume, trade_value: row.tradeValue,
+        transactions: row.transactions, open: row.open, high: row.high, low: row.low, close: row.close
+      };
+    });
+    const dailyManifest = historyReadJson(HISTORY_DRIVE.stockDailyManifest);
+    const finalPool = historyBuildFinalMotherPool(marketRows, dailyManifest, sourceDate);
+    const ranked = finalPool.map(function(row) {
+      return {
+        code: row.stock_code, name: row.stock_name, volume: row.trade_volume, tradeValue: row.trade_value,
+        transactions: row.transactions, close: row.close, sourceDate: sourceDate, volumeRank: row.rank,
+        liquidityScore: row.liquidity_score, emergingScore: row.emerging_score,
+        motherPoolTier: row.mother_pool_tier, liquidityMetrics: row.liquidity_metrics
+      };
+    });
     let selected = ranked
       .map(function(row) { return classifyTargetStock(row); })
       .filter(Boolean);
@@ -829,7 +849,7 @@ function buildTradingUniverse(targetDate, existingPositions) {
       items: selected,
       meta: {
         mode: 'dynamic',
-        source: 'TWSE MI_INDEX top volume',
+        source: 'TWSE MI_INDEX + Drive既有20日流動性（40核心＋10潛力）',
         date: ranked[0] && ranked[0].sourceDate ? ranked[0].sourceDate : targetDate,
         topVolumeLimit: CONFIG.topVolumeLimit,
         candidateSelectionPoolLimit: CONFIG.candidateSelectionPoolLimit,
@@ -837,6 +857,8 @@ function buildTradingUniverse(targetDate, existingPositions) {
         scannedLimit: CONFIG.maxScanCandidates,
         rawRankedCount: rawRanked.length,
         rankedCount: ranked.length,
+        pendingBackfillCount: (finalPool.pendingBackfill || []).length,
+        ruleVersion: HISTORY_MOTHER_POOL_RULE_VERSION,
         filteredCount: selected.length,
         heldSupplementCount: heldItems.length,
         groups: targetGroupNames()
@@ -923,6 +945,11 @@ function parseTopVolumeRows(json, limit) {
     const codeIndex = fieldIndex(fields, /證券代號/);
     const nameIndex = fieldIndex(fields, /證券名稱/);
     const volumeIndex = fieldIndex(fields, /成交股數|成交量/);
+    const valueIndex = fieldIndex(fields, /成交金額/);
+    const transactionsIndex = fieldIndex(fields, /成交筆數/);
+    const openIndex = fieldIndex(fields, /開盤價/);
+    const highIndex = fieldIndex(fields, /最高價/);
+    const lowIndex = fieldIndex(fields, /最低價/);
     const closeIndex = fieldIndex(fields, /收盤價|成交價/);
     const signIndex = fieldIndex(fields, /漲跌\(\+\/-\)|漲跌符號/);
     const changeIndex = fieldIndex(fields, /漲跌價差/);
@@ -942,6 +969,11 @@ function parseTopVolumeRows(json, limit) {
         code: code,
         name: String(row[nameIndex] || '').trim(),
         volume: parseTwseNumber(row[volumeIndex]) || 0,
+        tradeValue: valueIndex >= 0 ? (parseTwseNumber(row[valueIndex]) || 0) : 0,
+        transactions: transactionsIndex >= 0 ? (parseTwseNumber(row[transactionsIndex]) || 0) : 0,
+        open: openIndex >= 0 ? parseTwseNumber(row[openIndex]) : null,
+        high: highIndex >= 0 ? parseTwseNumber(row[highIndex]) : null,
+        low: lowIndex >= 0 ? parseTwseNumber(row[lowIndex]) : null,
         close: close,
         priceChange: signedChange,
         priceChangePct: previousClose ? signedChange / previousClose : null
@@ -951,7 +983,7 @@ function parseTopVolumeRows(json, limit) {
 
   return rows
     .sort(function(a, b) { return b.volume - a.volume; })
-    .slice(0, limit || CONFIG.topVolumeLimit)
+    .slice(0, Number(limit) > 0 ? Number(limit) : rows.length)
     .map(function(row, index) {
       return Object.assign({}, row, { volumeRank: index + 1 });
     });
@@ -976,7 +1008,11 @@ function classifyTargetStock(row) {
     volumeRank: row.volumeRank,
     screeningVolume: row.volume,
     screeningClose: row.close,
-    priceChangePct: row.priceChangePct
+    priceChangePct: row.priceChangePct,
+    liquidityScore: row.liquidityScore,
+    emergingScore: row.emergingScore,
+    motherPoolTier: row.motherPoolTier,
+    liquidityMetrics: row.liquidityMetrics
   };
 }
 
@@ -1009,12 +1045,12 @@ function chipSelectionFraction(item, signal) {
 
 function candidateSelectionScore(item, signal) {
   const chip = chipSelectionFraction(item, signal);
-  const volume = selectionClamp((CONFIG.candidateSelectionPoolLimit - Number(item.volumeRank || CONFIG.candidateSelectionPoolLimit) + 1) / CONFIG.candidateSelectionPoolLimit);
   const changePct = Number(item.priceChangePct);
-  const momentum = Number.isFinite(changePct) ? selectionClamp((changePct + 0.05) / 0.10) : 0.5;
+  const technical = Number.isFinite(changePct) ? selectionClamp((changePct + 0.05) / 0.10) : 0.5;
+  const liquidity = selectionClamp(Number(item.liquidityScore || 0) / 100);
   return {
-    total: round2(100 * (CONFIG.candidateChipWeight * chip + CONFIG.candidateVolumeWeight * volume + CONFIG.candidateMomentumWeight * momentum)),
-    chip: round2(50 * chip), volume: round2(30 * volume), momentum: round2(20 * momentum)
+    total: round2(100 * (CONFIG.candidateChipWeight * chip + CONFIG.candidateTechnicalWeight * technical + CONFIG.candidateLiquidityWeight * liquidity)),
+    chip: round2(50 * chip), technical: round2(30 * technical), liquidity: round2(20 * liquidity)
   };
 }
 
@@ -1031,9 +1067,9 @@ function selectCandidateUniverse(items, chipData, limit) {
   return {
     items: mergeUniverseItems(selected, held),
     meta: {
-      mode: aligned ? 'chip-50-volume-30-momentum-20' : 'volume-fallback-chip-date-mismatch',
+      mode: aligned ? 'chip-50-technical-30-liquidity-20' : 'mother-pool-fallback-chip-date-mismatch',
       poolCount: pool.length, selectedCount: selected.length,
-      weights: { chip: CONFIG.candidateChipWeight, volume: CONFIG.candidateVolumeWeight, momentum: CONFIG.candidateMomentumWeight }
+      weights: { chip: CONFIG.candidateChipWeight, technical: CONFIG.candidateTechnicalWeight, liquidity: CONFIG.candidateLiquidityWeight }
     }
   };
 }
