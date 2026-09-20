@@ -186,6 +186,14 @@ function doGet(e) {
     };
   }
 
+  if (payload && action === 'status') {
+    try {
+      payload.historyAutomation = readHistoryAutomationStatus();
+    } catch (historyStatusError) {
+      payload.historyAutomation = { ok: false, error: String(historyStatusError) };
+    }
+  }
+
   if (payload && payload.ok !== false && (action === 'read' || action === 'refresh')) {
     try {
       payload.candidateUniverse = readLatestCandidateUniverse();

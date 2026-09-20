@@ -78,6 +78,28 @@ function configureDailyHistoryUpdate() {
   };
 }
 
+/** 僅回報自動更新健康狀態，不回傳 Drive ID、觸發器 ID 或任何憑證。 */
+function readHistoryAutomationStatus() {
+  const handlers = ScriptApp.getProjectTriggers().map(function(trigger) { return trigger.getHandlerFunction(); });
+  const props = PropertiesService.getScriptProperties();
+  const readLatest = function(fileId) {
+    try { return historyReadJson(fileId).latest_successful_trade_date || null; }
+    catch (error) { return null; }
+  };
+  return {
+    ok: true,
+    checkedAt: new Date().toISOString(),
+    dailyTriggerCount: handlers.filter(function(name) { return name === 'updateTenYearHistoryToLatestTradeDate'; }).length,
+    mopsTriggerCount: handlers.filter(function(name) { return name === 'updateMopsRollingData'; }).length,
+    backfillTriggerCount: handlers.filter(function(name) { return name === 'backfillNewTop50History'; }).length,
+    top50LatestTradeDate: readLatest(HISTORY_DRIVE.top50Manifest),
+    stockDailyLatestTradeDate: readLatest(HISTORY_DRIVE.stockDailyManifest),
+    marketFlowLatestTradeDate: readLatest(HISTORY_DRIVE.marketFlowManifest),
+    lastSuccess: props.getProperty('HISTORY_LAST_SUCCESS') ? JSON.parse(props.getProperty('HISTORY_LAST_SUCCESS')) : null,
+    lastError: props.getProperty('HISTORY_LAST_ERROR') ? JSON.parse(props.getProperty('HISTORY_LAST_ERROR')) : null
+  };
+}
+
 /** 建立 MOPS/OpenAPI 每日增量更新；精確申報時間只取官方重大訊息，不以法定期限代填。 */
 function configureMopsRollingUpdate() {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
@@ -169,6 +191,11 @@ function updateMopsRollingData() {
     rebuildAnalysisUniverseIndex({ mopsManifest: manifest });
     PropertiesService.getScriptProperties().setProperty('MOPS_LAST_SUCCESS', JSON.stringify(manifest));
     return { ok: true, status: manifest.status, generatedAt: manifest.generated_at, results: results, warnings: financialErrors };
+  } catch (error) {
+    PropertiesService.getScriptProperties().setProperty('MOPS_LAST_ERROR', JSON.stringify({
+      at: new Date().toISOString(), message: String(error && error.stack ? error.stack : error)
+    }));
+    throw error;
   } finally {
     lock.releaseLock();
   }
@@ -579,6 +606,11 @@ function updateTenYearHistoryToLatestTradeDate() {
       dailyManifest: manifests.daily
     });
     return { ok: true, status: 'updated', tradeDate: tradeDate, dailyRows: dailyRows.length };
+  } catch (error) {
+    PropertiesService.getScriptProperties().setProperty('HISTORY_LAST_ERROR', JSON.stringify({
+      at: new Date().toISOString(), message: String(error && error.stack ? error.stack : error)
+    }));
+    throw error;
   } finally {
     lock.releaseLock();
   }
