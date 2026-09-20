@@ -151,13 +151,18 @@ steps:
           fi
         }
         PREP_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-pretrade-prepare:run"
+        TICK_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-simulator:run"
         TWSE_SYNC_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-twse-drive-sync:run"
         MOPS_SYNC_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-mops-drive-sync:run"
         MCP_DAILY_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-mcp-daily-sync:run"
         HEALTH_URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/${_REGION}/jobs/tw-stock-data-health:run"
+        upsert_scheduler tw-stock-weekday '*/5 8-13 * * 1-5' "$$TICK_URI"
         upsert_scheduler tw-stock-pretrade-after-close '0 14 * * 1-5' "$$PREP_URI"
         upsert_scheduler tw-stock-pretrade-0800 '0 8 * * 1-5' "$$PREP_URI"
-        upsert_scheduler tw-stock-data-health-evening '15 21 * * 1-5' "$$HEALTH_URI"
+        upsert_scheduler tw-stock-twse-drive-sync-after-close '30 18 * * 1-5' "$$TWSE_SYNC_URI"
+        upsert_scheduler tw-stock-mops-drive-sync-evening '45 22 * * 1-5' "$$MOPS_SYNC_URI"
+        upsert_scheduler tw-stock-mcp-daily-sync-evening '15 23 * * 1-5' "$$MCP_DAILY_URI"
+        upsert_scheduler tw-stock-data-health-evening '45 23 * * 1-5' "$$HEALTH_URI"
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
@@ -165,9 +170,6 @@ steps:
       - -ceu
       - |
         gcloud scheduler jobs pause tw-stock-mops-20q-backfill --location="${_REGION}" || true
-        gcloud scheduler jobs pause tw-stock-twse-drive-sync-after-close --location="${_REGION}" || true
-        gcloud scheduler jobs pause tw-stock-mops-drive-sync-evening --location="${_REGION}" || true
-        gcloud scheduler jobs pause tw-stock-mcp-daily-sync-evening --location="${_REGION}" || true
         gcloud run jobs delete tw-stock-mops-20q-backfill --region="${_REGION}" --quiet || true
         gcloud scheduler jobs delete tw-stock-growth-top10-evening --location="${_REGION}" --quiet || true
         gcloud run jobs delete tw-stock-growth-top10-sync --region="${_REGION}" --quiet || true
@@ -187,7 +189,7 @@ steps:
           echo "$$JOB -> $$IMAGE"
           test "$$IMAGE" = "$$EXPECTED_IMAGE"
         done
-        for SCHEDULER in tw-stock-pretrade-after-close tw-stock-pretrade-0800 tw-stock-data-health-evening; do
+        for SCHEDULER in tw-stock-weekday tw-stock-pretrade-after-close tw-stock-pretrade-0800 tw-stock-twse-drive-sync-after-close tw-stock-mops-drive-sync-evening tw-stock-mcp-daily-sync-evening tw-stock-data-health-evening; do
           STATE="$$(gcloud scheduler jobs describe "$$SCHEDULER" --location="${_REGION}" --format='value(state)')"
           echo "$$SCHEDULER -> $$STATE"
           test "$$STATE" = "ENABLED"
