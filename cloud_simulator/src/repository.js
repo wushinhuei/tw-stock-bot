@@ -1,11 +1,12 @@
 'use strict';
 
 class MemoryRepository {
-  constructor(seed = {}) { this.state = structuredClone(seed); this.news = []; this.snapshots = []; }
+  constructor(seed = {}) { this.state = structuredClone(seed); this.news = []; this.snapshots = []; this.archives = []; }
   async loadState() { return structuredClone(this.state); }
   async saveState(state) { this.state = structuredClone(state); }
   async saveNews(items) { this.news = [...this.news, ...structuredClone(items)]; }
   async saveSnapshot(snapshot) { this.snapshots.push(structuredClone(snapshot)); }
+  async archiveState(label, state) { this.archives.push({ label, state: structuredClone(state) }); }
 }
 
 class GoogleRepository {
@@ -33,6 +34,13 @@ class GoogleRepository {
   async publishDashboard(payload) {
     await this.bucket.file('public/dashboard.json').save(JSON.stringify(payload), {
       contentType: 'application/json', cacheControl: 'public,max-age=15'
+    });
+  }
+  async archiveState(label, state) {
+    const safeLabel = String(label || 'manual').replace(/[^0-9A-Za-z_-]/g, '-');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await this.bucket.file(`archives/simulation-reset/${safeLabel}-${timestamp}.json`).save(JSON.stringify(state), {
+      contentType: 'application/json', gzip: true, cacheControl: 'private,no-store'
     });
   }
 }

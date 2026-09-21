@@ -4,6 +4,8 @@ const CONFIG = Object.freeze({
   strategyMode: 'LONG_ONLY',
   timezone: 'Asia/Taipei',
   initialCapital: 100000,
+  simulationResetDate: '2026-09-22',
+  simulationResetId: 'restart-2026-09-22-100k-top5',
   rawVolumeReviewLimit: 0,
   candidateSelectionPoolLimit: 50,
   coreLiquidityLimit: 40,

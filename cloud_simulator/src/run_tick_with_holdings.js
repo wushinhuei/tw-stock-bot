@@ -2,7 +2,7 @@
 
 const { spawnSync } = require('node:child_process');
 const { CONFIG } = require('./config');
-const { SimulationEngine, taipeiDate } = require('./engine');
+const { SimulationEngine, createAccount, taipeiDate } = require('./engine');
 const { loadCandidates, repositoryFromEnvironment, tickDecision } = require('./main');
 const { mcpLiveQuotes } = require('./mcp_market');
 const { isTwseTradingDay } = require('./trading_calendar');
@@ -12,6 +12,23 @@ const { triggerStaticBackupOnTrades } = require('./static_backup');
 const MAX_OPEN_POSITIONS = Number(CONFIG.maxOpenPositions || 5);
 const MIN_NEW_ENTRY_GRADE = 'A';
 const CANDIDATE_RANKING_INTERVAL_MINUTES = Number(CONFIG.candidateRankingIntervalMinutes || 60);
+
+async function applyScheduledSimulationReset(repository, engine, now, config = CONFIG) {
+  const resetDate = String(config.simulationResetDate || '');
+  const resetId = String(config.simulationResetId || '');
+  if (!resetDate || !resetId || taipeiDate(now) < resetDate || engine.account?.resetId === resetId) return false;
+
+  const previous = await repository.loadState().catch(() => ({ account: engine.account }));
+  if (repository.archiveState) await repository.archiveState(resetId, previous);
+  const account = createAccount(Number(config.initialCapital || 100000));
+  account.resetId = resetId;
+  account.resetDate = resetDate;
+  account.resetAt = now.toISOString();
+  engine.account = account;
+  await repository.saveState({ account });
+  if (repository.publishDashboard) await repository.publishDashboard(engine.dashboard([]));
+  return true;
+}
 
 function activeOrderStatuses() {
   return new Set(['NEW', 'OPEN', 'PARTIAL', 'CANCEL_PENDING']);
@@ -214,6 +231,7 @@ async function runTickWithHoldings(options = {}) {
   const repository = options.repository || repositoryFromEnvironment();
   const engine = options.engine || new SimulationEngine({ config: CONFIG, repository });
   await engine.restore();
+  await applyScheduledSimulationReset(repository, engine, now, engine.config || CONFIG);
 
   // 候選觀察名單與交易判斷分開：從成交量 Top50 建池，每小時只重新排序一次並固定該小時的10檔名單。
   const ranking = await loadHourlyCandidateRanking(repository, options, now);
@@ -292,6 +310,7 @@ if (require.main === module) main().catch(error => {
 module.exports = {
   CANDIDATE_RANKING_INTERVAL_MINUTES,
   MAX_OPEN_POSITIONS,
+  applyScheduledSimulationReset,
   buildPositionMonitors,
   candidateRankingKey,
   decorateDashboard,

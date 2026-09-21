@@ -7,7 +7,7 @@ const { buildUniverse } = require('../src/scanner');
 const { SimulationEngine, createAccount } = require('../src/engine');
 const { MemoryRepository } = require('../src/repository');
 const { gradeWithMedia } = require('../src/scoring');
-const { candidateRankingKey, loadHourlyCandidateRanking, selectPremiumEntryCandidates } = require('../src/run_tick_with_holdings');
+const { applyScheduledSimulationReset, candidateRankingKey, loadHourlyCandidateRanking, selectPremiumEntryCandidates } = require('../src/run_tick_with_holdings');
 
 function strongRow(symbol, volume) {
   const bars = Array.from({ length: 80 }, (_, i) => ({ open: 100 + i * 0.2, high: 101 + i * 0.2, low: 99 + i * 0.2, close: 100.5 + i * 0.2, volume: 1000 + i * 50 }));
@@ -52,6 +52,28 @@ test('new entries stop at five occupied symbols', () => {
   assert.deepEqual(selectPremiumEntryCandidates(full, [candidate]), []);
   const four = { account: { positions: full.account.positions.slice(0, 4), orders: [] } };
   assert.deepEqual(selectPremiumEntryCandidates(four, [candidate]).map(row => row.symbol), ['9999']);
+});
+
+test('scheduled 9/22 restart archives old state and creates one clean 100k account', async () => {
+  const oldAccount = createAccount(100000);
+  oldAccount.positions = [{ symbol: '2330', quantity: 10 }];
+  oldAccount.orders = [{ id: 'open-1', status: 'OPEN' }];
+  oldAccount.trades = [{ symbol: '2330', side: 'BUY' }];
+  const repository = new MemoryRepository({ account: oldAccount });
+  const engine = new SimulationEngine({ config: CONFIG, repository });
+  await engine.restore();
+
+  assert.equal(await applyScheduledSimulationReset(repository, engine, new Date('2026-09-22T00:50:00Z')), true);
+  assert.equal(repository.archives.length, 1);
+  assert.equal(engine.account.initialCapital, 100000);
+  assert.equal(engine.account.cash, 100000);
+  assert.deepEqual(engine.account.positions, []);
+  assert.deepEqual(engine.account.orders, []);
+  assert.deepEqual(engine.account.trades, []);
+  assert.equal(engine.account.resetId, CONFIG.simulationResetId);
+
+  assert.equal(await applyScheduledSimulationReset(repository, engine, new Date('2026-09-22T01:00:00Z')), false);
+  assert.equal(repository.archives.length, 1);
 });
 
 test('candidate cache refreshes when old Top100 or Top30 policy is stored', async () => {
