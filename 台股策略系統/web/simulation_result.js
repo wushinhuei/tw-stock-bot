@@ -801,7 +801,7 @@ window.PRECOMPUTED_SIMULATION = {
   "weeklyLimited": false,
   "source": {
     "staticBackupProvider": "cloud-dashboard",
-    "staticBackupUpdatedAt": "2026-10-06T14:28:10.486Z",
+    "staticBackupUpdatedAt": "2026-10-07T14:45:01.656Z",
     "newestScenarioDate": "2026-09-03"
   }
 };
